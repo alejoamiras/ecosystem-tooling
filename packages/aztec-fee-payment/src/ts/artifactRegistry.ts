@@ -1,9 +1,8 @@
-import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
-import type { NoirCompiledContract } from "@aztec/aztec.js/abi";
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { NoirCompiledContract } from '@aztec/aztec.js/abi';
 
 export type ArtifactRegistryUploadResponse =
   | {
@@ -22,24 +21,21 @@ export type ArtifactRegistryUploadResponse =
     };
 
 function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 }
 
 export function getArtifactRegistryBaseUrl(): string {
-  return (
-    process.env.AZTEC_ARTIFACT_REGISTRY_URL ??
-    "https://devnet.aztec-registry.xyz/"
-  );
+  return process.env.AZTEC_ARTIFACT_REGISTRY_URL ?? 'https://devnet.aztec-registry.xyz/';
 }
 
 export function shouldUploadArtifacts(): boolean {
-  const v = process.env.AZTEC_ARTIFACT_REGISTRY_UPLOAD ?? "";
-  return v === "1" || v.toLowerCase() === "true";
+  const v = process.env.AZTEC_ARTIFACT_REGISTRY_UPLOAD ?? '';
+  return v === '1' || v.toLowerCase() === 'true';
 }
 
 export function isStrictUpload(): boolean {
-  const v = process.env.AZTEC_ARTIFACT_REGISTRY_STRICT ?? "";
-  return v === "1" || v.toLowerCase() === "true";
+  const v = process.env.AZTEC_ARTIFACT_REGISTRY_STRICT ?? '';
+  return v === '1' || v.toLowerCase() === 'true';
 }
 
 export async function uploadArtifactToRegistry(params: {
@@ -47,42 +43,32 @@ export async function uploadArtifactToRegistry(params: {
   filename: string;
   registryBaseUrl?: string;
 }): Promise<ArtifactRegistryUploadResponse> {
-  const base = normalizeBaseUrl(
-    params.registryBaseUrl ?? getArtifactRegistryBaseUrl(),
-  );
-  const uploadUrl = new URL("api/upload", base).toString();
+  const base = normalizeBaseUrl(params.registryBaseUrl ?? getArtifactRegistryBaseUrl());
+  const uploadUrl = new URL('api/upload', base).toString();
 
   const body = new FormData();
   const payload = JSON.stringify(params.artifact);
-  body.set(
-    "file",
-    new Blob([payload], { type: "application/json" }),
-    params.filename,
-  );
+  body.set('file', new Blob([payload], { type: 'application/json' }), params.filename);
 
-  const res = await fetch(uploadUrl, { method: "POST", body });
+  const res = await fetch(uploadUrl, { method: 'POST', body });
 
   // The registry commonly returns JSON even on 409; treat duplicates as non-fatal by default.
   const text = await res.text();
   const parsed: unknown = text ? safeJsonParse(text) : { success: res.ok };
 
   if (res.ok) {
-    return isRegistryResponseObject(parsed)
-      ? (parsed as ArtifactRegistryUploadResponse)
-      : { success: true };
+    return isRegistryResponseObject(parsed) ? (parsed as ArtifactRegistryUploadResponse) : { success: true };
   }
 
   // Duplicate artifact (already uploaded) should not break deploys unless strict mode is enabled.
   if (res.status === 409) {
     return isRegistryResponseObject(parsed)
       ? { ...(parsed as ArtifactRegistryUploadResponse), success: true }
-      : { success: true, message: "Artifact already exists in registry" };
+      : { success: true, message: 'Artifact already exists in registry' };
   }
 
   const msg =
-    typeof parsed === "object" && parsed
-      ? JSON.stringify(parsed)
-      : text || `HTTP ${res.status} ${res.statusText}`;
+    typeof parsed === 'object' && parsed ? JSON.stringify(parsed) : text || `HTTP ${res.status} ${res.statusText}`;
   throw new Error(`Artifact registry upload failed (${res.status}): ${msg}`);
 }
 
@@ -91,10 +77,9 @@ export async function uploadArtifactFileToRegistry(params: {
   filename?: string;
   registryBaseUrl?: string;
 }): Promise<ArtifactRegistryUploadResponse> {
-  const buf = await readFile(params.artifactPath, "utf8");
+  const buf = await readFile(params.artifactPath, 'utf8');
   const artifact = JSON.parse(buf) as unknown;
-  const filename =
-    params.filename ?? params.artifactPath.split("/").pop() ?? "artifact.json";
+  const filename = params.filename ?? params.artifactPath.split('/').pop() ?? 'artifact.json';
   return await uploadArtifactToRegistry({
     artifact,
     filename,
@@ -114,11 +99,7 @@ export async function maybeUploadArtifactToRegistry(params: {
   } catch (err) {
     if (isStrictUpload()) throw err;
     // Best-effort upload; do not fail deployments by default.
-    console.warn(
-      `[artifact-registry] Upload failed (continuing): ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    console.warn(`[artifact-registry] Upload failed (continuing): ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -127,20 +108,16 @@ export async function fetchArtifactFromRegistry(params: {
   classId: string;
   registryBaseUrl?: string;
 }): Promise<unknown> {
-  const base = normalizeBaseUrl(
-    params.registryBaseUrl ?? getArtifactRegistryBaseUrl(),
-  );
+  const base = normalizeBaseUrl(params.registryBaseUrl ?? getArtifactRegistryBaseUrl());
   const fetchUrl = new URL(`api/artifacts/${params.classId}`, base).toString();
 
-  const res = await fetch(fetchUrl, { method: "GET" });
+  const res = await fetch(fetchUrl, { method: 'GET' });
 
   if (!res.ok) {
     if (res.status === 404) {
       throw new Error(`Artifact not found in registry: ${params.classId}`);
     }
-    throw new Error(
-      `Failed to fetch artifact from registry (${res.status}): ${res.statusText}`,
-    );
+    throw new Error(`Failed to fetch artifact from registry (${res.status}): ${res.statusText}`);
   }
 
   const text = await res.text();
@@ -177,18 +154,18 @@ export async function loadArtifactWithRegistryFallback(params: {
   // Fallback to local file
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
-  const localArtifactPath = join(__dirname, "../../..", params.localPath);
+  const localArtifactPath = join(__dirname, '../../..', params.localPath);
 
   if (!existsSync(localArtifactPath)) {
     throw new Error(
       `Artifact not found at local path: ${localArtifactPath}. ` +
         (params.classId
           ? `Registry fetch also failed for classId: ${params.classId}`
-          : "No classId provided for registry fetch."),
+          : 'No classId provided for registry fetch.'),
     );
   }
 
-  const buf = await readFile(localArtifactPath, "utf8");
+  const buf = await readFile(localArtifactPath, 'utf8');
   return JSON.parse(buf) as NoirCompiledContract;
 }
 
@@ -201,5 +178,5 @@ function safeJsonParse(text: string): unknown {
 }
 
 function isRegistryResponseObject(value: unknown): boolean {
-  return typeof value === "object" && value !== null && "success" in value;
+  return typeof value === 'object' && value !== null && 'success' in value;
 }

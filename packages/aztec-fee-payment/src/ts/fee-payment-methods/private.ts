@@ -1,14 +1,10 @@
-import type { FeePaymentMethod } from "@aztec/aztec.js/fee";
-import {
-  FunctionCall,
-  FunctionSelector,
-  FunctionType,
-} from "@aztec/stdlib/abi";
-import { AztecAddress } from "@aztec/stdlib/aztec-address";
-import type { GasSettings } from "@aztec/stdlib/gas";
-import { ExecutionPayload } from "@aztec/stdlib/tx";
-import { Fr } from "@aztec/aztec.js/fields";
-import { ProtocolContractAddress } from "@aztec/protocol-contracts";
+import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
+import { Fr } from '@aztec/aztec.js/fields';
+import { ProtocolContractAddress } from '@aztec/protocol-contracts';
+import { FunctionCall, FunctionSelector, FunctionType } from '@aztec/stdlib/abi';
+import type { AztecAddress } from '@aztec/stdlib/aztec-address';
+import type { GasSettings } from '@aztec/stdlib/gas';
+import { ExecutionPayload } from '@aztec/stdlib/tx';
 
 /**
  * Fee payment method for PrivateFPC that bundles FeeJuice.claim +
@@ -36,7 +32,7 @@ export class PrivateMintAndPayFeePaymentMethod implements FeePaymentMethod {
   ) {}
 
   getAsset(): Promise<AztecAddress> {
-    throw new Error("Asset is not required for private fee payment.");
+    throw new Error('Asset is not required for private fee payment.');
   }
 
   getFeePayer(): Promise<AztecAddress> {
@@ -49,28 +45,19 @@ export class PrivateMintAndPayFeePaymentMethod implements FeePaymentMethod {
     return new ExecutionPayload(
       [
         FunctionCall.from({
-          name: "claim",
+          name: 'claim',
           to: feeJuiceAddress,
-          selector: await FunctionSelector.fromSignature(
-            "claim((Field),u128,Field,Field)",
-          ),
+          selector: await FunctionSelector.fromSignature('claim((Field),u128,Field,Field)'),
           type: FunctionType.PRIVATE,
           hideMsgSender: false,
           isStatic: false,
-          args: [
-            this.fpcAddress.toField(),
-            new Fr(this.amount),
-            this.secret,
-            this.leafIndex,
-          ],
+          args: [this.fpcAddress.toField(), new Fr(this.amount), this.secret, this.leafIndex],
           returnTypes: [],
         }),
         FunctionCall.from({
-          name: "mint_and_pay_fee",
+          name: 'mint_and_pay_fee',
           to: this.fpcAddress,
-          selector: await FunctionSelector.fromSignature(
-            "mint_and_pay_fee(u128,Field,Field)",
-          ),
+          selector: await FunctionSelector.fromSignature('mint_and_pay_fee(u128,Field,Field)'),
           type: FunctionType.PRIVATE,
           hideMsgSender: false,
           isStatic: false,

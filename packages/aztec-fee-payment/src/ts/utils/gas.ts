@@ -1,6 +1,6 @@
-import type { FeePaymentMethod } from "@aztec/aztec.js/fee";
-import { AztecAddress } from "@aztec/stdlib/aztec-address";
-import { Gas, GasFees, GasSettings } from "@aztec/stdlib/gas";
+import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
+import type { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { Gas, GasFees, GasSettings } from '@aztec/stdlib/gas';
 
 type GasEstimationNode = {
   getCurrentMinFees(): Promise<GasFees>;
@@ -54,11 +54,9 @@ function normalizeMultiplier(multiplier: FeeMultiplier): {
   numerator: bigint;
   denominator: bigint;
 } {
-  if (typeof multiplier === "number") {
+  if (typeof multiplier === 'number') {
     if (!Number.isFinite(multiplier) || multiplier <= 0) {
-      throw new Error(
-        `Fee multiplier must be a positive finite number, got ${multiplier}`,
-      );
+      throw new Error(`Fee multiplier must be a positive finite number, got ${multiplier}`);
     }
 
     return {
@@ -120,14 +118,8 @@ export function maxFeesPerGasFromBaseFees(
   const normalizedMultiplier = normalizeMultiplier(multiplier);
 
   return new GasFees(
-    ceilDiv(
-      BigInt(baseFees.feePerDaGas) * normalizedMultiplier.numerator,
-      normalizedMultiplier.denominator,
-    ),
-    ceilDiv(
-      BigInt(baseFees.feePerL2Gas) * normalizedMultiplier.numerator,
-      normalizedMultiplier.denominator,
-    ),
+    ceilDiv(BigInt(baseFees.feePerDaGas) * normalizedMultiplier.numerator, normalizedMultiplier.denominator),
+    ceilDiv(BigInt(baseFees.feePerL2Gas) * normalizedMultiplier.numerator, normalizedMultiplier.denominator),
   );
 }
 
@@ -135,9 +127,7 @@ export function maxFeesPerGasFromBaseFees(
  * Mirror max fees into priority fees.
  * Aztec models both fee caps independently, but this SDK currently keeps them equal.
  */
-export function maxPriorityFeesPerGasFromMaxFees(
-  maxFeesPerGas: GasFees,
-): GasFees {
+export function maxPriorityFeesPerGasFromMaxFees(maxFeesPerGas: GasFees): GasFees {
   return maxFeesPerGas.clone();
 }
 
@@ -193,15 +183,10 @@ export async function estimateGasSettings(
   // normalizeMultiplier. Zero is allowed (no margin); negatives would
   // under-declare gas and NaN/Infinity would yield invalid limits the node rejects.
   if (!Number.isFinite(estimatedGasPadding) || estimatedGasPadding < 0) {
-    throw new Error(
-      `Gas estimate padding must be a non-negative finite number, got ${estimatedGasPadding}`,
-    );
+    throw new Error(`Gas estimate padding must be a non-negative finite number, got ${estimatedGasPadding}`);
   }
 
-  const maxFeesPerGas = maxFeesPerGasFromBaseFees(
-    await aztecNode.getCurrentMinFees(),
-    maxFeeMultiplier,
-  );
+  const maxFeesPerGas = maxFeesPerGasFromBaseFees(await aztecNode.getCurrentMinFees(), maxFeeMultiplier);
   const maxPriorityFeesPerGas = maxPriorityFeesPerGasFromMaxFees(maxFeesPerGas);
 
   const {
@@ -225,17 +210,14 @@ export async function estimateGasSettings(
   });
 
   if (!simulation.gasUsed) {
-    throw new Error("Gas usage metadata was not returned by simulation.");
+    throw new Error('Gas usage metadata was not returned by simulation.');
   }
 
   const { totalGas, teardownGas } = simulation.gasUsed;
 
   // If simulated usage already exceeds the admission limit the tx can never be
   // included, so fail fast rather than declaring a limit the node would reject.
-  if (
-    totalGas.daGas > maxGasLimits.daGas ||
-    totalGas.l2Gas > maxGasLimits.l2Gas
-  ) {
+  if (totalGas.daGas > maxGasLimits.daGas || totalGas.l2Gas > maxGasLimits.l2Gas) {
     throw new Error(
       `Transaction consumes more gas (DA ${totalGas.daGas}, L2 ${totalGas.l2Gas}) than the network admits per tx (DA ${maxGasLimits.daGas}, L2 ${maxGasLimits.l2Gas}).`,
     );

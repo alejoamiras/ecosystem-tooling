@@ -1,16 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
-import { AztecAddress } from "@aztec/stdlib/aztec-address";
-import { Gas, GasFees } from "@aztec/stdlib/gas";
+import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { Gas, GasFees } from '@aztec/stdlib/gas';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_FEE_MULTIPLIER,
   estimateGasSettings,
   maxFeesPerGasFromBaseFees,
   maxPriorityFeesPerGasFromMaxFees,
-} from "../utils/gas.js";
+} from '../utils/gas.js';
 
-describe("gas utilities", () => {
-  it("scales base fees by the default 6/5 multiplier with ceiling", () => {
+describe('gas utilities', () => {
+  it('scales base fees by the default 6/5 multiplier with ceiling', () => {
     const fees = maxFeesPerGasFromBaseFees({
       feePerDaGas: 5n,
       feePerL2Gas: 6n,
@@ -21,7 +21,7 @@ describe("gas utilities", () => {
     expect(DEFAULT_FEE_MULTIPLIER).toEqual({ numerator: 6n, denominator: 5n });
   });
 
-  it("accepts explicit numeric multipliers for non-default cases", () => {
+  it('accepts explicit numeric multipliers for non-default cases', () => {
     const fees = maxFeesPerGasFromBaseFees(
       {
         feePerDaGas: 10n,
@@ -34,7 +34,7 @@ describe("gas utilities", () => {
     expect(fees.feePerL2Gas).toBe(30n);
   });
 
-  it("mirrors max fees into priority fees", () => {
+  it('mirrors max fees into priority fees', () => {
     const maxFees = new GasFees(11n, 13n);
     const priorityFees = maxPriorityFeesPerGasFromMaxFees(maxFees);
 
@@ -43,7 +43,7 @@ describe("gas utilities", () => {
     expect(priorityFees.feePerL2Gas).toBe(13n);
   });
 
-  it("pads simulated gas usage into limits and combines with fee caps", async () => {
+  it('pads simulated gas usage into limits and combines with fee caps', async () => {
     const from = await AztecAddress.random();
     const paymentMethod = {
       getAsset: vi.fn(),
@@ -103,19 +103,15 @@ describe("gas utilities", () => {
     const expectedTeardownGasLimits = teardownGas.mul(1 + 0.1);
     expect(gasSettings.gasLimits.daGas).toBe(expectedGasLimits.daGas);
     expect(gasSettings.gasLimits.l2Gas).toBe(expectedGasLimits.l2Gas);
-    expect(gasSettings.teardownGasLimits.daGas).toBe(
-      expectedTeardownGasLimits.daGas,
-    );
-    expect(gasSettings.teardownGasLimits.l2Gas).toBe(
-      expectedTeardownGasLimits.l2Gas,
-    );
+    expect(gasSettings.teardownGasLimits.daGas).toBe(expectedTeardownGasLimits.daGas);
+    expect(gasSettings.teardownGasLimits.l2Gas).toBe(expectedTeardownGasLimits.l2Gas);
     expect(gasSettings.maxFeesPerGas.feePerDaGas).toBe(12n);
     expect(gasSettings.maxFeesPerGas.feePerL2Gas).toBe(24n);
     expect(gasSettings.maxPriorityFeesPerGas.feePerDaGas).toBe(12n);
     expect(gasSettings.maxPriorityFeesPerGas.feePerL2Gas).toBe(24n);
   });
 
-  it("clamps padded gas limits to the network admission limit", async () => {
+  it('clamps padded gas limits to the network admission limit', async () => {
     const from = await AztecAddress.random();
     const totalGas = Gas.from({ daGas: 100, l2Gas: 200 });
     const teardownGas = Gas.from({ daGas: 10, l2Gas: 20 });
@@ -142,7 +138,7 @@ describe("gas utilities", () => {
     expect(gasSettings.gasLimits.l2Gas).toBe(205);
   });
 
-  it("throws when simulated usage exceeds the network admission limit", async () => {
+  it('throws when simulated usage exceeds the network admission limit', async () => {
     const from = await AztecAddress.random();
     const totalGas = Gas.from({ daGas: 100, l2Gas: 200 });
     const teardownGas = Gas.from({ daGas: 10, l2Gas: 20 });
@@ -158,12 +154,10 @@ describe("gas utilities", () => {
       }),
     };
 
-    await expect(
-      estimateGasSettings(interaction, { aztecNode, from }),
-    ).rejects.toThrow(/consumes more gas/);
+    await expect(estimateGasSettings(interaction, { aztecNode, from })).rejects.toThrow(/consumes more gas/);
   });
 
-  it("rejects non-finite or negative gas padding before simulating", async () => {
+  it('rejects non-finite or negative gas padding before simulating', async () => {
     const from = await AztecAddress.random();
     const interaction = { simulate: vi.fn() };
     const aztecNode = {
@@ -187,7 +181,7 @@ describe("gas utilities", () => {
     expect(interaction.simulate).not.toHaveBeenCalled();
   });
 
-  it("accepts zero padding, yielding limits equal to simulated usage", async () => {
+  it('accepts zero padding, yielding limits equal to simulated usage', async () => {
     const from = await AztecAddress.random();
     const totalGas = Gas.from({ daGas: 100, l2Gas: 200 });
     const teardownGas = Gas.from({ daGas: 10, l2Gas: 20 });

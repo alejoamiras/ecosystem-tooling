@@ -22,19 +22,17 @@
  * ```
  */
 
-export type { FeeMultiplier } from "./utils/index.js";
-
 // Contract artifacts and type-safe wrappers
 export {
   PrivateFPCContract,
   PrivateFPCContractArtifact,
-} from "../artifacts/PrivateFPC.js";
-
+} from '../artifacts/PrivateFPC.js';
 // Fee payment method implementations
 export {
   FPCFeePaymentMethod,
   PrivateMintAndPayFeePaymentMethod,
-} from "./fee-payment-methods/index.js";
+} from './fee-payment-methods/index.js';
+export type { FeeMultiplier } from './utils/index.js';
 
 // Utilities for integrators
 export {
@@ -43,8 +41,8 @@ export {
   DEFAULT_GAS_ESTIMATE_PADDING,
   estimateGasSettings,
   maxFeesPerGasFromBaseFees,
-  maxPriorityFeesPerGasFromMaxFees,
   maxGasCostFor,
+  maxPriorityFeesPerGasFromMaxFees,
   // Deployment
   registerPrivateContract,
-} from "./utils/index.js";
+} from './utils/index.js';

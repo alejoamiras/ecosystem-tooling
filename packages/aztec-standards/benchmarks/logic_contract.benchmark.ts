@@ -1,14 +1,13 @@
 // Import Aztec dependencies
 
+// Import the new Benchmark base class and context
+import { Benchmark, type BenchmarkContext } from '@alejoamiras/aztec-benchmark';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
 import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import { deriveKeys } from '@aztec/stdlib/keys';
-
-// Import the new Benchmark base class and context
-import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
 
 // Import artifacts
 import { type EscrowContract, EscrowContractArtifact } from '../src/artifacts/Escrow.js';

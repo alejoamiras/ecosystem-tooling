@@ -1,7 +1,7 @@
-import { Wallet } from "@aztec/aztec.js/wallet";
-import { Fr } from "@aztec/aztec.js/fields";
+import { Fr } from '@aztec/aztec.js/fields';
+import type { Wallet } from '@aztec/aztec.js/wallet';
 
-import { CounterContract } from "../../artifacts/Counter.js";
+import { CounterContract } from '../../artifacts/Counter.js';
 
 /** Global test timeout constant for individual test cases. */
 export const TEST_TIMEOUT = 300_000;
@@ -10,10 +10,8 @@ export const TEST_TIMEOUT = 300_000;
 export const TEST_SALT = Fr.ZERO;
 
 /** Deploys the Counter contract. */
-export async function deployCounter(
-  deployer: Wallet,
-): Promise<CounterContract> {
-  const deployerAddress = (await deployer.getAccounts())[0]!.item;
+export async function deployCounter(deployer: Wallet): Promise<CounterContract> {
+  const deployerAddress = (await deployer.getAccounts())[0]?.item;
   const { contract } = await CounterContract.deploy(deployer).send({
     from: deployerAddress,
   });

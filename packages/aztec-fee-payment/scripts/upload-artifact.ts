@@ -1,8 +1,5 @@
-import {
-  uploadArtifactFileToRegistry,
-  getArtifactRegistryBaseUrl,
-} from "../src/ts/artifactRegistry.js";
-import { resolve as pathResolve } from "node:path";
+import { resolve as pathResolve } from 'node:path';
+import { getArtifactRegistryBaseUrl, uploadArtifactFileToRegistry } from '../src/ts/artifactRegistry.js';
 
 /**
  * Usage:
@@ -12,8 +9,7 @@ import { resolve as pathResolve } from "node:path";
  * - The registry typically verifies the artifact's classId exists on the target network.
  */
 async function main() {
-  const artifactPathArg =
-    process.argv[2] ?? "target/private_contract-PrivateFPC.json";
+  const artifactPathArg = process.argv[2] ?? 'target/private_contract-PrivateFPC.json';
   const artifactPath = pathResolve(process.cwd(), artifactPathArg);
   const registryBaseUrl = getArtifactRegistryBaseUrl();
 
@@ -22,18 +18,9 @@ async function main() {
     registryBaseUrl,
   });
 
-  if (
-    resp &&
-    typeof resp === "object" &&
-    "success" in resp &&
-    resp.success === false
-  ) {
+  if (resp && typeof resp === 'object' && 'success' in resp && resp.success === false) {
     throw new Error(
-      `Upload failed: ${
-        "error" in resp
-          ? String(resp.error ?? resp.message ?? "unknown error")
-          : "unknown error"
-      }`,
+      `Upload failed: ${'error' in resp ? String(resp.error ?? resp.message ?? 'unknown error') : 'unknown error'}`,
     );
   }
 

@@ -1,9 +1,9 @@
+// Import the new Benchmark base class and context
+import { Benchmark, type BenchmarkContext } from '@alejoamiras/aztec-benchmark';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { Wallet } from '@aztec/aztec.js/wallet';
-// Import the new Benchmark base class and context
-import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
 import { parseUnits } from 'viem';
 
 import { TokenContract } from '../src/artifacts/Token.js';

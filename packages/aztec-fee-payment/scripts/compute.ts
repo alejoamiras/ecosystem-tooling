@@ -1,47 +1,38 @@
-import "dotenv/config";
-import { PublicKeys } from "@aztec/aztec.js/keys";
-import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { Fr } from "@aztec/aztec.js/fields";
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import 'dotenv/config';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { AztecAddress } from '@aztec/aztec.js/addresses';
+import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { Fr } from '@aztec/aztec.js/fields';
+import { PublicKeys } from '@aztec/aztec.js/keys';
 
-import { PrivateFPCContractArtifact } from "../src/artifacts/PrivateFPC.js";
+import { PrivateFPCContractArtifact } from '../src/artifacts/PrivateFPC.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const packageJson = JSON.parse(
-  readFileSync(join(__dirname, "../package.json"), "utf-8"),
-);
-const AZTEC_VERSION =
-  packageJson.dependencies?.["@aztec/aztec.js"] ??
-  packageJson.devDependencies?.["@aztec/aztec.js"];
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+const AZTEC_VERSION = packageJson.dependencies?.['@aztec/aztec.js'] ?? packageJson.devDependencies?.['@aztec/aztec.js'];
 
 if (!AZTEC_VERSION) {
-  console.error("Error: Could not determine Aztec version from package.json.");
+  console.error('Error: Could not determine Aztec version from package.json.');
   process.exit(1);
 }
 
 async function computePrivateAddress(salt: Fr): Promise<AztecAddress> {
-  const instance = await getContractInstanceFromInstantiationParams(
-    PrivateFPCContractArtifact,
-    {
-      constructorArgs: [],
-      salt,
-      publicKeys: PublicKeys.default(),
-      deployer: AztecAddress.ZERO,
-    },
-  );
+  const instance = await getContractInstanceFromInstantiationParams(PrivateFPCContractArtifact, {
+    constructorArgs: [],
+    salt,
+    publicKeys: PublicKeys.default(),
+    deployer: AztecAddress.ZERO,
+  });
   return instance.address;
 }
 
 async function main() {
   const saltEnv = process.env.PRIVATE_FPC_SALT;
   if (!saltEnv) {
-    console.error(
-      "Error: PRIVATE_FPC_SALT is required. Set it in your .env file.",
-    );
+    console.error('Error: PRIVATE_FPC_SALT is required. Set it in your .env file.');
     process.exit(1);
   }
   const salt = Fr.fromString(saltEnv);
@@ -95,6 +86,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("Failed:", error);
+  console.error('Failed:', error);
   process.exit(1);
 });

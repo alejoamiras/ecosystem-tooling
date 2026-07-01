@@ -1,2 +1,2 @@
-export { FPCFeePaymentMethod } from "./shared.js";
-export { PrivateMintAndPayFeePaymentMethod } from "./private.js";
+export { PrivateMintAndPayFeePaymentMethod } from './private.js';
+export { FPCFeePaymentMethod } from './shared.js';

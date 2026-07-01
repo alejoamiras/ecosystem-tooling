@@ -1,7 +1,7 @@
-import { Fr } from "@aztec/aztec.js/fields";
-import { Wallet } from "@aztec/aztec.js/wallet";
+import type { Fr } from '@aztec/aztec.js/fields';
+import type { Wallet } from '@aztec/aztec.js/wallet';
 
-import { PrivateFPCContract } from "../../artifacts/PrivateFPC.js";
+import { PrivateFPCContract } from '../../artifacts/PrivateFPC.js';
 
 /**
  * Registers the PrivateFPC contract with the PXE without sending any deployment transaction.
@@ -20,10 +20,7 @@ import { PrivateFPCContract } from "../../artifacts/PrivateFPC.js";
  * @param salt   Salt used to derive the contract address
  * @returns The registered PrivateFPC contract instance
  */
-export async function registerPrivateContract(
-  wallet: Wallet,
-  salt: Fr,
-): Promise<PrivateFPCContract> {
+export async function registerPrivateContract(wallet: Wallet, salt: Fr): Promise<PrivateFPCContract> {
   return PrivateFPCContract.deploy(wallet, {
     salt,
     universalDeploy: true,

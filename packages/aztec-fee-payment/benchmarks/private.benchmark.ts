@@ -1,42 +1,30 @@
 import {
-  type BenchmarkContext,
   Benchmark,
-  namedMethod,
-  type NamedBenchmarkedInteraction,
+  type BenchmarkContext,
   type FeeGasSettings,
-} from "@defi-wonderland/aztec-benchmark";
-import { Fr } from "@aztec/aztec.js/fields";
-import {
-  createAztecNodeClient,
-  waitForNode,
-  type AztecNode,
-} from "@aztec/aztec.js/node";
-import { EmbeddedWallet } from "@aztec/wallets/embedded";
-import { registerInitialLocalNetworkAccountsInWallet } from "@aztec/wallets/testing";
-import { getPXEConfig } from "@aztec/pxe/config";
-import { Barretenberg } from "@aztec/bb.js";
-import { FeeJuiceContract } from "@aztec/noir-contracts.js/FeeJuice";
-import { ProtocolContractAddress } from "@aztec/protocol-contracts";
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { z } from "zod";
+  type NamedBenchmarkedInteraction,
+  namedMethod,
+} from '@alejoamiras/aztec-benchmark';
+import { AztecAddress } from '@aztec/aztec.js/addresses';
+import { Fr } from '@aztec/aztec.js/fields';
+import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
+import { Barretenberg } from '@aztec/bb.js';
+import { FeeJuiceContract } from '@aztec/noir-contracts.js/FeeJuice';
+import { ProtocolContractAddress } from '@aztec/protocol-contracts';
+import { getPXEConfig } from '@aztec/pxe/config';
+import { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
+import { z } from 'zod';
 
-import { CounterContract } from "../src/artifacts/Counter.js";
-import { PrivateFPCContract } from "../src/artifacts/PrivateFPC.js";
-import {
-  FPCFeePaymentMethod,
-  PrivateMintAndPayFeePaymentMethod,
-} from "../src/ts/fee-payment-methods/index.js";
-import {
-  fundL2AddressWithFeeJuiceFromL1,
-  bridgeForMint,
-} from "../src/ts/test/harness.js";
-import { registerPrivateContract } from "../src/ts/utils/deploy.js";
-import { TEST_SALT } from "../src/ts/test/utils.js";
-import { estimateGasSettings } from "../src/ts/utils/gas.js";
+import { CounterContract } from '../src/artifacts/Counter.js';
+import type { PrivateFPCContract } from '../src/artifacts/PrivateFPC.js';
+import { FPCFeePaymentMethod, PrivateMintAndPayFeePaymentMethod } from '../src/ts/fee-payment-methods/index.js';
+import { bridgeForMint, fundL2AddressWithFeeJuiceFromL1 } from '../src/ts/test/harness.js';
+import { TEST_SALT } from '../src/ts/test/utils.js';
+import { registerPrivateContract } from '../src/ts/utils/deploy.js';
+import { estimateGasSettings } from '../src/ts/utils/gas.js';
 
-const { NODE_URL } = z
-  .object({ NODE_URL: z.string().url().default("http://localhost:8080") })
-  .parse(process.env);
+const { NODE_URL } = z.object({ NODE_URL: z.string().url().default('http://localhost:8080') }).parse(process.env);
 const node: AztecNode = createAztecNodeClient(NODE_URL);
 await waitForNode(node);
 const pxeConfig = getPXEConfig();
@@ -96,9 +84,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
       await wallet.stop();
     };
 
-    const { contract: counterContract } = await CounterContract.deploy(
-      wallet,
-    ).send({
+    const { contract: counterContract } = await CounterContract.deploy(wallet).send({
       from: deployer,
     });
 
@@ -111,7 +97,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
       produceL2Block: async () => {
         await counterContract.methods.increment().send({ from: deployer });
       },
-      loggerName: "benchmark:private-fund",
+      loggerName: 'benchmark:private-fund',
     });
 
     // Bridge 1: fund internal FJ balance for the pay_fee benchmark methods.
@@ -129,25 +115,15 @@ export default class PrivateFPCBenchmark extends Benchmark {
       async () => {
         await counterContract.methods.increment().send({ from: deployer });
       },
-      { loggerName: "benchmark:private-bridge-balance" },
+      { loggerName: 'benchmark:private-bridge-balance' },
     );
 
-    const feeJuice = FeeJuiceContract.at(
-      ProtocolContractAddress.FeeJuice,
-      wallet,
-    );
+    const feeJuice = FeeJuiceContract.at(ProtocolContractAddress.FeeJuice, wallet);
     await feeJuice.methods
-      .claim(
-        privateFpc.address,
-        claimAmount,
-        secretForBalance,
-        leafIndexForBalance,
-      )
+      .claim(privateFpc.address, claimAmount, secretForBalance, leafIndexForBalance)
       .send({ from: deployer });
 
-    await privateFpc.methods
-      .mint(claimAmount, saltForBalance, leafIndexForBalance)
-      .send({ from: deployer });
+    await privateFpc.methods.mint(claimAmount, saltForBalance, leafIndexForBalance).send({ from: deployer });
 
     // Bridge 2: reserved for the mint_and_pay_fee benchmark method.
     // Only the L1 deposit is done here; FeeJuice.claim + mint_and_pay_fee
@@ -165,7 +141,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
       async () => {
         await counterContract.methods.increment().send({ from: deployer });
       },
-      { loggerName: "benchmark:private-bridge-mint-and-pay" },
+      { loggerName: 'benchmark:private-bridge-mint-and-pay' },
     );
 
     const privatePaymentMethod = new FPCFeePaymentMethod(privateFpc.address);
@@ -212,16 +188,11 @@ export default class PrivateFPCBenchmark extends Benchmark {
       async () => {
         await counterContract.methods.increment().send({ from: deployer });
       },
-      { loggerName: "benchmark:private-bridge-mint-private" },
+      { loggerName: 'benchmark:private-bridge-mint-private' },
     );
 
     await feeJuice.methods
-      .claim(
-        privateFpc.address,
-        claimAmountForMintPrivate,
-        secretForMintPrivate,
-        leafIndexForMintPrivate,
-      )
+      .claim(privateFpc.address, claimAmountForMintPrivate, secretForMintPrivate, leafIndexForMintPrivate)
       .send({ from: deployer });
 
     return {
@@ -271,36 +242,23 @@ export default class PrivateFPCBenchmark extends Benchmark {
     //   4. increment_private_mint_and_pay_fee -- FeeJuice.claim + mint_and_pay_fee
     //                                           in one tx (cold-start, no prior balance)
     return [
-      namedMethod(
-        "increment",
-        deployer,
-        counterContract.withWallet(wallet).methods.increment(),
-      ),
+      namedMethod('increment', deployer, counterContract.withWallet(wallet).methods.increment()),
       // Standalone mint: benchmarks the bridge-claim proof in isolation.
       // FeeJuice.claim was settled in setup, so assert_nullifier_exists sees a
       // settled nullifier. No FPC fee sponsorship — deployer pays native FeeJuice.
       namedMethod(
-        "mint_private",
+        'mint_private',
         deployer,
         privateFpc
           .withWallet(wallet)
-          .methods.mint(
-            mintPrivateDeposit.amount,
-            mintPrivateDeposit.salt,
-            mintPrivateDeposit.leafIndex,
-          ),
+          .methods.mint(mintPrivateDeposit.amount, mintPrivateDeposit.salt, mintPrivateDeposit.leafIndex),
       ),
+      namedMethod('increment_private', deployer, counterContract.withWallet(wallet).methods.increment(), {
+        paymentMethod: privatePaymentMethod,
+        gasSettings: incrementPrivateGasSettings,
+      }),
       namedMethod(
-        "increment_private",
-        deployer,
-        counterContract.withWallet(wallet).methods.increment(),
-        {
-          paymentMethod: privatePaymentMethod,
-          gasSettings: incrementPrivateGasSettings,
-        },
-      ),
-      namedMethod(
-        "increment_private_mint_and_pay_fee",
+        'increment_private_mint_and_pay_fee',
         deployer,
         counterContract.withWallet(wallet).methods.increment(),
         {
