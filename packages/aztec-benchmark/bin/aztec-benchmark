@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+
+# Resolve the true path of the script, following symlinks
+SOURCE="${0}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  case $SOURCE in
+    /*) ;;
+    *) SOURCE="$DIR/$SOURCE" ;;
+  esac
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# The actual CLI script is in dist/cli.js relative to the package root
+# SCRIPT_DIR is currently aztec-benchmark/bin
+PACKAGE_ROOT="$(dirname "$SCRIPT_DIR")"
+CLI_SCRIPT="$PACKAGE_ROOT/dist/cli.js"
+
+# Execute the CLI script with tsx, passing all arguments
+exec tsx "$CLI_SCRIPT" "$@" 

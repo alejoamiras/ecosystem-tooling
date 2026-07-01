@@ -1,0 +1,62 @@
+{
+  "name": "@defi-wonderland/aztec-benchmark",
+  "version": "5.0.0-rc.1",
+  "description": "CLI tool and GitHub Action for Aztec contract benchmarking",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "aztec-benchmark": "bin/aztec-benchmark"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "build": "tsc && ncc build action/index.cjs -o action/dist -m -C",
+    "start": "tsx cli/cli.ts",
+    "lint:prettier": "prettier '**/*.{js,ts}' --write"
+  },
+  "lint-staged": {
+    "*.ts": "prettier --write -u"
+  },
+  "files": [
+    "dist",
+    "action",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/defi-wonderland/aztec-benchmark.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "1.10.1",
+    "@actions/exec": "1.1.1",
+    "@aztec/wallets": "5.0.0-rc.1",
+    "@aztec/aztec.js": "5.0.0-rc.1",
+    "@iarna/toml": "2.2.5",
+    "@types/node": "22.15.3",
+    "commander": "13.1.0",
+    "esbuild": "0.25.0",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3"
+  },
+  "config": {
+    "aztecVersion": "5.0.0-rc.1"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "devDependencies": {
+    "@commitlint/cli": "20.3.1",
+    "@commitlint/config-conventional": "20.2.0",
+    "@vercel/ncc": "0.38.3",
+    "husky": "9.1.7",
+    "lint-staged": "16.2.7",
+    "prettier": "3.8.0"
+  }
+}
