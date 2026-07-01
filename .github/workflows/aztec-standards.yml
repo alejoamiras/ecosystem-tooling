@@ -1,0 +1,62 @@
+name: Aztec Standards
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      relevant: ${{ steps.override.outputs.relevant || steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'packages/aztec-standards/**'
+              - '!packages/aztec-standards/**/*.md'
+              - 'packages/aztec-benchmark/cli/**'
+              - 'packages/aztec-benchmark/package.json'
+              - 'biome.json'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - '.github/workflows/aztec-standards.yml'
+              - '.github/workflows/_package-checks.yml'
+              - '.github/workflows/_pr-benchmark.yml'
+              - '.github/actions/**'
+      - name: Override for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: override
+        run: echo "relevant=true" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Checks
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    uses: ./.github/workflows/_package-checks.yml
+    with:
+      package-dir: packages/aztec-standards
+
+  benchmark:
+    name: Benchmark
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true' && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+    uses: ./.github/workflows/_pr-benchmark.yml
+    with:
+      package-dir: packages/aztec-standards
+      pr-workflow: aztec-standards.yml

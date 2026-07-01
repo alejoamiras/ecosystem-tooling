@@ -1,0 +1,32 @@
+name: Update Baselines
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - '.github/workflows/update-baselines.yml'
+      - '.github/workflows/_update-baseline.yml'
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-baselines-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  standards:
+    name: aztec-standards baseline
+    uses: ./.github/workflows/_update-baseline.yml
+    with:
+      package-dir: packages/aztec-standards
+
+  fee-payment:
+    name: aztec-fee-payment baseline
+    uses: ./.github/workflows/_update-baseline.yml
+    with:
+      package-dir: packages/aztec-fee-payment

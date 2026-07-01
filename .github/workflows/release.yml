@@ -1,0 +1,183 @@
+name: Release
+
+# Publishes all three packages at the lockstep version via npm trusted publishing
+# (OIDC + provenance, tokenless). Re-validates the exact release sha in-workflow
+# BEFORE any publish — never trusts a prior PR run (plan D20). GitHub-hosted
+# runners only (trusted-publishing requirement). rc versions → `rc` dist-tag,
+# stable → `latest`. Publish order: benchmark → standards → fee-payment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (no v prefix) — must equal every package version AND config.aztecVersion
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate version input
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check main branch
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Releases run from main only (got ${GITHUB_REF})" >&2
+            exit 1
+          fi
+      - name: Check version consistency
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ! printf '%s' "$INPUT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "Invalid semver input: $INPUT_VERSION" >&2; exit 1
+          fi
+          AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
+          if [ "$INPUT_VERSION" != "$AZTEC_VERSION" ]; then
+            echo "Input $INPUT_VERSION != config.aztecVersion $AZTEC_VERSION" >&2; exit 1
+          fi
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            PKG_VERSION=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "$INPUT_VERSION" != "$PKG_VERSION" ]; then
+              echo "Input $INPUT_VERSION != packages/$pkg version $PKG_VERSION" >&2; exit 1
+            fi
+          done
+          echo "Version $INPUT_VERSION consistent across root config + all packages"
+
+  standards-checks:
+    name: Standards
+    needs: validate
+    uses: ./.github/workflows/_package-checks.yml
+    with:
+      package-dir: packages/aztec-standards
+
+  fee-payment-checks:
+    name: Fee Payment
+    needs: validate
+    uses: ./.github/workflows/_package-checks.yml
+    with:
+      package-dir: packages/aztec-fee-payment
+
+  benchmark-build:
+    name: Benchmark build
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd packages/aztec-benchmark build
+      - run: bun run --cwd packages/aztec-benchmark start --help
+
+  publish:
+    name: Publish (trusted publishing + provenance)
+    needs: [validate, standards-checks, fee-payment-checks, benchmark-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'false'
+          run-compile: 'false'
+          run-codegen: 'false'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm (OIDC/provenance-capable CLI)
+        run: |
+          npm install -g npm@^11.5.2
+          npm -v
+
+      - name: Build all packages
+        run: |
+          bun run --cwd packages/aztec-benchmark build
+          (cd packages/aztec-standards && aztec compile && aztec codegen target --outdir src/artifacts -f && bash scripts/build.sh)
+          (cd packages/aztec-fee-payment && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
+
+      - name: Pack + verify tarball surfaces (pre-publish gate)
+        run: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/aztec-standards packages/aztec-fee-payment
+
+      - name: Derive dist-tag from prerelease segment
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          case "$INPUT_VERSION" in
+            *-*) TAG="${INPUT_VERSION#*-}"; TAG="${TAG%%.*}" ;;
+            *) TAG="latest" ;;
+          esac
+          echo "DIST_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Publishing with dist-tag: $TAG"
+
+      - name: Publish (benchmark → standards → fee-payment)
+        run: |
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            (cd "packages/$pkg" && npm publish --access public --provenance --tag "$DIST_TAG")
+          done
+
+      - name: Assert published state (dist-tags + provenance)
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          fail=0
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            got=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)
+            if [ "$got" != "$INPUT_VERSION" ]; then
+              echo "ERROR: @alejoamiras/$pkg@$INPUT_VERSION not resolvable" >&2; fail=1
+            fi
+            tags=$(npm view "@alejoamiras/$pkg" dist-tags --json)
+            echo "@alejoamiras/$pkg dist-tags: $tags"
+            tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
+            if [ "$tagged" != "$INPUT_VERSION" ]; then
+              echo "ERROR: dist-tag $DIST_TAG for $pkg is '$tagged', expected $INPUT_VERSION" >&2; fail=1
+            fi
+            latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
+            case "$latest" in
+              0.0.0-*) echo "ERROR: latest points at a canary ($latest) for $pkg" >&2; fail=1 ;;
+            esac
+            att=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" dist.attestations.url 2>/dev/null || true)
+            if [ -z "$att" ]; then
+              echo "ERROR: no provenance attestations for @alejoamiras/$pkg@$INPUT_VERSION" >&2; fail=1
+            fi
+          done
+          exit "$fail"
+
+  tag-release:
+    name: Tag + GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          git tag "v$INPUT_VERSION"
+          git push origin "v$INPUT_VERSION"
+          case "$INPUT_VERSION" in
+            *-*) PRERELEASE_FLAG="--prerelease" ;;
+            *) PRERELEASE_FLAG="" ;;
+          esac
+          gh release create "v$INPUT_VERSION" --title "v$INPUT_VERSION" $PRERELEASE_FLAG \
+            --notes "Publishes @alejoamiras/{aztec-benchmark,aztec-standards,aztec-fee-payment}@$INPUT_VERSION (Aztec $INPUT_VERSION, provenance attested)."

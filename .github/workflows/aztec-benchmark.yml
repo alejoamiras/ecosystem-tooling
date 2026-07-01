@@ -1,0 +1,53 @@
+name: Aztec Benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      relevant: ${{ steps.override.outputs.relevant || steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'packages/aztec-benchmark/**'
+              - '!packages/aztec-benchmark/**/*.md'
+              - 'biome.json'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - '.github/workflows/aztec-benchmark.yml'
+      - name: Override for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: override
+        run: echo "relevant=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build + CLI smoke
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: bun install --frozen-lockfile
+      - name: Build (tsc + ncc)
+        run: bun run --cwd packages/aztec-benchmark build
+      - name: CLI smoke
+        run: bun run --cwd packages/aztec-benchmark start --help

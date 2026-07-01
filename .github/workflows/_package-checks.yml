@@ -1,0 +1,63 @@
+name: _Package Checks (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Workspace package directory (e.g. packages/aztec-standards)
+        required: true
+        type: string
+      run-noir-tests:
+        description: Run the Noir TXE suite (aztec test)
+        type: boolean
+        default: true
+      run-js-tests:
+        description: Run the vitest suite against a local network
+        type: boolean
+        default: true
+      runner:
+        description: GitHub runner label
+        type: string
+        default: ubuntu-latest
+      timeout:
+        description: Per-job timeout in minutes
+        type: number
+        default: 60
+
+permissions:
+  contents: read
+
+jobs:
+  noir-tests:
+    name: Noir TXE tests
+    if: inputs.run-noir-tests
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'false'
+          run-compile: 'true'
+          run-codegen: 'false'
+          working-directory: ${{ inputs.package-dir }}
+      - name: Run TXE suite (PTY-wrapped)
+        working-directory: ${{ inputs.package-dir }}
+        run: script -e -c "aztec test" /dev/null
+
+  js-tests:
+    name: JS integration tests
+    if: inputs.run-js-tests
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'true'
+          run-compile: 'true'
+          run-codegen: 'true'
+          working-directory: ${{ inputs.package-dir }}
+      - name: Run vitest suite (PTY-wrapped)
+        working-directory: ${{ inputs.package-dir }}
+        run: script -e -c "NODE_NO_WARNINGS=1 bunx vitest run" /dev/null

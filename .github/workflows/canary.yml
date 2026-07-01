@@ -1,0 +1,87 @@
+name: Canary Publish
+
+# Publishes 0.0.0-canary.<sha> of all three packages under the `canary` dist-tag.
+# Uses the BOOTSTRAP token (GH environment `npm-publish`) — npm trusted publishing
+# cannot create a package's first version (npm/cli#8544). After the first canary,
+# configure trusted publishers and revoke the token; `release.yml` is tokenless.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Publish canary (benchmark → standards → fee-payment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'false'
+          run-compile: 'false'
+          run-codegen: 'false'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm (OIDC/provenance-capable CLI)
+        run: |
+          npm install -g npm@^11.5.2
+          npm -v
+
+      - name: Set canary versions (lockstep)
+        run: |
+          CANARY_VERSION="0.0.0-canary.$(git rev-parse --short HEAD)"
+          echo "CANARY_VERSION=$CANARY_VERSION" >> "$GITHUB_ENV"
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            npm pkg set version="$CANARY_VERSION" --prefix "packages/$pkg"
+          done
+
+      - name: Build aztec-benchmark
+        run: bun run --cwd packages/aztec-benchmark build
+
+      - name: Build aztec-standards (compile + codegen + package layout)
+        working-directory: packages/aztec-standards
+        run: |
+          aztec compile
+          aztec codegen target --outdir src/artifacts -f
+          bash scripts/build.sh
+
+      - name: Build aztec-fee-payment
+        working-directory: packages/aztec-fee-payment
+        run: |
+          aztec compile
+          aztec codegen target --outdir src/artifacts -f
+          bunx tsc --project tsconfig.build.json
+
+      - name: Publish canaries (benchmark first)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            (cd "packages/$pkg" && npm publish --access public --tag canary)
+          done
+
+      - name: Assert dist-tag hygiene
+        run: |
+          fail=0
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            tags=$(npm view "@alejoamiras/$pkg" dist-tags --json)
+            echo "@alejoamiras/$pkg dist-tags: $tags"
+            canary=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).canary ?? ''")
+            latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
+            if [ "$canary" != "$CANARY_VERSION" ]; then
+              echo "ERROR: canary tag for $pkg is '$canary', expected '$CANARY_VERSION'" >&2; fail=1
+            fi
+            case "$latest" in
+              0.0.0-*) echo "ERROR: latest points at a canary build ($latest) for $pkg" >&2; fail=1 ;;
+            esac
+          done
+          exit "$fail"
