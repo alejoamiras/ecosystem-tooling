@@ -1,0 +1,131 @@
+use crate::NFT;
+use crate::test::utils;
+use aztec::test::helpers::authwit as authwit_cheatcodes;
+use generic_proxy::GenericProxy;
+
+#[test]
+unconstrained fn nft_burn_private_self_success() {
+    // Setup and mint NFT to owner in private state
+    let token_id = 10000;
+    let (env, nft_contract_address, owner, _, _) =
+        utils::setup_and_mint_to_private(false, token_id);
+
+    // Verify initial state
+    utils::assert_owns_private_nft(env, nft_contract_address, owner, token_id);
+    utils::assert_nft_exists(env, nft_contract_address, token_id);
+
+    // Burn the NFT
+    env.call_private(owner, NFT::at(nft_contract_address).burn_private(owner, token_id, 0));
+
+    // Verify NFT is burned (no longer in private notes and marked as non-existent)
+    utils::assert_private_nft_nullified(env, nft_contract_address, owner, token_id);
+    utils::assert_nft_does_not_exist(env, nft_contract_address, token_id);
+}
+
+#[test]
+unconstrained fn nft_burn_private_authorized_success() {
+    // Setup with account contracts and mint NFT to owner
+    let token_id = 10000;
+    let (env, nft_contract_address, owner, _, _, proxy) =
+        utils::setup_and_mint_to_private_with_proxy(token_id);
+
+    // Verify initial state
+    utils::assert_owns_private_nft(env, nft_contract_address, owner, token_id);
+    utils::assert_nft_exists(env, nft_contract_address, token_id);
+
+    // Create burn call interface with non-zero nonce
+    let burn_call_interface = NFT::at(nft_contract_address).burn_private(owner, token_id, 1);
+
+    // Add authorization witness from owner to proxy
+    authwit_cheatcodes::add_private_authwit_from_call(env, owner, proxy, burn_call_interface);
+
+    // Owner calls via proxy so msg_sender is proxy (triggering authwit) but owner's notes remain in scope
+    env.call_private(
+        owner,
+        GenericProxy::at(proxy).forward_private_3(
+            burn_call_interface.target_contract,
+            burn_call_interface.selector,
+            burn_call_interface.args,
+        ),
+    );
+
+    // Verify NFT is burned
+    utils::assert_private_nft_nullified(env, nft_contract_address, owner, token_id);
+    utils::assert_nft_does_not_exist(env, nft_contract_address, token_id);
+}
+
+#[test(should_fail_with = "nft not found")]
+unconstrained fn nft_burn_private_non_existent_fail() {
+    // Setup but don't mint any NFT
+    let (env, nft_contract_address, owner, _, _) = utils::setup_with_minter(false);
+    let non_existent_token_id = 12345;
+
+    // Attempt to burn non-existent NFT
+    env.call_private(
+        owner,
+        NFT::at(nft_contract_address).burn_private(owner, non_existent_token_id, 0),
+    );
+}
+
+#[test(should_fail_with = "Unknown auth witness for message hash")]
+unconstrained fn nft_burn_private_unauthorized_fail() {
+    // Setup with account contracts
+    let token_id = 10000;
+    let (env, nft_contract_address, owner, _, _, proxy) =
+        utils::setup_and_mint_to_private_with_proxy(token_id);
+
+    // Create burn interface with non-zero nonce
+    let burn_call_interface = NFT::at(nft_contract_address).burn_private(owner, token_id, 1);
+
+    // Owner calls via proxy but DON'T add authorization witness
+    env.call_private(
+        owner,
+        GenericProxy::at(proxy).forward_private_3(
+            burn_call_interface.target_contract,
+            burn_call_interface.selector,
+            burn_call_interface.args,
+        ),
+    );
+}
+
+#[test(should_fail_with = "Unknown auth witness for message hash")]
+unconstrained fn nft_burn_private_wrong_authwit_fail() {
+    // Setup with account contracts
+    let token_id = 10000;
+    let (env, nft_contract_address, owner, _, _, proxy) =
+        utils::setup_and_mint_to_private_with_proxy(token_id);
+
+    // Create burn interface with non-zero nonce
+    let burn_call_interface = NFT::at(nft_contract_address).burn_private(owner, token_id, 1);
+
+    // Add authorization witness but to the wrong address (owner instead of proxy)
+    authwit_cheatcodes::add_private_authwit_from_call(
+        env,
+        owner,
+        owner, // Wrong address - should be proxy
+        burn_call_interface,
+    );
+
+    // Owner calls via proxy
+    env.call_private(
+        owner,
+        GenericProxy::at(proxy).forward_private_3(
+            burn_call_interface.target_contract,
+            burn_call_interface.selector,
+            burn_call_interface.args,
+        ),
+    );
+}
+
+#[test(should_fail_with = "nft not found")]
+unconstrained fn nft_burn_private_public_nft_fail() {
+    // Setup and mint NFT to owner in public state
+    let token_id = 10000;
+    let (env, nft_contract_address, owner, _, _) = utils::setup_and_mint_to_public(false, token_id);
+
+    // Verify NFT is in public state
+    utils::assert_owns_public_nft(env, nft_contract_address, owner, token_id);
+
+    // Attempt to burn from private state when NFT is actually in public state
+    env.call_private(owner, NFT::at(nft_contract_address).burn_private(owner, token_id, 0));
+}

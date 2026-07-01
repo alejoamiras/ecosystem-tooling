@@ -1,0 +1,104 @@
+// aztec library
+use aztec::{
+    context::PrivateContext,
+    event::event_emission::emit_event_in_private,
+    messages::delivery::MessageDelivery,
+    protocol::{
+        address::AztecAddress,
+        contract_class_id::ContractClassId,
+        contract_instance::ContractInstance,
+        public_keys::PublicKeys,
+        traits::{FromField, ToField},
+    },
+};
+// escrow contract
+use crate::Escrow;
+// key derivation
+use crate::key_derivation::secret_key_to_public_keys;
+// escrow details event
+pub use crate::types::escrow_details_event::EscrowDetailsLogContent;
+
+/** ==========================================================
+ * =================== LOGIC LIBRARIES =======================
+ * ======================================================== */
+
+/// @notice Returns the escrow address that corresponds to the given secret key and class ID.
+/// @param context The private context
+/// @param escrow_class_id The contract class id of the escrow contract
+/// @param secret_key The secret key used to derive master secret keys and public keys
+/// @return The escrow address
+#[contract_library_method]
+pub fn _get_escrow(
+    context: &mut PrivateContext,
+    escrow_class_id: Field,
+    secret_key: Field,
+) -> AztecAddress {
+    // Compute the public keys from the secret key (sk -> msks -> pks)
+    let computed_public_keys: PublicKeys = secret_key_to_public_keys(secret_key);
+
+    let escrow_instance = ContractInstance {
+        salt: context.this_address().to_field(),
+        deployer: AztecAddress::from_field(0),
+        contract_class_id: ContractClassId::from_field(escrow_class_id),
+        initialization_hash: 0,
+        immutables_hash: 0,
+        public_keys: computed_public_keys,
+    };
+
+    escrow_instance.to_address()
+}
+
+/// @notice Shares the escrow details needed to find and use the escrow contract
+/// @dev Emits a private log with the escrow details
+/// @param context The private context
+/// @param account The address of the account that will use the escrow
+/// @param escrow The address of the escrow
+/// @param secret_key The secret key used to derive master secret keys and public keys
+#[contract_library_method]
+pub fn _share_escrow(
+    context: &mut PrivateContext,
+    account: AztecAddress,
+    escrow: AztecAddress,
+    secret_key: Field,
+) {
+    let event_struct = EscrowDetailsLogContent { escrow, secret_key };
+
+    emit_event_in_private(context, event_struct).deliver_to(
+        account,
+        MessageDelivery::onchain_constrained(),
+    );
+}
+
+/// @notice Withdraws an amount of tokens from the provided escrow.
+/// @param context The private context
+/// @param escrow The address of the escrow
+/// @param account The address of the account that will receive the tokens
+/// @param token The address of the token
+/// @param amount The amount of tokens to withdraw from the escrow
+#[contract_library_method]
+pub fn _withdraw(
+    context: &mut PrivateContext,
+    escrow: AztecAddress,
+    account: AztecAddress,
+    token: AztecAddress,
+    amount: u128,
+) {
+    Escrow::at(escrow).withdraw(token, amount, account).call(context);
+}
+
+/// @notice Withdraws an NFT from the provided escrow.
+/// @param context The private context
+/// @param escrow The address of the escrow
+/// @param account The address of the account that will receive the NFT
+/// @param nft The address of the NFT contract
+/// @param token_id The id of the token to withdraw from the escrow
+#[contract_library_method]
+pub fn _withdraw_nft(
+    context: &mut PrivateContext,
+    escrow: AztecAddress,
+    account: AztecAddress,
+    nft: AztecAddress,
+    token_id: Field,
+) {
+    Escrow::at(escrow).withdraw_nft(nft, token_id, account).call(context);
+}
