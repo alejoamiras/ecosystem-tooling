@@ -29,7 +29,7 @@ A Fee Payment Contract (FPC) for Aztec that enables private transaction fee spon
 
 ### Prerequisites
 
-- [Aztec CLI](https://docs.aztec.network/getting_started) v4.2.0
+- [Aztec CLI](https://docs.aztec.network/getting_started) — version pinned by the repo root `package.json` `config.aztecVersion`
 - Node.js 22+
 - Yarn 1.22+
 
@@ -97,7 +97,7 @@ PrivateFPC is a **fully private** contract — it has no public functions and no
 ## Usage
 
 ```bash
-yarn add @defi-wonderland/aztec-fee-payment
+bun add @alejoamiras/aztec-fee-payment
 ```
 
 See [src/ts/README.md](src/ts/README.md) for detailed SDK documentation.
@@ -108,7 +108,7 @@ import {
   FPCFeePaymentMethod,
   PrivateMintAndPayFeePaymentMethod,
   registerPrivateContract,
-} from '@defi-wonderland/aztec-fee-payment';
+} from '@alejoamiras/aztec-fee-payment';
 
 // Register the PrivateFPC — no deployment transaction needed (fully private contract)
 const fpc = await registerPrivateContract(wallet, salt);

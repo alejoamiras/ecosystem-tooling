@@ -1,10 +1,14 @@
 {
-  "name": "aztec-fee-payment",
+  "name": "@alejoamiras/aztec-fee-payment",
   "version": "5.0.0-rc.1",
-  "private": true,
-  "repository": "https://github.com/defi-wonderland/aztec-fee-payment.git",
-  "author": "Wonderland",
+  "description": "Private Fee Payment Contract (FPC) for Aztec — Noir contract + TypeScript SDK",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alejoamiras/ecosystem-tooling.git",
+    "directory": "packages/aztec-fee-payment"
+  },
   "license": "MIT",
+  "author": "Wonderland",
   "type": "module",
   "exports": {
     ".": {
@@ -31,58 +35,53 @@
     "target"
   ],
   "scripts": {
-    "clean": "rm -rf ./src/artifacts/* ./target codegenCache.json",
+    "benchmark": "aztec-benchmark --suffix _base",
+    "build": "bun run compile && bun run codegen && bunx tsc --project tsconfig.build.json",
+    "ccc": "bun run clean && bun run compile && bun run codegen",
+    "clean": "rm -rf ./src/artifacts/* ./target ./dist codegenCache.json",
     "codegen": "aztec codegen target --outdir src/artifacts -f",
     "compile": "aztec compile",
-    "build": "yarn compile && yarn codegen && bash scripts/build-package.sh",
-    "test": "yarn test:nr && yarn test:js",
+    "compute": "NODE_NO_WARNINGS=1 tsx scripts/compute.ts",
+    "test": "bun run test:nr && bun run test:js",
     "test:js": "vitest run",
     "test:nr": "aztec test",
-    "lint:prettier": "prettier '**/*.{js,ts}' --write",
-    "ccc": "yarn clean && yarn compile && yarn codegen",
-    "benchmark": "aztec-benchmark --suffix _base",
-    "prepare": "husky",
-    "compute": "NODE_NO_WARNINGS=1 tsx scripts/compute.ts",
     "upload:artifacts": "tsx scripts/upload-artifact.ts"
   },
-  "lint-staged": {
-    "*.{js,ts}": "prettier --write -u"
-  },
   "devDependencies": {
+    "@alejoamiras/aztec-benchmark": "5.0.0-rc.1",
     "@aztec/accounts": "5.0.0-rc.1",
     "@aztec/aztec.js": "5.0.0-rc.1",
+    "@aztec/bb.js": "5.0.0-rc.1",
     "@aztec/constants": "5.0.0-rc.1",
     "@aztec/entrypoints": "5.0.0-rc.1",
     "@aztec/ethereum": "5.0.0-rc.1",
     "@aztec/foundation": "5.0.0-rc.1",
+    "@aztec/l1-artifacts": "5.0.0-rc.1",
     "@aztec/noir-contracts.js": "5.0.0-rc.1",
     "@aztec/protocol-contracts": "5.0.0-rc.1",
     "@aztec/pxe": "5.0.0-rc.1",
     "@aztec/stdlib": "5.0.0-rc.1",
     "@aztec/wallets": "5.0.0-rc.1",
-    "@commitlint/cli": "20.5.0",
-    "@commitlint/config-conventional": "20.5.0",
-    "@defi-wonderland/aztec-benchmark": "5.0.0-rc.1",
+    "@noble/hashes": "1.8.0",
     "@types/jest": "30.0.0",
     "@types/mocha": "10.0.10",
     "@types/node": "25.6.0",
     "dotenv": "17.4.2",
-    "husky": "9.1.7",
-    "lint-staged": "16.4.0",
-    "prettier": "3.8.2",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "vitest": "4.1.4"
+    "viem": "npm:@aztec/viem@2.38.2",
+    "vitest": "4.1.4",
+    "zod": "^4.4.0"
   },
-  "config": {
-    "aztecVersion": "5.0.0-rc.1"
+  "peerDependencies": {
+    "@aztec/aztec.js": "5.0.0-rc.1",
+    "@aztec/protocol-contracts": "5.0.0-rc.1",
+    "@aztec/stdlib": "5.0.0-rc.1"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "engines": {
-    "node": ">=22.0.0",
-    "yarn": ">=1.22.0"
+    "node": ">=22.0.0"
   },
-  "resolutions": {
-    "@noble/hashes": "1.8.0"
+  "publishConfig": {
+    "access": "public"
   }
 }

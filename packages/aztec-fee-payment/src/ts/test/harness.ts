@@ -1,33 +1,26 @@
-import {
-  type AztecNode,
-  createAztecNodeClient,
-  waitForNode,
-} from "@aztec/aztec.js/node";
-import type { Wallet } from "@aztec/aztec.js/wallet";
-import { isL1ToL2MessageReady } from "@aztec/aztec.js/messaging";
-import { EmbeddedWallet } from "@aztec/wallets/embedded";
-import { registerInitialLocalNetworkAccountsInWallet } from "@aztec/wallets/testing";
-import { getPXEConfig } from "@aztec/pxe/config";
-import { AztecAddress } from "@aztec/stdlib/aztec-address";
-import { L1FeeJuicePortalManager } from "@aztec/aztec.js/ethereum";
-import { FeeJuiceContract } from "@aztec/noir-contracts.js/FeeJuice";
-import { ProtocolContractAddress } from "@aztec/protocol-contracts";
-import { Fr } from "@aztec/aztec.js/fields";
-import {
-  poseidon2HashBytes,
-  poseidon2HashWithSeparator,
-} from "@aztec/foundation/crypto/sync";
-import { createLogger } from "@aztec/foundation/log";
-import { createExtendedL1Client } from "@aztec/ethereum/client";
-import { extractEvent } from "@aztec/ethereum/utils";
-import { EthCheatCodes, RollupCheatCodes } from "@aztec/ethereum/test";
-import { DateProvider } from "@aztec/foundation/timer";
-import { FeeJuicePortalAbi } from "@aztec/l1-artifacts/FeeJuicePortalAbi";
-import { computeSecretHash } from "@aztec/stdlib/hash";
-import { getContract } from "viem";
+import { L1FeeJuicePortalManager } from '@aztec/aztec.js/ethereum';
+import { Fr } from '@aztec/aztec.js/fields';
+import { isL1ToL2MessageReady } from '@aztec/aztec.js/messaging';
+import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
+import type { Wallet } from '@aztec/aztec.js/wallet';
+import { createExtendedL1Client } from '@aztec/ethereum/client';
+import { EthCheatCodes, RollupCheatCodes } from '@aztec/ethereum/test';
+import { extractEvent } from '@aztec/ethereum/utils';
+import { poseidon2HashBytes, poseidon2HashWithSeparator } from '@aztec/foundation/crypto/sync';
+import { createLogger } from '@aztec/foundation/log';
+import { DateProvider } from '@aztec/foundation/timer';
+import { FeeJuicePortalAbi } from '@aztec/l1-artifacts/FeeJuicePortalAbi';
+import { FeeJuiceContract } from '@aztec/noir-contracts.js/FeeJuice';
+import { ProtocolContractAddress } from '@aztec/protocol-contracts';
+import { getPXEConfig } from '@aztec/pxe/config';
+import type { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { computeSecretHash } from '@aztec/stdlib/hash';
+import { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
+import { getContract } from 'viem';
 
-export const LOCAL_AZTEC_NODE_URL = "http://localhost:8080";
-const DEFAULT_L1_RPC_URL = "http://127.0.0.1:8545";
+export const LOCAL_AZTEC_NODE_URL = process.env.NODE_URL ?? 'http://localhost:8080';
+export const DEFAULT_L1_RPC_URL = process.env.L1_RPC_URL ?? 'http://127.0.0.1:8545';
 
 export type LocalNetworkContext = {
   aztecNode: AztecNode;
@@ -49,17 +42,14 @@ export async function createLocalNetworkContext(opts?: {
 
   const pxeConfig = {
     ...getPXEConfig(),
-    dataDirectory: opts?.wallet?.dataDirectory ?? "pxe-test",
+    dataDirectory: opts?.wallet?.dataDirectory ?? 'pxe-test',
     proverEnabled: opts?.wallet?.proverEnabled ?? false,
   };
   const wallet = await EmbeddedWallet.create(aztecNode, { pxeConfig });
 
   const accounts = await registerInitialLocalNetworkAccountsInWallet(wallet);
   const [deployer] = accounts;
-  if (!deployer)
-    throw new Error(
-      "No local-network accounts returned by wallet registration.",
-    );
+  if (!deployer) throw new Error('No local-network accounts returned by wallet registration.');
 
   return { aztecNode, wallet, accounts, deployer };
 }
@@ -79,28 +69,19 @@ export type FundFeeJuiceFromL1Options = {
  * This is the standard way to fund FPCs with the native fee token.
  */
 export async function fundL2AddressWithFeeJuiceFromL1(
-  aztecNode: Pick<AztecNode, "getL1ToL2MessageCheckpoint" | "getBlockData">,
+  aztecNode: Pick<AztecNode, 'getL1ToL2MessageCheckpoint' | 'getBlockData'>,
   wallet: Wallet,
   recipient: AztecAddress,
   opts: FundFeeJuiceFromL1Options,
 ): Promise<{ balance: bigint }> {
-  const logger = createLogger(opts.loggerName ?? "fee-juice");
+  const logger = createLogger(opts.loggerName ?? 'fee-juice');
   const l1Client = createExtendedL1Client(
-    opts.l1RpcUrls ?? ["http://127.0.0.1:8545"],
-    opts.l1Mnemonic ??
-      "test test test test test test test test test test test junk",
+    opts.l1RpcUrls ?? [DEFAULT_L1_RPC_URL],
+    opts.l1Mnemonic ?? 'test test test test test test test test test test test junk',
   );
 
-  const feeJuicePortal = await L1FeeJuicePortalManager.new(
-    aztecNode as any,
-    l1Client,
-    logger,
-  );
-  const claim = await feeJuicePortal.bridgeTokensPublic(
-    recipient,
-    undefined,
-    true,
-  );
+  const feeJuicePortal = await L1FeeJuicePortalManager.new(aztecNode as any, l1Client, logger);
+  const claim = await feeJuicePortal.bridgeTokensPublic(recipient, undefined, true);
 
   const messageHash = Fr.fromString(claim.messageHash);
   const pollTries = opts.messagePollTries ?? 400;
@@ -114,25 +95,15 @@ export async function fundL2AddressWithFeeJuiceFromL1(
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
   if (!ready) {
-    throw new Error(
-      `L1->L2 message not yet ingested by node for FeeJuice deposit: ${claim.messageHash}`,
-    );
+    throw new Error(`L1->L2 message not yet ingested by node for FeeJuice deposit: ${claim.messageHash}`);
   }
 
-  const feeJuice = FeeJuiceContract.at(
-    ProtocolContractAddress.FeeJuice,
-    wallet,
-  );
+  const feeJuice = FeeJuiceContract.at(ProtocolContractAddress.FeeJuice, wallet);
   await feeJuice.methods
-    .claim(
-      recipient,
-      claim.claimAmount,
-      claim.claimSecret,
-      new Fr(claim.messageLeafIndex),
-    )
+    .claim(recipient, claim.claimAmount, claim.claimSecret, new Fr(claim.messageLeafIndex))
     .send({ from: opts.claimTxSender });
 
-  const { getFeeJuiceBalance } = await import("@aztec/aztec.js/utils");
+  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
   const balance = await getFeeJuiceBalance(recipient, aztecNode as any);
   return { balance };
 }
@@ -143,8 +114,7 @@ export async function fundL2AddressWithFeeJuiceFromL1(
  * Computed as: poseidon2_hash_bytes("az_dom_sep__fpc_bridge_secret") as u32
  */
 const DOM_SEP__FPC_BRIDGE_SECRET = Number(
-  poseidon2HashBytes(Buffer.from("az_dom_sep__fpc_bridge_secret")).toBigInt() &
-    0xffff_ffffn,
+  poseidon2HashBytes(Buffer.from('az_dom_sep__fpc_bridge_secret')).toBigInt() & 0xffff_ffffn,
 );
 
 /** Result returned by bridgeForMint. */
@@ -177,10 +147,7 @@ export type BridgeForMintResult = {
  * @param opts          Optional L1 RPC URL, mnemonic, poll settings, logger name
  */
 export async function bridgeForMint(
-  aztecNode: Pick<
-    AztecNode,
-    "getL1ToL2MessageCheckpoint" | "getBlockData" | "getNodeInfo"
-  >,
+  aztecNode: Pick<AztecNode, 'getL1ToL2MessageCheckpoint' | 'getBlockData' | 'getNodeInfo'>,
   fpcAddress: AztecAddress,
   claimer: AztecAddress,
   salt: Fr,
@@ -193,34 +160,24 @@ export async function bridgeForMint(
     messagePollIntervalMs?: number;
   },
 ): Promise<BridgeForMintResult> {
-  const logger = createLogger(opts?.loggerName ?? "bridge-for-mint");
+  const logger = createLogger(opts?.loggerName ?? 'bridge-for-mint');
 
   // Derive the bridge secret (mirrors `derive_bridge_secret` in Noir).
-  const secret = poseidon2HashWithSeparator(
-    [salt, claimer],
-    DOM_SEP__FPC_BRIDGE_SECRET,
-  );
+  const secret = poseidon2HashWithSeparator([salt, claimer], DOM_SEP__FPC_BRIDGE_SECRET);
   const secretHash = await computeSecretHash(secret);
 
   const l1Client = createExtendedL1Client(
-    opts?.l1RpcUrls ?? ["http://127.0.0.1:8545"],
-    opts?.l1Mnemonic ??
-      "test test test test test test test test test test test junk",
+    opts?.l1RpcUrls ?? [DEFAULT_L1_RPC_URL],
+    opts?.l1Mnemonic ?? 'test test test test test test test test test test test junk',
   );
 
   // Resolve portal + token addresses from the node.
   const {
-    l1ContractAddresses: {
-      feeJuicePortalAddress,
-      feeJuiceAddress,
-      feeAssetHandlerAddress,
-    },
+    l1ContractAddresses: { feeJuicePortalAddress, feeJuiceAddress, feeAssetHandlerAddress },
   } = await aztecNode.getNodeInfo();
 
   const handlerAddress =
-    feeAssetHandlerAddress && !feeAssetHandlerAddress.isZero()
-      ? feeAssetHandlerAddress
-      : undefined;
+    feeAssetHandlerAddress && !feeAssetHandlerAddress.isZero() ? feeAssetHandlerAddress : undefined;
 
   // Use the token manager from L1FeeJuicePortalManager to mint + approve.
   const feeJuiceManager = new L1FeeJuicePortalManager(
@@ -236,11 +193,7 @@ export async function bridgeForMint(
   // Mint tokens to the L1 account (test-only faucet).
   await tokenManager.mint(l1Client.account.address);
   // Approve the portal to spend the tokens.
-  await tokenManager.approve(
-    claimAmount,
-    feeJuicePortalAddress.toString(),
-    "FeeJuice Portal",
-  );
+  await tokenManager.approve(claimAmount, feeJuicePortalAddress.toString(), 'FeeJuice Portal');
 
   // Create a viem contract instance for the portal so we can call depositToAztecPublic
   // with our custom secretHash (bridgeTokensPublic generates its own random secret).
@@ -250,13 +203,9 @@ export async function bridgeForMint(
     client: l1Client,
   });
 
-  const depositArgs = [
-    fpcAddress.toString(),
-    claimAmount,
-    secretHash.toString(),
-  ] as const;
+  const depositArgs = [fpcAddress.toString(), claimAmount, secretHash.toString()] as const;
 
-  logger.info("Depositing to FeeJuice portal with claimer-bound secret");
+  logger.info('Depositing to FeeJuice portal with claimer-bound secret');
   const txHash = await portalContract.write.depositToAztecPublic(depositArgs);
   const txReceipt = await l1Client.waitForTransactionReceipt({ hash: txHash });
 
@@ -265,10 +214,8 @@ export async function bridgeForMint(
     txReceipt.logs,
     feeJuicePortalAddress.toString(),
     FeeJuicePortalAbi,
-    "DepositToAztecPublic",
-    (l) =>
-      l.args.amount === claimAmount &&
-      l.args.to?.toLowerCase() === fpcAddress.toString().toLowerCase(),
+    'DepositToAztecPublic',
+    (l) => l.args.amount === claimAmount && l.args.to?.toLowerCase() === fpcAddress.toString().toLowerCase(),
     logger,
   );
 
@@ -287,9 +234,7 @@ export async function bridgeForMint(
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
   if (!ready) {
-    throw new Error(
-      `L1→L2 message not yet ingested by node for PrivateFPC deposit: ${messageHash.toString()}`,
-    );
+    throw new Error(`L1→L2 message not yet ingested by node for PrivateFPC deposit: ${messageHash.toString()}`);
   }
 
   logger.info(`PrivateFPC deposit ready, leafIndex=${leafIndex.toString()}`);
@@ -313,7 +258,7 @@ export async function bridgeForMint(
  * @param l1RpcUrl - Anvil RPC endpoint (defaults to local 8545)
  */
 export async function warpL1Time(
-  aztecNode: Pick<AztecNode, "getL1ContractAddresses">,
+  aztecNode: Pick<AztecNode, 'getL1ContractAddresses'>,
   seconds: number,
   l1RpcUrl: string = DEFAULT_L1_RPC_URL,
 ): Promise<void> {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Aztec Fee Payment — a Fee Payment Contract (FPC) for Aztec that sponsors transaction fees using internal balances. Includes a Noir smart contract and a TypeScript SDK (published as `@defi-wonderland/aztec-fee-payment`).
+Aztec Fee Payment — a Fee Payment Contract (FPC) for Aztec that sponsors transaction fees using internal balances. Includes a Noir smart contract and a TypeScript SDK (published as `@alejoamiras/aztec-fee-payment`).
 
 - **Private FPC** (`src/nr/private_contract/`) — Bridge-based flow: users bridge FJ directly via `FeeJuicePortal` to the FPC address, then call `mint` to convert the bridge claim into private FJ. Fully private, no owner, no off-chain agent.
 
@@ -37,37 +37,37 @@ After any code change that affects contract logic, SDK public API, error codes, 
 
 ## Prerequisites
 
-- Node.js >= 22, Yarn 1.22.22 (corepack)
-- Aztec CLI v4.2.0-aztecnr-rc.2: `curl -s install.aztec.network | NON_INTERACTIVE=1 BIN_PATH=$HOME/.aztec/bin bash -s`
+- Node.js >= 22, bun (workspace member of the ecosystem-tooling monorepo)
+- Aztec CLI — version pinned by the repo root `package.json` `config.aztecVersion` (install via `aztec-up install <version>`)
 
 ## Commands
 
 ```bash
-yarn install          # Install dependencies (uses Yarn workspaces)
+bun install           # Install dependencies (bun workspace, run from the repo root)
 
 # Full rebuild (clean + compile Noir + generate TS bindings)
-yarn ccc
+bun run ccc
 
 # Individual steps
-yarn compile          # aztec compile (Noir contracts)
-yarn codegen          # aztec codegen target --outdir src/artifacts
+bun run compile          # aztec compile (Noir contracts)
+bun run codegen          # aztec codegen target --outdir src/artifacts
 
 # Build TS package (compile + codegen + tsc)
-yarn build
+bun run build
 
 # Tests — integration tests require a running Aztec local network
-yarn test             # all tests (Noir + JS)
-yarn test:nr          # Noir unit tests only (aztec test)
-yarn test:js          # JS integration tests
+bun run test             # all tests (Noir + JS)
+bun run test:nr          # Noir unit tests only (aztec test)
+bun run test:js          # JS integration tests
 
 # Run a single test file
-npx vitest run src/ts/test/private.test.ts
+bunx vitest run src/ts/test/private.test.ts
 
 # Compute PrivateFPC address (no on-chain deployment needed)
-yarn compute          # Requires PRIVATE_FPC_SALT in .env
+bun run compute          # Requires PRIVATE_FPC_SALT in .env
 
-# Formatting
-yarn lint:prettier
+# Formatting (root-owned)
+bun run lint (repo root — biome)
 ```
 
 ## Architecture
@@ -85,7 +85,7 @@ Two Noir packages (workspace defined in root `Nargo.toml`):
 
 ### TypeScript SDK (`src/ts/`)
 
-Published as `@defi-wonderland/aztec-fee-payment` with export paths:
+Published as `@alejoamiras/aztec-fee-payment` with export paths:
 - `.` — Main: `PrivateFPCContract`, `FPCFeePaymentMethod`, gas utils, registration helper
 - `./artifacts` — Generated contract bindings
 - `./fee-payment-methods` — `FPCFeePaymentMethod` (no refund), `PrivateMintAndPayFeePaymentMethod`
