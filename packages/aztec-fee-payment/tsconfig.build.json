@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "composite": false
+  },
+  "include": [
+    "src/ts/index.ts",
+    "src/ts/fee-payment-methods/**/*",
+    "src/ts/utils/**/*",
+    "src/ts/artifactRegistry.ts",
+    "src/artifacts/**/*",
+    "target/**/*"
+  ],
+  "exclude": ["node_modules", "src/ts/test", "src/ts/agent"]
+}

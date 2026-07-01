@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "src/nr/fpc_lib",
+    "src/nr/counter_contract",
+    "src/nr/private_contract",
+]
+
+[benchmark]
+private = "benchmarks/private.benchmark.ts"

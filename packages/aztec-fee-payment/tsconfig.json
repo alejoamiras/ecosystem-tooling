@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "rootDir": ".",
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["esnext", "dom", "es2017.object"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "inlineSourceMap": true,
+    "importHelpers": true,
+    "composite": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/artifacts/**/*",
+    "src/ts/**/*",
+    "scripts/**/*.ts",
+    "benchmarks/**/*.ts",
+    "vitest.setup.ts",
+    "target/**/*"
+  ],
+  "exclude": ["node_modules", "src/ts/dist"]
+}

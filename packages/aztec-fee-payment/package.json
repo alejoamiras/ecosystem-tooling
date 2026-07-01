@@ -1,0 +1,88 @@
+{
+  "name": "aztec-fee-payment",
+  "version": "5.0.0-rc.1",
+  "private": true,
+  "repository": "https://github.com/defi-wonderland/aztec-fee-payment.git",
+  "author": "Wonderland",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/src/ts/index.js",
+      "types": "./dist/src/ts/index.d.ts"
+    },
+    "./artifacts/private": {
+      "import": "./dist/src/artifacts/PrivateFPC.js",
+      "types": "./dist/src/artifacts/PrivateFPC.d.ts"
+    },
+    "./fee-payment-methods": {
+      "import": "./dist/src/ts/fee-payment-methods/index.js",
+      "types": "./dist/src/ts/fee-payment-methods/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/src/ts/utils/index.js",
+      "types": "./dist/src/ts/utils/index.d.ts"
+    }
+  },
+  "main": "./dist/src/ts/index.js",
+  "types": "./dist/src/ts/index.d.ts",
+  "files": [
+    "dist",
+    "target"
+  ],
+  "scripts": {
+    "clean": "rm -rf ./src/artifacts/* ./target codegenCache.json",
+    "codegen": "aztec codegen target --outdir src/artifacts -f",
+    "compile": "aztec compile",
+    "build": "yarn compile && yarn codegen && bash scripts/build-package.sh",
+    "test": "yarn test:nr && yarn test:js",
+    "test:js": "vitest run",
+    "test:nr": "aztec test",
+    "lint:prettier": "prettier '**/*.{js,ts}' --write",
+    "ccc": "yarn clean && yarn compile && yarn codegen",
+    "benchmark": "aztec-benchmark --suffix _base",
+    "prepare": "husky",
+    "compute": "NODE_NO_WARNINGS=1 tsx scripts/compute.ts",
+    "upload:artifacts": "tsx scripts/upload-artifact.ts"
+  },
+  "lint-staged": {
+    "*.{js,ts}": "prettier --write -u"
+  },
+  "devDependencies": {
+    "@aztec/accounts": "5.0.0-rc.1",
+    "@aztec/aztec.js": "5.0.0-rc.1",
+    "@aztec/constants": "5.0.0-rc.1",
+    "@aztec/entrypoints": "5.0.0-rc.1",
+    "@aztec/ethereum": "5.0.0-rc.1",
+    "@aztec/foundation": "5.0.0-rc.1",
+    "@aztec/noir-contracts.js": "5.0.0-rc.1",
+    "@aztec/protocol-contracts": "5.0.0-rc.1",
+    "@aztec/pxe": "5.0.0-rc.1",
+    "@aztec/stdlib": "5.0.0-rc.1",
+    "@aztec/wallets": "5.0.0-rc.1",
+    "@commitlint/cli": "20.5.0",
+    "@commitlint/config-conventional": "20.5.0",
+    "@defi-wonderland/aztec-benchmark": "5.0.0-rc.1",
+    "@types/jest": "30.0.0",
+    "@types/mocha": "10.0.10",
+    "@types/node": "25.6.0",
+    "dotenv": "17.4.2",
+    "husky": "9.1.7",
+    "lint-staged": "16.4.0",
+    "prettier": "3.8.2",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.4"
+  },
+  "config": {
+    "aztecVersion": "5.0.0-rc.1"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "engines": {
+    "node": ">=22.0.0",
+    "yarn": ">=1.22.0"
+  },
+  "resolutions": {
+    "@noble/hashes": "1.8.0"
+  }
+}
