@@ -71,7 +71,7 @@ ecosystem-tooling/
 
 > Retry policy: human-driven — reassess after 3 failures on a step; `/loop` autonomous — after 5. Lessons in `lessons/phase-N.md`.
 
-### Phase 1 — Repo bootstrap & skeleton
+### Phase 1 — Repo bootstrap & skeleton — ALL GATE ITEMS ✓ except `npm whoami` (401 — awaiting user `npm login`; names-free check ✓). Repo live: github.com/alejoamiras/ecosystem-tooling. I3 resolved FALSE empirically (lessons/phase-1.md).
 
 - `git init` (`main`), `gh repo create alejoamiras/ecosystem-tooling --public`.
 - Root package.json (private, workspaces, engines node ≥22), bunfig.toml (min-age 7d + generated `@aztec/*` exclusions — **verify glob support empirically; else enumerate from lockfile**), biome.json (+ per-package override scaffolding), commitlint.config.ts, husky (pre-commit: lint-staged incl. `*.nr` → per-package-cwd `aztec-nargo fmt`; commit-msg: commitlint), lint-staged, sort-package-json, tsconfig.base.json, root scripts (`lint`, `lint:actions`, `test:nr`, `test:js`, `compile`, `codegen`, `bench` fan-outs).
@@ -81,7 +81,7 @@ ecosystem-tooling/
 
 **Gate**: `bun install` · `bun run lint` · `bun run lint:actions` · hooks fire on scratch commit (bad message rejected) · npm preflight passes · bunfig min-age behavior verified (`bun add` of a <7-day package fails; an excluded `@aztec/*` installs). Layers: lint.
 
-### Phase 2 — Import `aztec-benchmark`
+### Phase 2 ✓ — Import `aztec-benchmark` (gate green 2026-07-01: build+ncc ✓, CLI smoke ✓, lint ✓, actionlint ✓, untrusted-audit 0; TS2742 isolated-linker fix logged in lessons/phase-2.md; setup-aztec action pulled forward from Phase 5)
 
 - Snapshot `dev` (`0c68996`) → `packages/aztec-benchmark/` (keep its LICENSE).
 - Manifest curation per D15 (name `@alejoamiras/aztec-benchmark`, version stays 5.0.0-rc.1 until Phase 6, repository fields, strip husky/packageManager, keep `files`, bin via tsx).
