@@ -1,0 +1,55 @@
+name: Spike CI capacity (temporary — deleted in Phase 5)
+
+# Answers inference I1: can ubuntu-latest (4-core hosted) run the Aztec local network +
+# the standards test suites within sane time? Dispatch-only; timings land in the job log.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: Capacity spike (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Runner specs
+        run: |
+          nproc
+          free -h
+          df -h / | tail -1
+
+      - name: Mark t0
+        run: date +%s > /tmp/t0
+
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'true'
+          run-compile: 'true'
+          run-codegen: 'true'
+          working-directory: packages/aztec-standards
+
+      - name: Report setup timing
+        run: echo "setup + toolchain install + compile + codegen + network-ready took $(( $(date +%s) - $(cat /tmp/t0) ))s"
+
+      - name: TXE suite (full, PTY-wrapped)
+        working-directory: packages/aztec-standards
+        run: |
+          t0=$(date +%s)
+          script -e -c "aztec test" /dev/null
+          echo "TXE suite took $(( $(date +%s) - t0 ))s"
+
+      - name: One JS integration test (token, PTY-wrapped)
+        working-directory: packages/aztec-standards
+        run: |
+          t0=$(date +%s)
+          script -e -c "bunx vitest run src/ts/test/token.test.ts" /dev/null
+          echo "token.test.ts took $(( $(date +%s) - t0 ))s"
+
+      - name: Final memory state
+        if: always()
+        run: free -h
