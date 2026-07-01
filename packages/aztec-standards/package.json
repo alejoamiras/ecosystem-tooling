@@ -1,6 +1,6 @@
 {
   "name": "@alejoamiras/aztec-standards",
-  "version": "5.0.0-rc.1",
+  "version": "5.0.0-rc.2",
   "description": "Reusable, standardized contracts for the Aztec Network (token, vault, NFT, escrow, dripper, proxy)",
   "repository": {
     "type": "git",
@@ -38,18 +38,18 @@
     "test:nr": "aztec test"
   },
   "devDependencies": {
-    "@alejoamiras/aztec-benchmark": "5.0.0-rc.1",
-    "@aztec/accounts": "5.0.0-rc.1",
-    "@aztec/aztec.js": "5.0.0-rc.1",
-    "@aztec/bb.js": "5.0.0-rc.1",
-    "@aztec/constants": "5.0.0-rc.1",
-    "@aztec/foundation": "5.0.0-rc.1",
-    "@aztec/noir-contracts.js": "5.0.0-rc.1",
-    "@aztec/protocol-contracts": "5.0.0-rc.1",
-    "@aztec/pxe": "5.0.0-rc.1",
-    "@aztec/stdlib": "5.0.0-rc.1",
-    "@aztec/wallet-sdk": "5.0.0-rc.1",
-    "@aztec/wallets": "5.0.0-rc.1",
+    "@alejoamiras/aztec-benchmark": "5.0.0-rc.2",
+    "@aztec/accounts": "5.0.0-rc.2",
+    "@aztec/aztec.js": "5.0.0-rc.2",
+    "@aztec/bb.js": "5.0.0-rc.2",
+    "@aztec/constants": "5.0.0-rc.2",
+    "@aztec/foundation": "5.0.0-rc.2",
+    "@aztec/noir-contracts.js": "5.0.0-rc.2",
+    "@aztec/protocol-contracts": "5.0.0-rc.2",
+    "@aztec/pxe": "5.0.0-rc.2",
+    "@aztec/stdlib": "5.0.0-rc.2",
+    "@aztec/wallet-sdk": "5.0.0-rc.2",
+    "@aztec/wallets": "5.0.0-rc.2",
     "@noble/hashes": "1.8.0",
     "@types/node": "25.0.10",
     "commander": "14.0.1",
@@ -60,14 +60,14 @@
     "vitest": "4.0.17"
   },
   "peerDependencies": {
-    "@aztec/accounts": "5.0.0-rc.1",
-    "@aztec/aztec.js": "5.0.0-rc.1",
-    "@aztec/noir-contracts.js": "5.0.0-rc.1",
-    "@aztec/protocol-contracts": "5.0.0-rc.1",
-    "@aztec/pxe": "5.0.0-rc.1",
-    "@aztec/stdlib": "5.0.0-rc.1",
-    "@aztec/wallet-sdk": "5.0.0-rc.1",
-    "@aztec/wallets": "5.0.0-rc.1"
+    "@aztec/accounts": "5.0.0-rc.2",
+    "@aztec/aztec.js": "5.0.0-rc.2",
+    "@aztec/noir-contracts.js": "5.0.0-rc.2",
+    "@aztec/protocol-contracts": "5.0.0-rc.2",
+    "@aztec/pxe": "5.0.0-rc.2",
+    "@aztec/stdlib": "5.0.0-rc.2",
+    "@aztec/wallet-sdk": "5.0.0-rc.2",
+    "@aztec/wallets": "5.0.0-rc.2"
   },
   "engines": {
     "node": ">=22"

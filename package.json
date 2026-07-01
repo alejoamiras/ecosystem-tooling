@@ -44,7 +44,7 @@
     ]
   },
   "config": {
-    "aztecVersion": "5.0.0-rc.1"
+    "aztecVersion": "5.0.0-rc.2"
   },
   "overrides": {
     "@noble/hashes": "1.8.0"

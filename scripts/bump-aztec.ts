@@ -51,16 +51,35 @@ function walkNargoTomls(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
+function declaredAztecNames(): string[] {
+  const names = new Set<string>();
+  const manifests = [join(ROOT, 'package.json'), ...PACKAGES.map((d) => join(ROOT, 'packages', d, 'package.json'))];
+  for (const m of manifests) {
+    const pkg = JSON.parse(readFileSync(m, 'utf8'));
+    for (const section of ['dependencies', 'devDependencies', 'peerDependencies']) {
+      for (const [name, spec] of Object.entries((pkg[section] ?? {}) as Record<string, string>)) {
+        if (name.startsWith('@aztec/')) names.add(name);
+        const alias = /^npm:(@aztec\/[^@]+)@/.exec(spec);
+        if (alias?.[1]) names.add(alias[1]);
+      }
+    }
+  }
+  return [...names];
+}
+
 function aztecClosure(version: string): string[] {
   const seen = new Set<string>();
-  const queue = ['@aztec/aztec.js', '@aztec/wallets', '@aztec/pxe', '@aztec/accounts', '@aztec/ethereum'];
+  const queue = declaredAztecNames();
   while (queue.length > 0) {
     const name = queue.shift();
     if (!name || seen.has(name)) continue;
     seen.add(name);
     const deps = (npmView(`${name}@${version}`, 'dependencies') ?? {}) as Record<string, string>;
-    for (const dep of Object.keys(deps)) {
+    for (const [dep, spec] of Object.entries(deps)) {
       if (dep.startsWith('@aztec/') && !seen.has(dep)) queue.push(dep);
+      // npm-alias deps hide @aztec packages behind other names (e.g. "viem": "npm:@aztec/viem@x")
+      const alias = /^npm:(@aztec\/[^@]+)@/.exec(spec);
+      if (alias?.[1] && !seen.has(alias[1])) queue.push(alias[1]);
     }
   }
   return [...seen].sort();
