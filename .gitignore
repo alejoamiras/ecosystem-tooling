@@ -1,0 +1,22 @@
+# deps / builds
+node_modules/
+dist/
+target/
+export/
+src/artifacts/
+action/dist/
+codegenCache.json
+*.tsbuildinfo
+
+# aztec / test state
+log/
+store*/
+pxe_data*/
+wallet_data*/
+pxe-test*/
+benchmarks/*.benchmark.json
+.run-state/
+
+# env / os
+.env
+.DS_Store
