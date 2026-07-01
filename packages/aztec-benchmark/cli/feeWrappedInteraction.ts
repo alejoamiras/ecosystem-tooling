@@ -1,13 +1,13 @@
-import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import {
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
+import type {
   ContractFunctionInteraction,
-  type GasSettingsOption,
-  type RequestInteractionOptions,
-  type SimulateInteractionOptions,
-  type ProfileInteractionOptions,
-  type SendInteractionOptions,
+  GasSettingsOption,
+  ProfileInteractionOptions,
+  RequestInteractionOptions,
+  SendInteractionOptions,
+  SimulateInteractionOptions,
 } from '@aztec/aztec.js/contracts';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
 
 import type { NamedBenchmarkedInteraction } from './types.js';
 
@@ -35,7 +35,7 @@ export class FeeWrappedInteraction {
     private readonly gasSettings?: FeeGasSettings,
   ) {}
 
-  async request(options: RequestInteractionOptions = {}) {
+  async request(options: RequestInteractionOptions = {}): ReturnType<ContractFunctionInteraction['request']> {
     // `RequestInteractionOptions.fee` is `FeePaymentMethodOption` — it only carries
     // `paymentMethod`, not `gasSettings`. Gas settings are injected by `withFee` in
     // simulate/profile/send where the fee type supports them.
@@ -52,11 +52,11 @@ export class FeeWrappedInteraction {
     return this.inner.simulate(this.withFee(options));
   }
 
-  async profile(options?: ProfileInteractionOptions) {
+  async profile(options?: ProfileInteractionOptions): ReturnType<ContractFunctionInteraction['profile']> {
     return this.inner.profile(this.withFee(options));
   }
 
-  async send(options?: SendInteractionOptions) {
+  async send(options?: SendInteractionOptions): ReturnType<ContractFunctionInteraction['send']> {
     return this.inner.send(this.withFee(options));
   }
 
