@@ -73,30 +73,48 @@ const formatDiff = (main, pr) => {
  * @returns {string} An emoji: '🚮' for removed, '🆕' for new, '🔴' for regression, '🟢' for improvement, '⚪' for no significant change.
  */
 const getStatusEmoji = (metrics, threshold) => {
-  const isRemoved = metrics.gates.pr === 0 && metrics.daGas.pr === 0 && metrics.l2Gas.pr === 0 &&
-                  (metrics.gates.main > 0 || metrics.daGas.main > 0 || metrics.l2Gas.main > 0);
-  const isNew = metrics.gates.main === 0 && metrics.daGas.main === 0 && metrics.l2Gas.main === 0 &&
-              (metrics.gates.pr > 0 || metrics.daGas.pr > 0 || metrics.l2Gas.pr > 0);
+  const isRemoved =
+    metrics.gates.pr === 0 &&
+    metrics.daGas.pr === 0 &&
+    metrics.l2Gas.pr === 0 &&
+    (metrics.gates.main > 0 || metrics.daGas.main > 0 || metrics.l2Gas.main > 0);
+  const isNew =
+    metrics.gates.main === 0 &&
+    metrics.daGas.main === 0 &&
+    metrics.l2Gas.main === 0 &&
+    (metrics.gates.pr > 0 || metrics.daGas.pr > 0 || metrics.l2Gas.pr > 0);
 
   if (isRemoved) return '🚮';
   if (isNew) return '🆕';
 
   // Avoid division by zero, handle infinite increases
-  const gateDiffPct = metrics.gates.main === 0 ? (metrics.gates.pr > 0 ? Infinity : 0) :
-                    (metrics.gates.pr - metrics.gates.main) / metrics.gates.main;
-  const daGasDiffPct = metrics.daGas.main === 0 ? (metrics.daGas.pr > 0 ? Infinity : 0) :
-                    (metrics.daGas.pr - metrics.daGas.main) / metrics.daGas.main;
-  const l2GasDiffPct = metrics.l2Gas.main === 0 ? (metrics.l2Gas.pr > 0 ? Infinity : 0) :
-                    (metrics.l2Gas.pr - metrics.l2Gas.main) / metrics.l2Gas.main;
+  const gateDiffPct =
+    metrics.gates.main === 0
+      ? metrics.gates.pr > 0
+        ? Infinity
+        : 0
+      : (metrics.gates.pr - metrics.gates.main) / metrics.gates.main;
+  const daGasDiffPct =
+    metrics.daGas.main === 0
+      ? metrics.daGas.pr > 0
+        ? Infinity
+        : 0
+      : (metrics.daGas.pr - metrics.daGas.main) / metrics.daGas.main;
+  const l2GasDiffPct =
+    metrics.l2Gas.main === 0
+      ? metrics.l2Gas.pr > 0
+        ? Infinity
+        : 0
+      : (metrics.l2Gas.pr - metrics.l2Gas.main) / metrics.l2Gas.main;
 
-  const metricsDiffs = [gateDiffPct, daGasDiffPct, l2GasDiffPct].filter(m => isFinite(m));
-  const hasInfiniteIncrease = [gateDiffPct, daGasDiffPct, l2GasDiffPct].some(m => m === Infinity);
+  const metricsDiffs = [gateDiffPct, daGasDiffPct, l2GasDiffPct].filter((m) => isFinite(m));
+  const hasInfiniteIncrease = [gateDiffPct, daGasDiffPct, l2GasDiffPct].some((m) => m === Infinity);
 
   // Use threshold percentage directly
   const thresholdDecimal = threshold / 100.0;
 
-  const hasRegression = hasInfiniteIncrease || metricsDiffs.some(m => m > thresholdDecimal);
-  const hasImprovement = metricsDiffs.some(m => m < -thresholdDecimal);
+  const hasRegression = hasInfiniteIncrease || metricsDiffs.some((m) => m > thresholdDecimal);
+  const hasImprovement = metricsDiffs.some((m) => m < -thresholdDecimal);
 
   if (hasRegression) return '🔴'; // Regression
   if (hasImprovement) return '🟢'; // Improvement
@@ -131,7 +149,7 @@ function findBenchmarkPairs(reportsDir, baseSuffix, prSuffix) {
         pairs.push({
           contractName,
           baseJsonPath: fs.existsSync(baseJsonPath) ? baseJsonPath : null,
-          prJsonPath
+          prJsonPath,
         });
       }
     }
@@ -154,28 +172,19 @@ function findBenchmarkPairs(reportsDir, baseSuffix, prSuffix) {
  * @returns {string} HTML string with the expandable circuit breakdown, or empty string if no data.
  */
 function generateCircuitBreakdownSection(comparison, sortedNames, contractName) {
-  const hasAnyCircuitData = sortedNames.some(name => {
+  const hasAnyCircuitData = sortedNames.some((name) => {
     const gc = comparison[name]?.gateCounts;
     return gc && gc.pr.length > 0;
   });
   if (!hasAnyCircuitData) return '';
 
-  const lines = [
-    '<details>',
-    `<summary>🔎 ${contractName} circuit details</summary>`,
-    '',
-  ];
+  const lines = ['<details>', `<summary>🔎 ${contractName} circuit details</summary>`, ''];
 
   for (const funcName of sortedNames) {
     const gc = comparison[funcName]?.gateCounts;
     if (!gc || gc.pr.length === 0) continue;
 
-    lines.push(
-      `#### \`${funcName}\``,
-      '',
-      '| Circuit | Gates |',
-      '|---------|---:|',
-    );
+    lines.push(`#### \`${funcName}\``, '', '| Circuit | Gates |', '|---------|---:|');
 
     for (const entry of gc.pr) {
       lines.push(`| \`${entry.circuitName}\` | ${entry.gateCount.toLocaleString()} |`);
@@ -198,7 +207,7 @@ function generateCircuitBreakdownSection(comparison, sortedNames, contractName) 
 function generateContractComparisonTable(pair, threshold, { circuitDetails = false } = {}) {
   const { contractName, baseJsonPath, prJsonPath } = pair;
   const isNewContract = baseJsonPath === null;
-  
+
   if (isNewContract) {
     console.log(` Generating report for new contract: ${contractName} in ${prJsonPath}`);
   } else {
@@ -217,29 +226,31 @@ function generateContractComparisonTable(pair, threshold, { circuitDetails = fal
 
   let mainData, prData;
   try {
-     // For new contracts, use empty data structure for base
-     if (isNewContract) {
-       mainData = { results: [] };
-     } else {
-       mainData = JSON.parse(fs.readFileSync(baseJsonPath, 'utf-8'));
-     }
-     prData = JSON.parse(fs.readFileSync(prJsonPath, 'utf-8'));
-  } catch(e) {
-     return `*Error parsing benchmark JSON for ${contractName}: ${e.message}*`;
+    // For new contracts, use empty data structure for base
+    if (isNewContract) {
+      mainData = { results: [] };
+    } else {
+      mainData = JSON.parse(fs.readFileSync(baseJsonPath, 'utf-8'));
+    }
+    prData = JSON.parse(fs.readFileSync(prJsonPath, 'utf-8'));
+  } catch (e) {
+    return `*Error parsing benchmark JSON for ${contractName}: ${e.message}*`;
   }
 
-   if (!mainData || !mainData.results || !prData || !prData.results) {
+  if (!mainData || !mainData.results || !prData || !prData.results) {
     return `*Skipping ${contractName}: Invalid JSON structure (missing results array).*`;
   }
 
   const comparison = {};
-  const allFunctionNames = new Set([
-    ...mainData.results.map(r => r.name),
-    ...prData.results.map(r => r.name)
-  ]);
+  const allFunctionNames = new Set([...mainData.results.map((r) => r.name), ...prData.results.map((r) => r.name)]);
 
   for (const name of allFunctionNames) {
-     if (!name || name.startsWith('unknown_function') || name.includes('(FAILED)') || name === 'BENCHMARK_RUNNER_ERROR') {
+    if (
+      !name ||
+      name.startsWith('unknown_function') ||
+      name.includes('(FAILED)') ||
+      name === 'BENCHMARK_RUNNER_ERROR'
+    ) {
       console.log(` Skipping comparison for malformed/failed entry: ${name}`);
       continue;
     }
@@ -259,28 +270,28 @@ function generateContractComparisonTable(pair, threshold, { circuitDetails = fal
     '<table>',
     '<thead>',
     '<tr>',
-      '<th>🚦</th>',
-      '<th>Function</th>',
-      '<th colspan="3">Gates</th>',
-      '<th colspan="3">DA Gas</th>',
-      '<th colspan="3">L2 Gas</th>',
-      '<th colspan="3">Proving Time (ms)</th>',
+    '<th>🚦</th>',
+    '<th>Function</th>',
+    '<th colspan="3">Gates</th>',
+    '<th colspan="3">DA Gas</th>',
+    '<th colspan="3">L2 Gas</th>',
+    '<th colspan="3">Proving Time (ms)</th>',
     '</tr>',
     '<tr>',
-      '<th></th>',
-      '<th></th>',
-      '<th>Base</th>',
-      '<th>PR</th>',
-      '<th>Diff</th>',
-      '<th>Base</th>',
-      '<th>PR</th>',
-      '<th>Diff</th>',
-      '<th>Base</th>',
-      '<th>PR</th>',
-      '<th>Diff</th>',
-      '<th>Base</th>',
-      '<th>PR</th>',
-      '<th>Diff</th>',
+    '<th></th>',
+    '<th></th>',
+    '<th>Base</th>',
+    '<th>PR</th>',
+    '<th>Diff</th>',
+    '<th>Base</th>',
+    '<th>PR</th>',
+    '<th>Diff</th>',
+    '<th>Base</th>',
+    '<th>PR</th>',
+    '<th>Diff</th>',
+    '<th>Base</th>',
+    '<th>PR</th>',
+    '<th>Diff</th>',
     '</tr>',
     '</thead>',
     '<tbody>',
@@ -289,7 +300,7 @@ function generateContractComparisonTable(pair, threshold, { circuitDetails = fal
   const sortedNames = Object.keys(comparison).sort();
 
   if (sortedNames.length === 0) {
-      return "*No comparable functions found between reports.*";
+    return '*No comparable functions found between reports.*';
   }
 
   for (const funcName of sortedNames) {
@@ -302,27 +313,26 @@ function generateContractComparisonTable(pair, threshold, { circuitDetails = fal
     const ptDiff = formatDiff(Math.round(metrics.provingTime.main), Math.round(metrics.provingTime.pr));
     output.push(
       '<tr>',
-        `<td align="center">${statusEmoji}</td>`,
-        `<td><code>${funcName}</code></td>`,
+      `<td align="center">${statusEmoji}</td>`,
+      `<td><code>${funcName}</code></td>`,
       // Gates
-        `<td align="right">${metrics.gates.main.toLocaleString()}</td>`,
-        `<td align="right">${metrics.gates.pr.toLocaleString()}</td>`,
-        `<td align="right">${formatDiff(metrics.gates.main, metrics.gates.pr)}</td>`,
+      `<td align="right">${metrics.gates.main.toLocaleString()}</td>`,
+      `<td align="right">${metrics.gates.pr.toLocaleString()}</td>`,
+      `<td align="right">${formatDiff(metrics.gates.main, metrics.gates.pr)}</td>`,
       // DA Gas
-        `<td align="right">${metrics.daGas.main.toLocaleString()}</td>`,
-        `<td align="right">${metrics.daGas.pr.toLocaleString()}</td>`,
-        `<td align="right">${formatDiff(metrics.daGas.main, metrics.daGas.pr)}</td>`,
+      `<td align="right">${metrics.daGas.main.toLocaleString()}</td>`,
+      `<td align="right">${metrics.daGas.pr.toLocaleString()}</td>`,
+      `<td align="right">${formatDiff(metrics.daGas.main, metrics.daGas.pr)}</td>`,
       // L2 Gas
-        `<td align="right">${metrics.l2Gas.main.toLocaleString()}</td>`,
-        `<td align="right">${metrics.l2Gas.pr.toLocaleString()}</td>`,
-        `<td align="right">${formatDiff(metrics.l2Gas.main, metrics.l2Gas.pr)}</td>`,
+      `<td align="right">${metrics.l2Gas.main.toLocaleString()}</td>`,
+      `<td align="right">${metrics.l2Gas.pr.toLocaleString()}</td>`,
+      `<td align="right">${formatDiff(metrics.l2Gas.main, metrics.l2Gas.pr)}</td>`,
       // Proving Time
-        `<td align="right">${ptMain}</td>`,
-        `<td align="right">${ptPr}</td>`,
-        `<td align="right">${ptDiff}</td>`,
+      `<td align="right">${ptMain}</td>`,
+      `<td align="right">${ptPr}</td>`,
+      `<td align="right">${ptDiff}</td>`,
       '</tr>',
     );
-
   }
 
   output.push('</tbody>', '</table>');
@@ -336,7 +346,7 @@ function generateContractComparisonTable(pair, threshold, { circuitDetails = fal
   }
 
   return output.join('\n');
-};
+}
 
 /**
  * Main function to run the benchmark comparison.
@@ -350,7 +360,7 @@ function generateContractComparisonTable(pair, threshold, { circuitDetails = fal
  */
 function runComparison(inputs) {
   const { reportsDir, baseSuffix, prSuffix, threshold, circuitDetails = false } = inputs;
-  console.log("Comparison script starting...");
+  console.log('Comparison script starting...');
   console.log(` Reports Dir: ${reportsDir} (expected ./benchmarks)`);
   console.log(` Base Suffix: '${baseSuffix}' (expected _base)`);
   console.log(` PR Suffix: '${prSuffix}' (expected _latest)`);
@@ -360,11 +370,11 @@ function runComparison(inputs) {
   const benchmarkPairs = findBenchmarkPairs(reportsDir, baseSuffix, prSuffix);
 
   if (!benchmarkPairs.length) {
-    console.log("No matching benchmark report pairs found in the directory.");
+    console.log('No matching benchmark report pairs found in the directory.');
     return '# Benchmark Comparison\n\nNo matching benchmark report pairs found to compare.\n';
   }
 
-  let markdownOutput = ['<!-- benchmark-diff -->\n', '# Benchmark Comparison\n'];
+  const markdownOutput = ['<!-- benchmark-diff -->\n', '# Benchmark Comparison\n'];
 
   // Sort pairs by contract name for consistent report order
   benchmarkPairs.sort((a, b) => a.contractName.localeCompare(b.contractName));
@@ -395,4 +405,4 @@ function runComparison(inputs) {
   return markdownOutput.join('\n');
 }
 
-module.exports = { runComparison }; 
+module.exports = { runComparison };

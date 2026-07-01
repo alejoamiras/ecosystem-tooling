@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import toml from '@iarna/toml';
-import { Profiler } from './profiler.js';
-import { BenchmarkBase, BenchmarkContext, type ProfileResult, type NamedBenchmarkedInteraction } from './types.js';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
+import toml from '@iarna/toml';
+import { Command } from 'commander';
+import { Profiler } from './profiler.js';
+import type { BenchmarkBase, BenchmarkContext, NamedBenchmarkedInteraction, ProfileResult } from './types.js';
 
 /**
  * Represents the structure of the [benchmark] section in Nargo.toml.

@@ -50,7 +50,7 @@ async function run() {
       core.info(`Executing: aztec-benchmark ${cliArgs.join(' ')}`);
 
       const execOptions = {
-        cwd: process.cwd()
+        cwd: process.cwd(),
       };
       const exitCode = await exec.exec('npx aztec-benchmark', cliArgs, execOptions);
       if (exitCode !== 0) {
@@ -67,7 +67,7 @@ async function run() {
       baseSuffix,
       prSuffix: currentSuffix,
       threshold,
-      circuitDetails
+      circuitDetails,
     };
     const markdownResult = runComparison(comparisonInputs);
     core.endGroup();
@@ -80,7 +80,6 @@ async function run() {
     core.setOutput('markdown_file_path', resolvedOutputPath);
 
     core.info('Benchmark generation and comparison action completed successfully.');
-
   } catch (error) {
     core.setFailed(`Action failed: ${error.message}`);
     if (error.stack) {
@@ -89,4 +88,4 @@ async function run() {
   }
 }
 
-run(); 
+run();
