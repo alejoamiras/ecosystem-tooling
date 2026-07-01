@@ -91,7 +91,7 @@ ecosystem-tooling/
 
 **Gate**: `bun run --cwd packages/aztec-benchmark build` (dist + action/dist emitted) · CLI smoke `--help` · `bun run lint` · `bun run lint:actions` · `bun pm untrusted` reviewed (allowlist committed if non-empty). Layers: lint + build/smoke (repo has no tests — noted).
 
-### Phase 3 — Import `aztec-standards`
+### Phase 3 ✓ — Import `aztec-standards` (gate green 2026-07-01: compile/codegen ✓, build ✓, TXE **329/329** ✓, vitest **29/29** ✓, bench 5/5 non-empty ✓, lint ✓, CI spike ALL GREEN on ubuntu-latest — setup 238s / TXE 539s / 1 integration test 58s → **I1 confirmed**. Lessons: lessons/phase-3.md)
 
 - Snapshot `dev` (`1cade05`) → `packages/aztec-standards/` (Nargo workspace + nested member intact; `src/deployments.json` kept).
 - Manifest curation per D15: name/repository; **`@aztec/*` → peerDependencies (exact)**; benchmark → devDependencies (exact lockstep pin); declare undeclared direct imports; `files`+`exports` covering `./artifacts/*`, `./dist/*` mirror, `./target/*`, `./deployments.json` (copied to package root at build); strip husky.
