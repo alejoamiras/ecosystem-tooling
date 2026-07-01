@@ -1,0 +1,94 @@
+name: _Update Benchmark Baseline (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Workspace package directory (e.g. packages/aztec-standards)
+        required: true
+        type: string
+      runner:
+        description: GitHub runner label
+        type: string
+        default: ubuntu-latest
+      timeout:
+        description: Job timeout in minutes
+        type: number
+        default: 120
+      bench-dir:
+        description: Benchmark files directory, relative to package-dir
+        type: string
+        default: benchmarks
+      current-suffix:
+        description: Suffix for baseline benchmark files
+        type: string
+        default: _latest
+      skip-proving:
+        description: Pass --skip-proving (baselines on main default to FULL proving)
+        type: boolean
+        default: false
+      run-compile:
+        description: Compile contracts before benchmarking
+        type: boolean
+        default: true
+      run-codegen:
+        description: Generate TS bindings before benchmarking
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-baseline:
+    name: Update baseline
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+    env:
+      PKG_DIR: ${{ inputs.package-dir }}
+      BENCH_DIR: ${{ inputs.bench-dir }}
+      BENCH_SUFFIX: ${{ inputs.current-suffix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'true'
+          run-compile: ${{ inputs.run-compile }}
+          run-codegen: ${{ inputs.run-codegen }}
+          working-directory: ${{ inputs.package-dir }}
+
+      - name: Run benchmarks
+        working-directory: ${{ inputs.package-dir }}
+        env:
+          SKIP_PROVING: ${{ inputs.skip-proving }}
+        run: |
+          args=(--suffix "$BENCH_SUFFIX" --output-dir "$BENCH_DIR")
+          if [ "$SKIP_PROVING" = "true" ]; then args+=(--skip-proving); fi
+          bunx aztec-benchmark "${args[@]}"
+
+      - name: Assert non-empty results
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          count=$(find "$BENCH_DIR" -maxdepth 1 -name "*${BENCH_SUFFIX}.benchmark.json" | wc -l | tr -d ' ')
+          if [ "$count" -eq 0 ]; then
+            echo "No benchmark results produced — vacuous baseline refused" >&2
+            exit 1
+          fi
+          echo "Produced $count baseline file(s)"
+
+      - name: Encode artifact name parts
+        id: encode
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          echo "branch-encoded=$(printf '%s' "$BRANCH_NAME" | sed 's/\//-/g')" >> "$GITHUB_OUTPUT"
+          echo "pkg-encoded=$(basename "$PKG_DIR")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-baseline-${{ steps.encode.outputs.pkg-encoded }}-${{ steps.encode.outputs.branch-encoded }}
+          path: ${{ inputs.package-dir }}/${{ inputs.bench-dir }}/*${{ inputs.current-suffix }}.benchmark.json
+          retention-days: 90
+          if-no-files-found: error

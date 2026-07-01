@@ -1,0 +1,122 @@
+name: Setup Aztec
+description: >
+  Install bun deps (frozen lockfile), foundry, and the pinned aztec CLI (version read from the
+  ROOT package.json config.aztecVersion — the single source of truth). Optionally start a local
+  network and run compile/codegen in a package directory.
+
+inputs:
+  start-local-network:
+    description: Start `aztec start --local-network` in the background and wait for :8080
+    required: false
+    default: 'false'
+  run-compile:
+    description: Run `aztec compile` in working-directory
+    required: false
+    default: 'false'
+  run-codegen:
+    description: Run `aztec codegen` in working-directory (requires run-compile)
+    required: false
+    default: 'false'
+  working-directory:
+    description: Package directory for compile/codegen
+    required: false
+    default: '.'
+  foundry-version:
+    description: Foundry toolchain version (pinned; revisit at stable)
+    required: false
+    default: 'v1.4.1'
+
+outputs:
+  aztec-version:
+    description: Resolved aztec toolchain version
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      env:
+        RUN_COMPILE: ${{ inputs.run-compile }}
+        RUN_CODEGEN: ${{ inputs.run-codegen }}
+      run: |
+        if [ "$RUN_CODEGEN" = "true" ] && [ "$RUN_COMPILE" != "true" ]; then
+          echo "run-codegen requires run-compile" >&2
+          exit 1
+        fi
+
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Install JS dependencies (frozen lockfile)
+      shell: bash
+      run: bun install --frozen-lockfile
+
+    - name: Resolve and validate aztec version
+      id: version
+      shell: bash
+      run: |
+        VERSION="$(node -p "require('./package.json').config.aztecVersion")"
+        if ! printf '%s' "$VERSION" | grep -Eq '^[0-9A-Za-z][0-9A-Za-z.+-]*$'; then
+          echo "Invalid config.aztecVersion in root package.json: $VERSION" >&2
+          exit 1
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "AZTEC_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+    - uses: foundry-rs/foundry-toolchain@c7450ba673e133f5ee30098b3b54f444d3a2ca2d # v1
+      with:
+        version: ${{ inputs.foundry-version }}
+
+    - name: Add aztec bin dirs to PATH
+      shell: bash
+      run: |
+        echo "$HOME/.aztec/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.aztec/current/bin" >> "$GITHUB_PATH"
+
+    - name: Cache aztec toolchain
+      id: cache-aztec
+      uses: actions/cache@v4
+      with:
+        path: ~/.aztec
+        key: aztec-${{ runner.os }}-${{ steps.version.outputs.version }}
+
+    - name: Install aztec toolchain
+      if: steps.cache-aztec.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        curl -sSfL --proto '=https' --tlsv1.2 "https://install.aztec.network/${AZTEC_VERSION}/" -o /tmp/aztec-install.sh
+        NON_INTERACTIVE=1 VERSION="$AZTEC_VERSION" bash /tmp/aztec-install.sh
+        aztec-up install "$AZTEC_VERSION"
+
+    - name: Start local network
+      if: inputs.start-local-network == 'true'
+      shell: bash
+      run: |
+        nohup aztec start --local-network > /tmp/aztec-local-network.log 2>&1 &
+        echo "Waiting for local network on :8080..."
+        for i in $(seq 1 90); do
+          if nc -z localhost 8080 2>/dev/null; then
+            echo "Local network ready after ~$((i * 2))s"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Local network failed to start within 180s" >&2
+        tail -50 /tmp/aztec-local-network.log >&2
+        exit 1
+
+    - name: Compile contracts
+      if: inputs.run-compile == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: aztec compile
+
+    - name: Generate TS bindings
+      if: inputs.run-codegen == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: aztec codegen target --outdir src/artifacts -f

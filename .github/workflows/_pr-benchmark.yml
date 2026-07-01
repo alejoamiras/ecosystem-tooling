@@ -1,0 +1,246 @@
+name: _PR Benchmark (reusable)
+
+# Vendored + adapted from defi-wonderland/aztec-benchmark pr-benchmark.yml.
+# Security split: the `benchmark` job executes PR code with a READ-ONLY token;
+# the `comment` job holds `pull-requests: write` but never executes PR code
+# (it only downloads the markdown artifact and posts it).
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Workspace package directory (e.g. packages/aztec-standards)
+        required: true
+        type: string
+      pr-workflow:
+        description: Per-package gate workflow FILENAME (source of PR-branch baselines)
+        required: true
+        type: string
+      baseline-workflow:
+        description: Workflow filename that produces baselines for main
+        type: string
+        default: update-baselines.yml
+      runner:
+        description: GitHub runner label
+        type: string
+        default: ubuntu-latest
+      timeout:
+        description: Job timeout in minutes
+        type: number
+        default: 120
+      bench-dir:
+        description: Benchmark files directory, relative to package-dir
+        type: string
+        default: benchmarks
+      current-suffix:
+        description: Suffix for baseline benchmark files
+        type: string
+        default: _latest
+      pr-suffix:
+        description: Suffix for PR benchmark files
+        type: string
+        default: _new
+      threshold:
+        description: Regression highlight threshold (percent, report-only)
+        type: string
+        default: '2.5'
+      circuit-details:
+        description: Include per-circuit gate breakdown
+        type: boolean
+        default: false
+      skip-proving:
+        description: Pass --skip-proving (PR benches default to gate/gas-only for runner headroom)
+        type: boolean
+        default: true
+      run-compile:
+        description: Compile contracts before benchmarking
+        type: boolean
+        default: true
+      run-codegen:
+        description: Generate TS bindings before benchmarking
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Benchmark
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+    permissions:
+      contents: read
+      actions: read
+    env:
+      PKG_DIR: ${{ inputs.package-dir }}
+      BENCH_DIR: ${{ inputs.bench-dir }}
+      CURRENT_SUFFIX: ${{ inputs.current-suffix }}
+      PR_SUFFIX: ${{ inputs.pr-suffix }}
+      THRESHOLD: ${{ inputs.threshold }}
+      CIRCUIT_DETAILS: ${{ inputs.circuit-details }}
+    outputs:
+      pkg-encoded: ${{ steps.encode.outputs.pkg-encoded }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-aztec
+        with:
+          start-local-network: 'true'
+          run-compile: ${{ inputs.run-compile }}
+          run-codegen: ${{ inputs.run-codegen }}
+          working-directory: ${{ inputs.package-dir }}
+
+      - name: Run benchmarks (PR head)
+        working-directory: ${{ inputs.package-dir }}
+        env:
+          SKIP_PROVING: ${{ inputs.skip-proving }}
+        run: |
+          args=(--suffix "$PR_SUFFIX" --output-dir "$BENCH_DIR")
+          if [ "$SKIP_PROVING" = "true" ]; then args+=(--skip-proving); fi
+          bunx aztec-benchmark "${args[@]}"
+
+      - name: Assert non-empty PR results
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          count=$(find "$BENCH_DIR" -maxdepth 1 -name "*${PR_SUFFIX}.benchmark.json" | wc -l | tr -d ' ')
+          if [ "$count" -eq 0 ]; then
+            echo "No PR benchmark results produced — vacuous benchmark refused" >&2
+            exit 1
+          fi
+          echo "Produced $count PR result file(s)"
+
+      - name: Encode artifact name parts & pick baseline source workflow
+        id: encode
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASELINE_WORKFLOW: ${{ inputs.baseline-workflow }}
+          PR_WORKFLOW: ${{ inputs.pr-workflow }}
+        run: |
+          echo "base-ref-encoded=$(printf '%s' "$BASE_REF" | sed 's/\//-/g')" >> "$GITHUB_OUTPUT"
+          echo "pkg-encoded=$(basename "$PKG_DIR")" >> "$GITHUB_OUTPUT"
+          if [ "$BASE_REF" = "main" ] || [ "$BASE_REF" = "dev" ]; then
+            echo "workflow=$BASELINE_WORKFLOW" >> "$GITHUB_OUTPUT"
+          else
+            echo "workflow=$PR_WORKFLOW" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download baseline artifact
+        id: download-baseline
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@0bd50d53a6d7fb5cb921e607957e9cc12b4ce392 # v12
+        with:
+          workflow: ${{ steps.encode.outputs.workflow }}
+          branch: ${{ github.event.pull_request.base.ref }}
+          name: benchmark-baseline-${{ steps.encode.outputs.pkg-encoded }}-${{ steps.encode.outputs.base-ref-encoded }}
+          path: ${{ inputs.package-dir }}/${{ inputs.bench-dir }}
+          if_no_artifact_found: warn
+
+      - name: Generate comparison report (non-vacuous)
+        working-directory: ${{ inputs.package-dir }}
+        env:
+          PKG_ENCODED: ${{ steps.encode.outputs.pkg-encoded }}
+        run: |
+          # shellcheck disable=SC2016  # JS template literals inside the single-quoted node -e script
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const { runComparison } = require("@alejoamiras/aztec-benchmark/action/comparison.cjs");
+            const dir = process.env.BENCH_DIR;
+            const baseSuffix = process.env.CURRENT_SUFFIX;
+            const prSuffix = process.env.PR_SUFFIX;
+            const strip = (f, s) => f.endsWith(`${s}.benchmark.json`) ? f.slice(0, -(`${s}.benchmark.json`).length) : null;
+            const files = fs.readdirSync(dir);
+            const baseNames = new Set(files.map(f => strip(f, baseSuffix)).filter(Boolean));
+            const prNames = new Set(files.map(f => strip(f, prSuffix)).filter(Boolean));
+            const pairs = [...prNames].filter(n => baseNames.has(n));
+            const threshold = Number.parseFloat(process.env.THRESHOLD);
+            if (!Number.isFinite(threshold)) { console.error(`invalid threshold: ${process.env.THRESHOLD}`); process.exit(1); }
+            const md = runComparison({
+              reportsDir: dir,
+              baseSuffix,
+              prSuffix,
+              threshold,
+              circuitDetails: process.env.CIRCUIT_DETAILS === "true",
+            });
+            fs.writeFileSync("benchmark-comparison.md", md + `\n<!-- benchmark-diff-${process.env.PKG_ENCODED} -->\n`);
+            console.log(`baseline files: ${baseNames.size}, pr files: ${prNames.size}, comparison pairs: ${pairs.length}`);
+            if (baseNames.size > 0 && pairs.length === 0) {
+              console.error("Baseline present but ZERO comparison pairs — vacuous comparison refused (name drift?)");
+              process.exit(1);
+            }
+          '
+
+      - name: Rename PR results to baseline format
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          rm -f "$BENCH_DIR"/*"$CURRENT_SUFFIX".benchmark.json
+          for file in "$BENCH_DIR"/*"$PR_SUFFIX".benchmark.json; do
+            [ -f "$file" ] && mv "$file" "${file/${PR_SUFFIX}.benchmark.json/${CURRENT_SUFFIX}.benchmark.json}"
+          done
+
+      - name: Encode head branch name
+        id: encode-head
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: echo "head-ref-encoded=$(printf '%s' "$HEAD_REF" | sed 's/\//-/g')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload PR-branch baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-baseline-${{ steps.encode.outputs.pkg-encoded }}-${{ steps.encode-head.outputs.head-ref-encoded }}
+          path: ${{ inputs.package-dir }}/${{ inputs.bench-dir }}/*${{ inputs.current-suffix }}.benchmark.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison-${{ steps.encode.outputs.pkg-encoded }}-${{ github.event.pull_request.number }}
+          path: ${{ inputs.package-dir }}/benchmark-comparison.md
+          if-no-files-found: error
+
+  comment:
+    name: Comment benchmark diff
+    needs: benchmark
+    # Fork PRs get no write token — skip rather than fail the gate.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Download comparison report
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-comparison-${{ needs.benchmark.outputs.pkg-encoded }}-${{ github.event.pull_request.number }}
+
+      - name: Minimize previous benchmark comments (this package only)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MARKER: benchmark-diff-${{ needs.benchmark.outputs.pkg-encoded }}
+        run: |
+          node_ids=$(gh api "/repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --paginate --jq ".[] | select(.body | contains(\"<!-- ${MARKER} -->\")) | .node_id")
+          for node_id in $node_ids; do
+            # shellcheck disable=SC2016  # $id is a GraphQL variable, not shell
+            gh api graphql -f query='
+              mutation($id: ID!) {
+                minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+                  minimizedComment { isMinimized }
+                }
+              }' -f id="$node_id"
+          done
+
+      - name: Comment diff on PR
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: benchmark-comparison.md
