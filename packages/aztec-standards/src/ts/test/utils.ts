@@ -1,34 +1,31 @@
-import { createLogger } from '@aztec/aztec.js/log';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { type Wallet, AccountManager } from '@aztec/aztec.js/wallet';
-import { Fr } from '@aztec/aztec.js/fields';
-import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec/aztec.js/node';
-import { type ContractInstanceWithAddress } from '@aztec/aztec.js/contracts';
-import { TxHash } from '@aztec/aztec.js/tx';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
-import { PublicKeys } from '@aztec/stdlib/keys';
-
+import { type AuthWitness, SetPublicAuthwitContractInteraction } from '@aztec/aztec.js/authorization';
 import {
-  DeployOptions,
-  ContractFunctionInteraction,
+  type ContractFunctionInteraction,
+  type ContractInstanceWithAddress,
+  type DeployOptions,
   getContractClassFromArtifact,
   getContractInstanceFromInstantiationParams,
 } from '@aztec/aztec.js/contracts';
-import { AuthWitness, SetPublicAuthwitContractInteraction } from '@aztec/aztec.js/authorization';
 import { getPublicEvents } from '@aztec/aztec.js/events';
+import { Fr } from '@aztec/aztec.js/fields';
+import { createLogger } from '@aztec/aztec.js/log';
+import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec/aztec.js/node';
+import type { TxHash } from '@aztec/aztec.js/tx';
+import type { AccountManager, Wallet } from '@aztec/aztec.js/wallet';
+import { Barretenberg } from '@aztec/bb.js';
+import { getPXEConfig } from '@aztec/pxe/server';
 import { getDefaultInitializer, getInitializer } from '@aztec/stdlib/abi';
 import {
+  computeContractAddressFromInstance,
   computeInitializationHash,
   computeSaltedInitializationHash,
-  computeContractAddressFromInstance,
 } from '@aztec/stdlib/contract';
-
-import { getPXEConfig } from '@aztec/pxe/server';
-import { type TxExecutionRequest, type TxProvingResult } from '@aztec/stdlib/tx';
-import { type ExecutionPayload } from '@aztec/stdlib/tx';
-import { type FeeOptions } from '@aztec/wallet-sdk/base-wallet';
-import { Barretenberg } from '@aztec/bb.js';
+import { PublicKeys } from '@aztec/stdlib/keys';
+import type { ExecutionPayload, TxExecutionRequest, TxProvingResult } from '@aztec/stdlib/tx';
+import type { FeeOptions } from '@aztec/wallet-sdk/base-wallet';
+import { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
 
 /**
  * Subset of protected BaseWallet methods needed to prove a tx and extract private return values.
@@ -54,21 +51,20 @@ interface WalletWithInternals {
   };
 }
 
+import { expect } from 'vitest';
+import { EscrowContract } from '../../../src/artifacts/Escrow.js';
+import { NFTContract } from '../../../src/artifacts/NFT.js';
+import { TestLogicContract } from '../../../src/artifacts/TestLogic.js';
 import { TokenContract, TokenContractArtifact } from '../../../src/artifacts/Token.js';
 import { VaultContract, VaultContractArtifact } from '../../../src/artifacts/Vault.js';
 import { VaultDeployerContract, VaultDeployerContractArtifact } from '../../../src/artifacts/VaultDeployer.js';
-import { NFTContract } from '../../../src/artifacts/NFT.js';
-import { TestLogicContract } from '../../../src/artifacts/TestLogic.js';
-import { EscrowContract } from '../../../src/artifacts/Escrow.js';
-
-import { expect } from 'vitest';
 
 export const logger = createLogger('aztec:aztec-standards');
 
 import { randomBytes } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rmSync } from 'node:fs';
 
 /** Default port for Aztec local network. */
 export const LOCAL_NETWORK_DEFAULT_PORT = 8080;

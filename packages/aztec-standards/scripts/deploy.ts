@@ -1,34 +1,31 @@
 import 'dotenv/config';
-import { Command, Option } from 'commander';
-import { PublicKeys } from '@aztec/aztec.js/keys';
-import {
-  getContractInstanceFromInstantiationParams,
-  Contract,
-  type InteractionFeeOptions,
-  DeployOptions,
-} from '@aztec/aztec.js/contracts';
-import { TxStatus } from '@aztec/aztec.js/tx';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Fr } from '@aztec/aztec.js/fields';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { AccountManager, type Wallet } from '@aztec/aztec.js/wallet';
-import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
-import { createLogger } from '@aztec/foundation/log';
 
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
+import type { AztecAddressLike, ContractArtifact, FieldLike } from '@aztec/aztec.js/abi';
+import { AztecAddress } from '@aztec/aztec.js/addresses';
+import {
+  Contract,
+  type DeployOptions,
+  getContractInstanceFromInstantiationParams,
+  type InteractionFeeOptions,
+} from '@aztec/aztec.js/contracts';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
+import { Fr } from '@aztec/aztec.js/fields';
+import { PublicKeys } from '@aztec/aztec.js/keys';
+import { type AztecNode, createAztecNodeClient } from '@aztec/aztec.js/node';
+import { TxStatus } from '@aztec/aztec.js/tx';
+import type { AccountManager, Wallet } from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { poseidon2Hash } from '@aztec/foundation/crypto/poseidon';
-
-import { TokenContract, TokenContractArtifact } from '../src/artifacts/Token.js';
-import { DripperContract, DripperContractArtifact } from '../src/artifacts/Dripper.js';
-
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { fileURLToPath } from 'url';
+import { createLogger } from '@aztec/foundation/log';
+import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
+import { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { Command, Option } from 'commander';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-
-import { AztecAddressLike, FieldLike, type ContractArtifact } from '@aztec/aztec.js/abi';
-import { getConfig, DeploymentConfig, type Network } from './deploy-config.js';
+import { fileURLToPath } from 'url';
+import { DripperContract, DripperContractArtifact } from '../src/artifacts/Dripper.js';
+import { TokenContract, TokenContractArtifact } from '../src/artifacts/Token.js';
+import { type DeploymentConfig, getConfig, type Network } from './deploy-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

@@ -1,4 +1,4 @@
-import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import type { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { DEFAULT_SALT, NETWORK_URLS } from './constants.js';
 
 export interface TokenConfig {

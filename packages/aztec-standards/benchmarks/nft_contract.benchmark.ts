@@ -1,9 +1,9 @@
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
+import type { Wallet } from '@aztec/aztec.js/wallet';
 
 // Import the new Benchmark base class and context
-import { Benchmark, BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
+import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
 
 import { NFTContract } from '../src/artifacts/NFT.js';
 import { deployNFTWithMinter, setupTestSuite } from '../src/ts/test/utils.js';

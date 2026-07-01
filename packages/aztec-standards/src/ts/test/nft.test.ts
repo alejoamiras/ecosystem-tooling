@@ -1,27 +1,24 @@
+import { AztecAddress } from '@aztec/aztec.js/addresses';
 import {
-  setupTestSuite,
-  deployNFTWithMinter,
+  type ContractFunctionInteractionCallIntent,
+  lookupValidity,
+  SetPublicAuthwitContractInteraction,
+} from '@aztec/aztec.js/authorization';
+import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { ContractDeployer } from '@aztec/aztec.js/deployment';
+import { Fr } from '@aztec/aztec.js/fields';
+import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { type NFTContract, NFTContractArtifact } from '../../../src/artifacts/NFT.js';
+import {
   assertOwnsPrivateNFT,
   assertOwnsPublicNFT,
-  initializeTransferCommitmentNFT,
+  deployNFTWithMinter,
   expectNFTTransferEvents,
+  initializeTransferCommitmentNFT,
   PRIVATE_ADDRESS,
+  setupTestSuite,
 } from './utils.js';
-
-import { Fr } from '@aztec/aztec.js/fields';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { type EmbeddedWallet } from '@aztec/wallets/embedded';
-import { ContractDeployer } from '@aztec/aztec.js/deployment';
-import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import {
-  ContractFunctionInteractionCallIntent,
-  SetPublicAuthwitContractInteraction,
-  lookupValidity,
-} from '@aztec/aztec.js/authorization';
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-
-import { NFTContract, NFTContractArtifact } from '../../../src/artifacts/NFT.js';
 
 const TEST_TIMEOUT = 300_000;
 

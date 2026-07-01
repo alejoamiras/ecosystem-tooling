@@ -1,25 +1,23 @@
+import { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { ContractFunctionInteraction } from '@aztec/aztec.js/contracts';
+import type { TxHash } from '@aztec/aztec.js/tx';
+import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { TokenContract } from '../../../src/artifacts/Token.js';
+import type { VaultContract } from '../../../src/artifacts/Vault.js';
 import {
-  setupTestSuite,
-  ensureVaultContractClassPublished,
+  deployTokenWithMinter,
   deployVaultAndAssetWithMinter,
   deployVaultWithInitialDeposit,
-  deployTokenWithMinter,
-  setPrivateAuthWit,
-  setPublicAuthWit,
+  ensureVaultContractClassPublished,
   expectTokenBalances,
   expectTransferEvents,
   PRIVATE_ADDRESS,
+  setPrivateAuthWit,
+  setPublicAuthWit,
+  setupTestSuite,
 } from './utils.js';
 
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { type EmbeddedWallet } from '@aztec/wallets/embedded';
-import { type ContractFunctionInteraction } from '@aztec/aztec.js/contracts';
-import { type TxHash } from '@aztec/aztec.js/tx';
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-
-import { TokenContract } from '../../../src/artifacts/Token.js';
-import { VaultContract } from '../../../src/artifacts/Vault.js';
 const TEST_TIMEOUT = 300_000;
 
 describe('Vault', () => {

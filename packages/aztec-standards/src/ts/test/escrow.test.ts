@@ -1,41 +1,39 @@
-import { TxStatus } from '@aztec/aztec.js/tx';
-import { deriveKeys } from '@aztec/stdlib/keys';
-import { PublicKeys } from '@aztec/aztec.js/keys';
-import { type AztecNode } from '@aztec/aztec.js/node';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { type EmbeddedWallet } from '@aztec/wallets/embedded';
-import { BlockNumber } from '@aztec/foundation/branded-types';
+import {
+  type ContractInstanceWithAddress,
+  getContractClassFromArtifact,
+  getContractInstanceFromInstantiationParams,
+} from '@aztec/aztec.js/contracts';
 import { ContractDeployer } from '@aztec/aztec.js/deployment';
 import { Fr, Point } from '@aztec/aztec.js/fields';
-import { PublicKey } from '@aztec/stdlib/keys';
-import {
-  getContractInstanceFromInstantiationParams,
-  getContractClassFromArtifact,
-  type ContractInstanceWithAddress,
-} from '@aztec/aztec.js/contracts';
+import { PublicKeys } from '@aztec/aztec.js/keys';
+import type { AztecNode } from '@aztec/aztec.js/node';
+import { TxStatus } from '@aztec/aztec.js/tx';
+import { BlockNumber } from '@aztec/foundation/branded-types';
+import { deriveKeys, type PublicKey } from '@aztec/stdlib/keys';
+import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { type EscrowContract, EscrowContractArtifact } from '../../../src/artifacts/Escrow.js';
+import type { NFTContract } from '../../../src/artifacts/NFT.js';
 import {
-  TestLogicContractArtifact,
+  type EscrowDetailsLogContent,
   TestLogicContract,
-  EscrowDetailsLogContent,
+  TestLogicContractArtifact,
 } from '../../../src/artifacts/TestLogic.js';
-import { EscrowContractArtifact, EscrowContract } from '../../../src/artifacts/Escrow.js';
-import { TokenContract } from '../../../src/artifacts/Token.js';
-import { NFTContract } from '../../../src/artifacts/NFT.js';
+import type { TokenContract } from '../../../src/artifacts/Token.js';
 
 import {
-  setupTestSuite,
-  deployTokenWithMinter,
   AMOUNT,
-  expectTokenBalances,
-  wad,
-  deployNFTWithMinter,
   assertOwnsPrivateNFT,
-  deployLogic,
   deployEscrowWithPublicKeysAndSalt,
+  deployLogic,
+  deployNFTWithMinter,
+  deployTokenWithMinter,
   deriveContractAddress,
+  expectTokenBalances,
+  setupTestSuite,
+  wad,
 } from './utils.js';
 
 type FrInput = Fr | bigint | number | boolean | Buffer;

@@ -1,21 +1,21 @@
 // Import Aztec dependencies
-import { Fr } from '@aztec/aztec.js/fields';
-import { deriveKeys } from '@aztec/stdlib/keys';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
+
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
+import { Fr } from '@aztec/aztec.js/fields';
+import type { Wallet } from '@aztec/aztec.js/wallet';
+import { deriveKeys } from '@aztec/stdlib/keys';
 
 // Import the new Benchmark base class and context
-import { Benchmark, BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
+import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
 import type { NamedBenchmarkedInteraction } from '@defi-wonderland/aztec-benchmark/dist/types.js';
-
+import { type EscrowContract, EscrowContractArtifact } from '../src/artifacts/Escrow.js';
+import { NFTContract } from '../src/artifacts/NFT.js';
 // Import artifacts
 import { TokenContract } from '../src/artifacts/Token.js';
-import { EscrowContract, EscrowContractArtifact } from '../src/artifacts/Escrow.js';
-import { NFTContract } from '../src/artifacts/NFT.js';
 
 // Import test utilities
-import { setupTestSuite, deployEscrow, deployTokenWithMinter, deployNFTWithMinter } from '../src/ts/test/utils.js';
+import { deployEscrow, deployNFTWithMinter, deployTokenWithMinter, setupTestSuite } from '../src/ts/test/utils.js';
 
 // Extend the BenchmarkContext from the new package
 interface EscrowBenchmarkContext extends BenchmarkContext {

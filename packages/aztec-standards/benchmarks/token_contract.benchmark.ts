@@ -1,12 +1,10 @@
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
 import { Fr } from '@aztec/aztec.js/fields';
-
-import { parseUnits } from 'viem';
-
+import type { Wallet } from '@aztec/aztec.js/wallet';
 // Import the new Benchmark base class and context
-import { Benchmark, BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
+import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
+import { parseUnits } from 'viem';
 
 import { TokenContract } from '../src/artifacts/Token.js';
 import { deployTokenWithMinter, initializeTransferCommitment, setupTestSuite } from '../src/ts/test/utils.js';

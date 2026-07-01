@@ -1,20 +1,21 @@
 // Import Aztec dependencies
-import { Fr } from '@aztec/aztec.js/fields';
-import { deriveKeys } from '@aztec/stdlib/keys';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
+
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
+import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
+import { Fr } from '@aztec/aztec.js/fields';
+import type { Wallet } from '@aztec/aztec.js/wallet';
+import { deriveKeys } from '@aztec/stdlib/keys';
 
 // Import the new Benchmark base class and context
-import { Benchmark, BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
+import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
 
 // Import artifacts
-import { EscrowContract, EscrowContractArtifact } from '../src/artifacts/Escrow.js';
-import { TestLogicContract } from '../src/artifacts/TestLogic.js';
+import { type EscrowContract, EscrowContractArtifact } from '../src/artifacts/Escrow.js';
+import type { TestLogicContract } from '../src/artifacts/TestLogic.js';
 
 // Import test utilities
-import { setupTestSuite, deployLogic, deployEscrowWithPublicKeysAndSalt } from '../src/ts/test/utils.js';
+import { deployEscrowWithPublicKeysAndSalt, deployLogic, setupTestSuite } from '../src/ts/test/utils.js';
 
 // Extend the BenchmarkContext from the new package
 interface LogicBenchmarkContext extends BenchmarkContext {

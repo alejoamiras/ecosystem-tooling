@@ -1,6 +1,6 @@
-import { defineConfig } from 'vitest/config';
 import { createRequire } from 'node:module';
 import { dirname, resolve as pathResolve } from 'node:path';
+import { defineConfig } from 'vitest/config';
 
 const require = createRequire(import.meta.url);
 const nobleUtilsPath = require.resolve('@noble/hashes/utils');

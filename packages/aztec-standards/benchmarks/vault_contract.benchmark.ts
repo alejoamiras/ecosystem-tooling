@@ -1,18 +1,15 @@
-import type { Wallet } from '@aztec/aztec.js/wallet';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { AuthWitness } from '@aztec/aztec.js/authorization';
-import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
-
+import type { AuthWitness, ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
+import type { Wallet } from '@aztec/aztec.js/wallet';
+// Import the new Benchmark base class and context
+import { Benchmark, type BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
 import { parseUnits } from 'viem';
 
-// Import the new Benchmark base class and context
-import { Benchmark, BenchmarkContext } from '@defi-wonderland/aztec-benchmark';
-
-import { TokenContract } from '../src/artifacts/Token.js';
-import { VaultContract } from '../src/artifacts/Vault.js';
+import type { TokenContract } from '../src/artifacts/Token.js';
+import type { VaultContract } from '../src/artifacts/Vault.js';
 import {
-  ensureVaultContractClassPublished,
   deployVaultAndAssetWithMinter,
+  ensureVaultContractClassPublished,
   setPrivateAuthWit,
   setPublicAuthWit,
   setupTestSuite,

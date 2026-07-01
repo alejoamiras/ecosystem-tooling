@@ -1,24 +1,25 @@
-import { Fr } from '@aztec/aztec.js/fields';
-import { type AztecNode } from '@aztec/aztec.js/node';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { type EmbeddedWallet } from '@aztec/wallets/embedded';
-import { ContractDeployer } from '@aztec/aztec.js/deployment';
-import { SetPublicAuthwitContractInteraction, lookupValidity } from '@aztec/aztec.js/authorization';
-import { type ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
-import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-
 import {
-  setupTestSuite,
+  type ContractFunctionInteractionCallIntent,
+  lookupValidity,
+  SetPublicAuthwitContractInteraction,
+} from '@aztec/aztec.js/authorization';
+import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { ContractDeployer } from '@aztec/aztec.js/deployment';
+import { Fr } from '@aztec/aztec.js/fields';
+import type { AztecNode } from '@aztec/aztec.js/node';
+import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { type TokenContract, TokenContractArtifact } from '../../../src/artifacts/Token.js';
+import {
   AMOUNT,
   deployTokenWithMinter,
-  initializeTransferCommitment,
   expectTransferEvents,
+  initializeTransferCommitment,
   PRIVATE_ADDRESS,
+  setupTestSuite,
 } from './utils.js';
-
-import { TokenContractArtifact, TokenContract } from '../../../src/artifacts/Token.js';
 
 const TEST_TIMEOUT = 300_000;
 

@@ -7,6 +7,8 @@ src/artifacts/
 action/dist/
 codegenCache.json
 *.tsbuildinfo
+packages/aztec-standards/artifacts/
+packages/aztec-standards/deployments.json
 
 # aztec / test state
 log/
