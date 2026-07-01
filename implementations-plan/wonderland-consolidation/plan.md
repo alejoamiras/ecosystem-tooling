@@ -101,7 +101,7 @@ ecosystem-tooling/
 
 **Gate** (local network running): `compile` + `codegen` clean · `aztec test` **329 green** · `test:js` **29 green** · `bench` completes + report generated · `bun run lint` · spike workflow: green on ubuntu-latest with recorded timings (or I1 fallback decision logged). Layers: lint + TXE + integration + bench + CI spike.
 
-### Phase 4 — Import `aztec-fee-payment`
+### Phase 4 ✓ — Import `aztec-fee-payment` (gate green 2026-07-01: TXE **11/11** ✓, vitest **11/11** ✓ incl. L1 bridge + reverts, **isolation proof 3/3 vs relocated sandbox :18080** ✓, bench ✓, lint ✓. Lessons: lessons/phase-4.md)
 
 - Snapshot `dev` (`def90aa`) → `packages/aztec-fee-payment/`.
 - Canonical name `@alejoamiras/aztec-fee-payment`; manifest curation per D15 (drop `private`, repository fields, `@aztec/*` runtime imports → peerDeps, declare `@aztec/bb.js`/`l1-artifacts` where shipped code imports them, keep exports+files).
