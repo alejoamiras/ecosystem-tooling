@@ -87,9 +87,13 @@ jobs:
             fi
             case "$latest" in
               0.0.0-*)
-                # npm unavoidably assigns `latest` on a package's FIRST publish regardless of --tag.
-                # Expected exactly once (bootstrap); the first real release re-points it (release.yml).
-                echo "WARN: latest points at a canary ($latest) for $pkg — expected on first-ever publish; release.yml remediates" ;;
+                # Registry behavior on first publish with --tag differs across npm versions/registries
+                # (audits disagreed; docs say --tag avoids latest, field reports say latest gets set).
+                # Behavior-agnostic: if latest landed on the canary, try to REMOVE it (plan promise:
+                # no latest until stable). If the registry refuses, release.yml remediates loudly.
+                echo "latest points at a canary ($latest) for $pkg — attempting dist-tag removal"
+                npm dist-tag rm "@alejoamiras/$pkg" latest \
+                  || echo "WARN: registry refused latest removal for $pkg; release.yml will remediate" ;;
             esac
           done
           exit "$fail"

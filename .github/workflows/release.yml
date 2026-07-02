@@ -139,7 +139,7 @@ jobs:
             (cd "packages/$pkg" && npm publish --access public --provenance --tag "$DIST_TAG")
           done
 
-      - name: Remediate first-publish latest tag (npm assigns latest on first publish)
+      - name: Remediate canary-as-latest (behavior-agnostic; see canary.yml note)
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
@@ -147,8 +147,11 @@ jobs:
             latest=$(npm view "@alejoamiras/$pkg" dist-tags.latest 2>/dev/null || true)
             case "$latest" in
               0.0.0-*)
-                echo "Re-pointing latest for $pkg: $latest -> $INPUT_VERSION (canary must never be latest)"
-                npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" latest
+                echo "latest for $pkg is a canary ($latest) — preferring removal (no latest until stable)"
+                if ! npm dist-tag rm "@alejoamiras/$pkg" latest; then
+                  echo "WARN: registry refused latest removal; re-pointing latest -> $INPUT_VERSION (least-bad: never a canary)"
+                  npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" latest
+                fi
                 ;;
             esac
           done
