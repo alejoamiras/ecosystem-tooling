@@ -112,7 +112,7 @@ ecosystem-tooling/
 
 **Gate** (local network running): `aztec test` **11 green** · `test:js` **11 green** (8 unit + 3 integration incl. L1 bridge + revert paths) · **one integration re-run with non-default `NODE_URL`/`L1_RPC_URL`** against a relocated sandbox (proves env seam) · `benchmark` completes · `bun run lint`. Layers: lint + TXE + integration(+L1) + bench + isolation seam.
 
-### Phase 5 — CI pipeline + canary publish e2e — PIPELINE PROVEN (PR #1: full matrix green ×2 heads; merged d6dc120; baselines seeding on main; spike deleted). REMAINING: canary publish + trusted publishers = user OTP runbook (lessons/phase-5.md)
+### Phase 5 — CI pipeline + canary publish e2e — PIPELINE PROVEN (PR #1: full matrix green ×2 heads; merged d6dc120; main cascade fully green; rc.2 baselines SEEDED for both packages; spike deleted). REMAINING: canary publish + trusted publishers = user OTP runbook (lessons/phase-5.md)
 
 - `.github/actions/setup-aztec` (composite, hardened): setup-bun + `bun install --frozen-lockfile`; setup-node 24; foundry-toolchain@v1 (v1.4.1); cache `~/.aztec` by version; **version from root `config.aztecVersion`, regex-validated (`^[0-9A-Za-z.+-]+$`), passed via env, quoted everywhere; `curl --fail --proto '=https' --tlsv1.2`**; inputs `start-local-network`/`run-compile`/`run-codegen`/`working-directory`; :8080 readiness poll.
 - `_package-checks.yml` (reusable): noir-tests + js-tests jobs, **both PTY-wrapped** (`script -e -c`), per-package working-directory; bench via `_pr-benchmark.yml`.
