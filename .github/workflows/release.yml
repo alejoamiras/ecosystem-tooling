@@ -162,9 +162,16 @@ jobs:
         run: |
           fail=0
           for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
-            got=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)
+            # Read-API lag after publish can exceed several minutes — retry before judging.
+            got=""
+            for attempt in $(seq 1 30); do
+              got=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)
+              [ "$got" = "$INPUT_VERSION" ] && break
+              echo "  view attempt $attempt for $pkg@$INPUT_VERSION: not visible yet, waiting 20s..."
+              sleep 20
+            done
             if [ "$got" != "$INPUT_VERSION" ]; then
-              echo "ERROR: @alejoamiras/$pkg@$INPUT_VERSION not resolvable" >&2; fail=1
+              echo "ERROR: @alejoamiras/$pkg@$INPUT_VERSION not resolvable after 10min" >&2; fail=1
             fi
             tags=$(npm view "@alejoamiras/$pkg" dist-tags --json)
             echo "@alejoamiras/$pkg dist-tags: $tags"
