@@ -36,14 +36,14 @@ A Fee Payment Contract (FPC) for Aztec that enables private transaction fee spon
 ### Installation
 
 ```bash
-yarn install
+bun install
 ```
 
 ### Compile Contracts
 
 ```bash
 # Full rebuild: compile Noir + generate TS bindings
-yarn ccc
+bun run ccc
 
 # Or step by step
 aztec compile
@@ -61,9 +61,9 @@ aztec start --local-network
 Run all tests:
 
 ```bash
-yarn test        # Noir unit tests + JS integration tests
-yarn test:nr     # Noir unit tests only
-yarn test:js     # JS integration tests only
+bun run test        # Noir unit tests + JS integration tests
+bun run test:nr     # Noir unit tests only
+bun run test:js     # JS integration tests only
 ```
 
 ## Deployment
@@ -79,12 +79,12 @@ PrivateFPC is a **fully private** contract — it has no public functions and no
 
 2. Compile the contracts (required on first run):
    ```bash
-   yarn ccc
+   bun run ccc
    ```
 
 3. Run the compute script:
    ```bash
-   yarn compute
+   bun run compute
    ```
 
 > **DANGER:** The address is derived from compiled bytecode. A different Aztec version produces different bytecode and a **different address**. Sending funds to the wrong address means **unrecoverable loss**. Before using this address, verify the target network runs the same Aztec version as the one shown in the script output:
@@ -142,7 +142,7 @@ await myContract.methods.doSomething()
 ## Benchmarks
 
 ```bash
-yarn benchmark
+bun run benchmark
 ```
 
 Benchmarks are defined in `Nargo.toml` under `[benchmark]` and run against a live local network. Each contract has its own benchmark file in `benchmarks/`.

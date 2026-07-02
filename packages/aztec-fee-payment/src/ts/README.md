@@ -1,11 +1,11 @@
-# @defi-wonderland/aztec-fee-payment
+# @alejoamiras/aztec-fee-payment
 
 Fee Payment Contract (FPC) for Aztec. This package provides a fully private fee payment strategy for sponsoring transaction fees on behalf of users.
 
 ## Installation
 
 ```bash
-yarn add @defi-wonderland/aztec-fee-payment
+bun add @alejoamiras/aztec-fee-payment
 ```
 
 ## Available Contracts
@@ -26,11 +26,11 @@ import {
   FPCFeePaymentMethod,
   PrivateMintAndPayFeePaymentMethod,
   registerPrivateContract,
-} from '@defi-wonderland/aztec-fee-payment';
+} from '@alejoamiras/aztec-fee-payment';
 import { Fr } from '@aztec/aztec.js/fields';
 
 // Register the PrivateFPC with the PXE — no deployment transaction needed
-const salt = Fr.ZERO; // must match the salt used in `yarn compute`
+const salt = Fr.ZERO; // must match the salt used in `bun run compute`
 const fpc = await registerPrivateContract(wallet, salt);
 
 // L1: deposit FeeJuice to the portal with a claimer-bound secretHash
@@ -101,7 +101,7 @@ If private logic fails, the transaction is never included — no fees are charge
 
 ## Exports
 
-### Main Entry Point (`@defi-wonderland/aztec-fee-payment`)
+### Main Entry Point (`@alejoamiras/aztec-fee-payment`)
 
 ```typescript
 // Contracts
@@ -119,9 +119,9 @@ registerPrivateContract
 
 ### Sub-path Exports
 
-- `@defi-wonderland/aztec-fee-payment/artifacts/private` - PrivateFPC contract and artifact
-- `@defi-wonderland/aztec-fee-payment/fee-payment-methods` - Fee payment methods only
-- `@defi-wonderland/aztec-fee-payment/utils` - Utility functions only
+- `@alejoamiras/aztec-fee-payment/artifacts/private` - PrivateFPC contract and artifact
+- `@alejoamiras/aztec-fee-payment/fee-payment-methods` - Fee payment methods only
+- `@alejoamiras/aztec-fee-payment/utils` - Utility functions only
 
 ## License
 

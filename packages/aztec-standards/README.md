@@ -1,6 +1,8 @@
 # Aztec Standards
 
-[![npm version](https://img.shields.io/npm/v/@defi-wonderland/aztec-standards.svg)](https://www.npmjs.com/package/@defi-wonderland/aztec-standards)
+[![npm version](https://img.shields.io/npm/v/@alejoamiras/aztec-standards.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-standards)
+
+> Continues [defi-wonderland/aztec-standards](https://github.com/defi-wonderland/aztec-standards) (MIT, © Wonderland) as part of the [ecosystem-tooling](https://github.com/alejoamiras/ecosystem-tooling) monorepo. Migrating? `bun add @alejoamiras/aztec-standards` — import paths are unchanged, only the scope moved.
 
 Aztec Standards is a comprehensive collection of reusable, standardized contracts for the Aztec Network. It provides a robust foundation of token primitives and utilities that support both private and public operations, empowering developers to build innovative privacy-preserving applications with ease.
 
@@ -11,9 +13,9 @@ Aztec Standards is a comprehensive collection of reusable, standardized contract
 aztec start --local-network
 ```
 
-**Tests**: `yarn test` runs Noir and JS tests. JS tests expect the network to be running at `http://localhost:8080` (or `NODE_URL`).
+**Tests**: `bun run test` runs Noir and JS tests (`bun run test:nr` / `bun run test:js` individually). JS tests expect the network to be running at `http://localhost:8080` (or `NODE_URL`).
 
-**Benchmarks**: `yarn bench` connects to the same running network.
+**Benchmarks**: `bun run bench` connects to the same running network.
 
 Set `NODE_URL` to override the default (e.g. `http://localhost:9000`).
 
@@ -62,7 +64,7 @@ The Escrow Standard contains two elements:
 
 📖 **[View detailed Escrow documentation](src/escrow_contract/README.md)**
 
-To see examples of Logic contract implementations, such as a linear vesting contract or a clawback escrow contract, go to [aztec-escrow-extensions](https://github.com/defi-wonderland/aztec-escrow-extensions).
+To see examples of Logic contract implementations, such as a linear vesting contract or a clawback escrow contract, see Wonderland's [aztec-escrow-extensions](https://github.com/defi-wonderland/aztec-escrow-extensions) (historical examples).
 
 ## Future Contracts
 

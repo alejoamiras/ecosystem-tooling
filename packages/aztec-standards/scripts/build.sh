@@ -17,6 +17,9 @@ for f in target/*.json; do
   aztec inspect-contract "$f"
 done
 
+# ── Drop inspect-contract backup files (they'd bloat the tarball) ────────────
+rm -f target/*.json.bak
+
 # ── Legacy dist/ mirror (deep-import compatibility; deprecate at stable) ─────
 cp -r artifacts dist
 

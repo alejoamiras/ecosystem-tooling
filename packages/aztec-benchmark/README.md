@@ -1,5 +1,5 @@
 # Aztec Benchmark
-[![npm version](https://badge.fury.io/js/%40defi-wonderland%2Faztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark)
+[![npm version](https://img.shields.io/npm/v/@alejoamiras/aztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark)
 
 **CLI tool and reusable CI workflows for running Aztec contract benchmarks.**
 
@@ -27,7 +27,7 @@ Use the CLI to execute benchmark files written in TypeScript. For CI integration
 ## Installation
 
 ```sh
-yarn add --dev @alejoamiras/aztec-benchmark
+bun add -D @alejoamiras/aztec-benchmark
 # or
 npm install --save-dev @alejoamiras/aztec-benchmark
 ```
@@ -214,9 +214,9 @@ If you provide a `NamedBenchmarkedInteraction` object, its `name` field will be 
 If you provide a plain `ContractFunctionInteractionCallIntent`, the tool will attempt to derive a name from the interaction (e.g., the method name).
 If you return a `feePaymentMethod` in the `BenchmarkContext`, it is automatically passed to every transaction the profiler sends — no changes to `getMethods` are needed.
 
-### Wonderland's Usage Example
+### Usage Example
 
-You can find how we use this tool for benchmarking our Aztec contracts in [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards/tree/dev/benchmarks).
+See how this monorepo benchmarks its own contracts in [`packages/aztec-standards/benchmarks`](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-standards/benchmarks).
 
 ---
 
@@ -227,114 +227,35 @@ Each entry in the output will be identified by the custom `name` you provided (i
 
 ---
 
-## Reusable Workflows
+## CI Integration
 
-This repository ships two **reusable GitHub workflows** (`workflow_call`) that handle the full CI benchmark cycle. Consumer repos call them with a single `uses:` line — no need to copy workflow YAML or wire up artifact management manually.
+### Inside this monorepo
 
-### PR Benchmark (`pr-benchmark.yml`)
+The per-package gates (`aztec-standards.yml`, `aztec-fee-payment.yml`) call the repo's reusable workflows:
 
-Runs benchmarks on the PR head, downloads the baseline from the base branch, generates a comparison report, comments it on the PR (hiding any previous benchmark comments as outdated), and uploads the new results as a baseline artifact for the PR branch.
+- **`_pr-benchmark.yml`** — on every PR: runs the suites on the PR head (`--skip-proving`), downloads the `main` baseline artifact, generates a comparison report (regressions beyond 2.5% highlighted), and posts it as a PR comment. Security split: the job executing PR code is read-only; a separate write-permission job posts the comment without executing anything from the PR.
+- **`_update-baseline.yml`** — on pushes to `main` (+ monthly cron via `update-baselines.yml`): refreshes the baseline artifacts (`benchmark-baseline-<package>-main`).
 
-**Usage:**
-
-```yaml
-# .github/workflows/pr-checks.yml
-name: PR Checks
-
-on:
-  pull_request:
-    branches: [dev, main]
-
-jobs:
-  benchmark:
-    uses: defi-wonderland/aztec-benchmark/.github/workflows/pr-benchmark.yml@v0
-    permissions:
-      pull-requests: write
-      issues: write
-      actions: read
-```
-
-**Inputs:**
-
-| Input | Type | Default | Description |
-|---|---|---|---|
-| `runner` | `string` | `ubuntu-latest-m` | GitHub runner label |
-| `timeout` | `number` | `120` | Job timeout in minutes |
-| `bench-dir` | `string` | `./benchmarks` | Directory for benchmark files |
-
-**With custom inputs:**
+Wiring a new package: add a `benchmark` job to its gate workflow:
 
 ```yaml
-jobs:
-  benchmark:
-    uses: defi-wonderland/aztec-benchmark/.github/workflows/pr-benchmark.yml@v0
-    permissions:
-      pull-requests: write
-      issues: write
-      actions: read
-    with:
-      runner: ubuntu-latest-l
-      timeout: 180
-      bench-dir: ./my-benchmarks
+benchmark:
+  needs: changes
+  if: needs.changes.outputs.relevant == 'true' && github.event_name == 'pull_request'
+  permissions:
+    contents: read
+    pull-requests: write
+    issues: write
+    actions: read
+  uses: ./.github/workflows/_pr-benchmark.yml
+  with:
+    package-dir: packages/<your-package>
+    pr-workflow: <your-package>.yml
 ```
 
-### Update Baseline (`update-baseline.yml`)
+### From other repositories
 
-Runs benchmarks on the current branch and uploads the results as a baseline artifact. This should be triggered on pushes to your default branches so that PR benchmarks have a baseline to compare against.
+The reusable workflows reference this repo's local `setup-aztec` action, so they are not directly callable cross-repo. External projects have two options:
 
-**Usage:**
-
-```yaml
-# .github/workflows/update-baseline.yml
-name: Update Baseline
-
-on:
-  push:
-    branches: [dev, main]
-
-jobs:
-  update-baseline:
-    uses: defi-wonderland/aztec-benchmark/.github/workflows/update-baseline.yml@v0
-    permissions:
-      contents: read
-      actions: write
-```
-
-**Inputs:**
-
-| Input | Type | Default | Description |
-|---|---|---|---|
-| `runner` | `string` | `ubuntu-latest-m` | GitHub runner label |
-| `timeout` | `number` | `120` | Job timeout in minutes |
-| `bench-dir` | `string` | `./benchmarks` | Directory for benchmark files |
-
-### How Baselines Work
-
-The workflows use GitHub Actions artifacts to store and retrieve baseline benchmark results:
-
-1. **`update-baseline.yml`** runs benchmarks with the `_latest` suffix and uploads the results as `benchmark-baseline-<branch>`.
-2. **`pr-benchmark.yml`** runs benchmarks with the `_new` suffix on the PR head, then downloads the `benchmark-baseline-<base-branch>` artifact to get the `_latest` files. It compares `_latest` (baseline) vs `_new` (PR) and comments a Markdown diff table on the PR.
-3. Before posting the new comment, the workflow finds all previous benchmark comments on the PR (identified by a unique marker in the comment body) and hides them as **Outdated** via the GitHub GraphQL API, so the PR timeline stays clean.
-4. After comparison, the PR workflow renames `_new` files to `_latest` and uploads them as `benchmark-baseline-<head-branch>`, so stacked PRs can also compare against each other.
-
-Artifacts are retained for **90 days** by default.
-
----
-
-## Action Usage (Advanced)
-
-> **Note:** For most projects, the [reusable workflows](#reusable-workflows) above are the recommended approach. The action below is a lower-level building block for projects that need a custom CI setup.
-
-This repository also includes a GitHub Action (defined in `action/action.yml`) that runs `aztec-benchmark` and compares results. It automatically finds benchmark reports (named with `_base` and `_latest` suffixes) and produces a Markdown comparison report.
-
-### Inputs
-
-- `threshold`: Regression threshold percentage (default: `2.5`).
-- `output_markdown_path`: Path to save the generated Markdown comparison report (default: `benchmark-comparison.md`).
-
-### Outputs
-
-- `comparison_markdown`: The generated Markdown report content.
-- `markdown_file_path`: Path to the saved Markdown file.
-
-Refer to the `action/action.yml` file for the definitive inputs and description.
+1. **Use the CLI directly** (recommended): install `@alejoamiras/aztec-benchmark` as a devDependency, add a `[benchmark]` table to your `Nargo.toml`, and run `aztec-benchmark --suffix _base` in a job that has an Aztec local network running. The comparison helper is importable as `require('@alejoamiras/aztec-benchmark/action/comparison.cjs')` — see `_pr-benchmark.yml` in this repo as a reference implementation for baselines, comparison and PR comments.
+2. **Vendor the workflows**: copy `_pr-benchmark.yml`, `_update-baseline.yml` and `.github/actions/setup-aztec/` into your repo and adjust `package-dir`.

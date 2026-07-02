@@ -1,8 +1,8 @@
 # Roadmap
 
-## In flight
+## Recently completed
 
-- `wonderland-consolidation` (see `implementations-plan/wonderland-consolidation/plan.md`) — consolidate the three Wonderland packages, ship v5.0.0-rc.2 to npm.
+- `wonderland-consolidation` (2026-07-02) — three Wonderland packages consolidated; **v5.0.0-rc.2 released to npm** with provenance via the tokenless OIDC pipeline. Full trail: `implementations-plan/wonderland-consolidation/`.
 
 ## Deferred (deliberately out of the consolidation plan)
 

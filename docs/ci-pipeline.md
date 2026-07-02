@@ -17,7 +17,6 @@ All workflows follow the house conventions: per-package PR gates with an interna
 | `update-baselines.yml` | push main, monthly cron, dispatch | Baselines for both contract packages |
 | `canary.yml` | dispatch | `0.0.0-canary.<sha>` ×3 under `canary` dist-tag via BOOTSTRAP token (env `npm-publish`); post-publish dist-tag assertions |
 | `release.yml` | dispatch (`version` input, main only) | See release runbook below |
-| `spike-ci.yml` | dispatch | TEMPORARY capacity probe — delete when Phase 5 closes |
 
 `setup-aztec` composite action (`.github/actions/setup-aztec`): bun (frozen lockfile) + node 24 + foundry v1.4.1 + aztec CLI pinned from **root `package.json` `config.aztecVersion`** (regex-validated, env-passed, TLS-pinned curl), `~/.aztec` cached by version, optional local network start with :8080 readiness poll, optional per-package compile/codegen.
 
@@ -37,12 +36,12 @@ Versions are LOCKSTEP with the Aztec version. One release = all three packages.
    - asserts published versions + dist-tags + provenance attestations,
    - tags `v<version>` and creates the GitHub release.
 
-### One-time publishing bootstrap (already-planned user steps, plan A2)
+### One-time publishing bootstrap (COMPLETED 2026-07-02 — kept for reference / future scopes)
 
 1. Before the first canary: create a **scope-level** granular npm automation token (`@alejoamiras`, publish, ≤30-day expiry), store as `NPM_TOKEN` secret in the protected GitHub environment `npm-publish` (require yourself as reviewer).
 2. Dispatch `canary.yml` — creates the three package names on npm.
 3. On npmjs.com, configure a trusted publisher for each package: repo `alejoamiras/ecosystem-tooling`, workflow `release.yml`, environment `npm-publish`, allowed action `npm publish`.
-4. Revoke the bootstrap token. All subsequent releases are tokenless.
+4. Revoke the bootstrap token. All subsequent releases are tokenless. *(All four steps were executed for the @alejoamiras scope; repeat only if the packages move to a new scope, e.g. aztec-network.)*
 
 ## Empirical registry findings (2026-07-02, learned during the rc.2 release)
 

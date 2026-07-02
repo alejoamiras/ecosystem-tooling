@@ -62,6 +62,17 @@ for (const pkgDirArg of process.argv.slice(2)) {
   const packJson = JSON.parse(run('npm', ['pack', '--json'], pkgDir));
   const tarball = join(pkgDir, packJson[0].filename);
 
+  // No stray build debris in published artifacts (e.g. aztec inspect-contract *.bak backups).
+  const debris = run('tar', ['tzf', tarball], pkgDir)
+    .split('\n')
+    .filter((f) => f.endsWith('.bak') || f.endsWith('.tsbuildinfo') || f.includes('codegenCache'));
+  if (debris.length > 0) {
+    console.error(`  ✗ tarball contains build debris:\n    ${debris.join('\n    ')}`);
+    failures++;
+  } else {
+    console.log('  ✓ tarball free of build debris');
+  }
+
   const tmp = mkdtempSync(join(tmpdir(), `verify-${pkgName}-`));
   try {
     writeFileSync(
