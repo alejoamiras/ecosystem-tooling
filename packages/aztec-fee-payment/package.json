@@ -63,8 +63,6 @@
     "@aztec/stdlib": "5.0.0-rc.2",
     "@aztec/wallets": "5.0.0-rc.2",
     "@noble/hashes": "1.8.0",
-    "@types/jest": "30.0.0",
-    "@types/mocha": "10.0.10",
     "@types/node": "25.6.0",
     "dotenv": "17.4.2",
     "tsx": "4.21.0",

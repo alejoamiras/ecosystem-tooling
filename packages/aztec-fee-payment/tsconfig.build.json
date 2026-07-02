@@ -13,5 +13,5 @@
     "src/artifacts/**/*",
     "target/**/*"
   ],
-  "exclude": ["node_modules", "src/ts/test", "src/ts/agent"]
+  "exclude": ["node_modules", "src/ts/test"]
 }
