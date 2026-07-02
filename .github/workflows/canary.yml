@@ -78,7 +78,16 @@ jobs:
         run: |
           fail=0
           for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
-            tags=$(npm view "@alejoamiras/$pkg" dist-tags --json)
+            # First-publish read-API lag can exceed several minutes — retry before judging.
+            tags=""
+            for attempt in $(seq 1 30); do
+              tags=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null) && break
+              echo "  view attempt $attempt for $pkg: not visible yet, waiting 20s..."
+              sleep 20
+            done
+            if [ -z "$tags" ]; then
+              echo "ERROR: @alejoamiras/$pkg not visible after 10min despite publish success" >&2; fail=1; continue
+            fi
             echo "@alejoamiras/$pkg dist-tags: $tags"
             canary=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).canary ?? ''")
             latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
