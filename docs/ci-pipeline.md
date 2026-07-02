@@ -44,6 +44,14 @@ Versions are LOCKSTEP with the Aztec version. One release = all three packages.
 3. On npmjs.com, configure a trusted publisher for each package: repo `alejoamiras/ecosystem-tooling`, workflow `release.yml`, environment `npm-publish`, allowed action `npm publish`.
 4. Revoke the bootstrap token. All subsequent releases are tokenless.
 
+## Empirical registry findings (2026-07-02, learned during the rc.2 release)
+
+- **`latest` cannot be deleted** (registry returns E400 on DELETE) — only moved. Policy: `latest` tracks the newest REAL release (rc now, stable later); canaries must never hold it.
+- **Trusted-publishing OIDC credentials authorize `npm publish` ONLY** (allowed-actions lockdown): `npm dist-tag` in CI gets E401 by design. Dist-tag maintenance is a manual step with interactive 2FA: `npm dist-tag add @alejoamiras/<pkg>@<version> latest --otp=<code>` (or the browser-auth flow).
+- **First-publish sets `latest`** regardless of `--tag` (settled a docs-vs-field dispute between our two audit models — the field was right).
+- npm read-API propagation after a first publish can exceed 10 minutes — all CI assertions retry accordingly.
+- With package setting "Require 2FA and disallow tokens", even the owner's session token cannot mutate dist-tags — expect the web-auth/OTP dance.
+
 ## Local notes
 
 - `bun run lint` / `lint:actions` before pushing workflow changes.

@@ -1,6 +1,6 @@
 # wonderland-consolidation — plan.md
 
-**Tier**: `/blueprint mid` · **Created**: 2026-07-01 · **Status**: **APPROVED 2026-07-01** (verdict: Approve; A6=peerDeps-exact, A7=non-vacuous report gate, A5=harden deferred/decide-later) · implementing
+**Tier**: `/blueprint mid` · **Created**: 2026-07-01 · **Status**: **COMPLETED 2026-07-02** — v5.0.0-rc.2 live on npm with provenance; all 7 phases ✓
 **Repo**: `ecosystem-tooling` (github.com/alejoamiras/ecosystem-tooling, to be created)
 **Driver**: defi-wonderland's contract is ending; Aztec ecosystem lead takes over their packages. Immediate deliverable: all packages consolidated into one bun monorepo AND released at Aztec **v5.0.0-rc.2** under a new npm scope.
 
@@ -126,7 +126,7 @@ ecosystem-tooling/
 
 **Gate**: actionlint 0 · PR exercising all three gates → `gh pr checks` all green · canary on npm: `npm view` shows `canary` dist-tag ×3 AND **`latest` absent/never `0.0.0-*`** · **npm-client install smoke**: `npm install` (not bun) of each canary in a temp dir + `scripts/verify-tarball.ts` imports every legacy subpath (artifacts/dist/target/deployments.json for standards; exports map for fee-payment; CLI + `action/comparison.cjs` for benchmark) · baselines seeded on main. Layers: lint + TXE + integration + bench (CI) + publish e2e + tarball compat.
 
-### Phase 6 — Aztec 5.0.0-rc.2 bump + THE release — LOCAL HALF ✓ + MERGED to main (340/340 TXE, 40/40 vitest, benches, verify-tarball 15/15, audits dispositioned). REMAINING: release.yml dispatch post-canary (user runbook)
+### Phase 6 ✓ — Aztec 5.0.0-rc.2 bump + THE release (gate green 2026-07-02: bump swept via bump-aztec.ts; suites green at rc.2 locally AND re-validated in-workflow twice; npm view ×3 = 5.0.0-rc.2 under `rc` WITH provenance attestations; clean-room npm install+import smoke of the PUBLISHED packages OK; tag v5.0.0-rc.2 + GitHub release created by release.yml run 28598638218. Empirical: npm refuses deleting `latest` (E400) → policy: latest tracks newest real release. Lessons: lessons/phase-6.md)
 
 - `scripts/bump-aztec.ts`: sweeps root `config.aztecVersion`, every `@aztec/*` pin (deps/devDeps/peerDeps), package versions + internal exact pins (lockstep), every `Nargo.toml` `tag = "v<...>"`, PRD header; **regenerates the bunfig `@aztec/*` min-age exclusion list in two phases** (a new rc can add `@aztec/*` transitives absent from the old lockfile, deadlocking install: use the verified glob if bun supports it, else compute the new `@aztec/*` dependency closure from registry metadata BEFORE `bun install`, then regenerate the exact list from the fresh lockfile after); emits a supply-chain report (publish dates + provenance/attestation status of every bumped `@aztec/*` version) for the PR description.
 - Run `bun scripts/bump-aztec.ts 5.0.0-rc.2` + `bun install`.
@@ -135,7 +135,7 @@ ecosystem-tooling/
 
 **Gate**: pre-merge: full suites green at rc.2 (TXE 329+11, integration 29+11, benches complete **with non-empty results + ≥1 comparison pair vs the rc.1 baseline**) · release workflow's OWN pre-publish validation green (D20) · post-release: `npm view @alejoamiras/<pkg>@5.0.0-rc.2` ×3 · `rc` dist-tag set, `latest` untouched · provenance attestations present (`npm view <pkg>@5.0.0-rc.2 --json | jq .dist.attestations`) · npm-client temp-dir install + `verify-tarball.ts` at rc.2 · supply-chain report attached to the release PR. Layers: everything + live npm release.
 
-### Phase 7 — Docs & wrap
+### Phase 7 ✓ — Docs & wrap (gate green 2026-07-02: lint + actionlint exit 0 post-docs; full-suite evidence = local 340/340 TXE + 40/40 vitest + 2x in-workflow revalidations at the released sha; docs match shipped state. Wrap-up: lessons/phase-7.md)
 
 - README final (package table, attribution, **migration mapping** old→new incl. "no `latest` until stable is intentional" note), docs/ci-pipeline.md (workflow map + release runbook + trusted-publisher notes), docs/roadmap.md (deferred items §8), CLAUDE.md final, index.md updated; prune dead configs (coderabbit, dependabot, dead tsconfig excludes).
 
