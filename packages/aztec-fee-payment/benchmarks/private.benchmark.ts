@@ -110,7 +110,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
     } = await bridgeForMint(
       node,
       privateFpc.address,
-      AztecAddress.fromString(deployer.toString()),
+      AztecAddress.fromStringUnsafe(deployer.toString()),
       saltForBalance,
       async () => {
         await counterContract.methods.increment().send({ from: deployer });
@@ -136,7 +136,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
     } = await bridgeForMint(
       node,
       privateFpc.address,
-      AztecAddress.fromString(deployer.toString()),
+      AztecAddress.fromStringUnsafe(deployer.toString()),
       saltForMintAndPay,
       async () => {
         await counterContract.methods.increment().send({ from: deployer });
@@ -183,7 +183,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
     } = await bridgeForMint(
       node,
       privateFpc.address,
-      AztecAddress.fromString(deployer.toString()),
+      AztecAddress.fromStringUnsafe(deployer.toString()),
       saltForMintPrivate,
       async () => {
         await counterContract.methods.increment().send({ from: deployer });

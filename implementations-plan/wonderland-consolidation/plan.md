@@ -71,7 +71,7 @@ ecosystem-tooling/
 
 > Retry policy: human-driven — reassess after 3 failures on a step; `/loop` autonomous — after 5. Lessons in `lessons/phase-N.md`.
 
-### Phase 1 — Repo bootstrap & skeleton — ALL GATE ITEMS ✓ except `npm whoami` (401 — awaiting user `npm login`; names-free check ✓). Repo live: github.com/alejoamiras/ecosystem-tooling. I3 resolved FALSE empirically (lessons/phase-1.md).
+### Phase 1 ✓ — Repo bootstrap & skeleton (gate FULLY green 2026-07-01: install/lint/actionlint/hooks/min-age checks ✓; npm preflight complete — `npm whoami` → alejoamiras ✓, all three names free ✓. Repo live: github.com/alejoamiras/ecosystem-tooling. I3 resolved FALSE empirically — lessons/phase-1.md)
 
 - `git init` (`main`), `gh repo create alejoamiras/ecosystem-tooling --public`.
 - Root package.json (private, workspaces, engines node ≥22), bunfig.toml (min-age 7d + generated `@aztec/*` exclusions — **verify glob support empirically; else enumerate from lockfile**), biome.json (+ per-package override scaffolding), commitlint.config.ts, husky (pre-commit: lint-staged incl. `*.nr` → per-package-cwd `aztec-nargo fmt`; commit-msg: commitlint), lint-staged, sort-package-json, tsconfig.base.json, root scripts (`lint`, `lint:actions`, `test:nr`, `test:js`, `compile`, `codegen`, `bench` fan-outs).
@@ -173,7 +173,7 @@ ecosystem-tooling/
 - F5. aztec-ci-actions mapped: setup-aztec version source `config.aztecVersion` (root), install.aztec.network + `aztec-up install`, `~/.aztec` cache, foundry v1.4.1; run-tests runner `ubuntu-latest-m`; **PTY wrapper on BOTH noir and js jobs**; `BASE_PXE_URL` vestigial (nothing consumes it); pre-release = GH prerelease + tarballs. (Clone.)
 - F6. Trusted publishing: no first-publish (npm/cli#8544); GitHub-hosted runners only; **npm CLI ≥11.5.1 + Node ≥22.14**; trusted-publisher configs created after 2026-05-20 must also select **"allowed actions"** (we select `npm publish`) and can bind to a GitHub **environment** (we bind `npm-publish`). (docs.npmjs.com/trusted-publishers, checked 2026-07-01.)
 - F7. Local clones == origin/dev, clean. (git, 2026-07-01.)
-- F8. Published standards package has no entry points (build-package.sh jq assembly); **published tarballs today ship `artifacts/` AND `dist/` mirror AND `target/` AND `deployments.json`, with NO scripts and NO deps** (jq strips both). fee-payment has a proper exports map in-repo.
+- F8 (corrected during Phase 6 verify-tarball). Published standards package has no entry points; tarballs ship `artifacts/` + `dist/` + `target/` + `deployments.json`, NO scripts/deps. **Correction (2026-07-01, legacy 4.2.0 tarball inspected): the compiled layout is NESTED — `artifacts/src/artifacts/*.js` and `dist/src/artifacts/*.js` (tsc rootDir widening), plus `artifacts/target/*.json`** — not flat `artifacts/*.js` as originally reported. Our build reproduces the nested layout byte-for-byte; verify-tarball encodes the real paths; the `./artifacts/*` exports pattern covers nested subpaths.
 - F9 (corrected). Benchmark is a runtime **`dependency` of standards** (package.json:37) — must become devDep at curation; devDep in fee-payment.
 - F10. fee-payment pay_fee/mint covered only by 3 TS integration tests; 7 TXE tests disabled with BLOCKED comments.
 - F11. standards' `postinstall: husky` (package.json:12) would run on consumer installs if published uncurated; bun-only smoke tests mask it (bun blocks untrusted postinstalls).

@@ -19,14 +19,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # skip-proving on BOTH baselines and PR benches — comparisons must be like-for-like
+  # (review finding). Full-proving baselines return when runner capacity allows (roadmap).
   standards:
     name: aztec-standards baseline
     uses: ./.github/workflows/_update-baseline.yml
     with:
       package-dir: packages/aztec-standards
+      skip-proving: true
 
   fee-payment:
     name: aztec-fee-payment baseline
     uses: ./.github/workflows/_update-baseline.yml
     with:
       package-dir: packages/aztec-fee-payment
+      skip-proving: true

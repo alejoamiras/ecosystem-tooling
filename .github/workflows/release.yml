@@ -126,10 +126,34 @@ jobs:
           echo "DIST_TAG=$TAG" >> "$GITHUB_ENV"
           echo "Publishing with dist-tag: $TAG"
 
-      - name: Publish (benchmark → standards → fee-payment)
+      - name: Publish (benchmark → standards → fee-payment, idempotent)
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            if [ "$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
+              echo "@alejoamiras/$pkg@$INPUT_VERSION already published — skipping (re-run after partial failure)"
+              npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" "$DIST_TAG" || true
+              continue
+            fi
             (cd "packages/$pkg" && npm publish --access public --provenance --tag "$DIST_TAG")
+          done
+
+      - name: Remediate canary-as-latest (behavior-agnostic; see canary.yml note)
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+            latest=$(npm view "@alejoamiras/$pkg" dist-tags.latest 2>/dev/null || true)
+            case "$latest" in
+              0.0.0-*)
+                echo "latest for $pkg is a canary ($latest) — preferring removal (no latest until stable)"
+                if ! npm dist-tag rm "@alejoamiras/$pkg" latest; then
+                  echo "WARN: registry refused latest removal; re-pointing latest -> $INPUT_VERSION (least-bad: never a canary)"
+                  npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" latest
+                fi
+                ;;
+            esac
           done
 
       - name: Assert published state (dist-tags + provenance)
@@ -150,7 +174,7 @@ jobs:
             fi
             latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
             case "$latest" in
-              0.0.0-*) echo "ERROR: latest points at a canary ($latest) for $pkg" >&2; fail=1 ;;
+              0.0.0-*) echo "ERROR: latest still points at a canary ($latest) for $pkg after remediation" >&2; fail=1 ;;
             esac
             att=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" dist.attestations.url 2>/dev/null || true)
             if [ -z "$att" ]; then

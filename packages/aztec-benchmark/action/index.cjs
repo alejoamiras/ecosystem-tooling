@@ -52,7 +52,9 @@ async function run() {
       const execOptions = {
         cwd: process.cwd(),
       };
-      const exitCode = await exec.exec('npx aztec-benchmark', cliArgs, execOptions);
+      // Scoped name — the unscoped `aztec-benchmark` registry name is not ours; invoking it
+      // via npx would be a dependency-confusion target on runners without a local install.
+      const exitCode = await exec.exec('npx', ['--yes', '@alejoamiras/aztec-benchmark', ...cliArgs], execOptions);
       if (exitCode !== 0) {
         throw new Error(`Benchmark CLI execution failed with exit code ${exitCode}`);
       }

@@ -22,12 +22,15 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'file', spec: 'node_modules/@alejoamiras/aztec-benchmark/bin/aztec-benchmark' },
     { kind: 'file', spec: 'node_modules/@alejoamiras/aztec-benchmark/action/action.yml' },
   ],
+  // Paths mirror the REAL legacy 4.2.0 tarball layout (verified 2026-07-01: nested
+  // artifacts/src/artifacts/*.js — tsc widens rootDir because bindings import target/*.json).
   'aztec-standards': [
-    { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/Token.js' },
-    { kind: 'import', spec: '@alejoamiras/aztec-standards/dist/Token.js' },
+    { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/src/artifacts/Token.js' },
+    { kind: 'import', spec: '@alejoamiras/aztec-standards/dist/src/artifacts/Token.js' },
+    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/artifacts/target/token_contract-Token.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/target/token_contract-Token.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/deployments.json' },
-    { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/Vault.js' },
+    { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/src/artifacts/Vault.js' },
   ],
   'aztec-fee-payment': [
     { kind: 'import', spec: '@alejoamiras/aztec-fee-payment' },

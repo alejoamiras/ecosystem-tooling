@@ -94,6 +94,9 @@ jobs:
           run-codegen: ${{ inputs.run-codegen }}
           working-directory: ${{ inputs.package-dir }}
 
+      - name: Build benchmark CLI (dist/ is gitignored)
+        run: bun run --cwd packages/aztec-benchmark build
+
       - name: Run benchmarks (PR head)
         working-directory: ${{ inputs.package-dir }}
         env:

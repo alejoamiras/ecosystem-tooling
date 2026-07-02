@@ -63,3 +63,19 @@ All four Criticals adopted; High 5–10 adopted; Medium 11–12 adopted; 13 adop
 8. **F6 refresh**: npm CLI ≥11.5.1 / Node ≥22.14 / GitHub-hosted / "allowed actions" required for configs after 2026-05-20. ADOPTED.
 9. **Cuts suggestion** (defer fee-payment reformat, noExplicitAny debt machinery, hook polish, docs skeleton): PARTIALLY REJECTED → D19. They're cheap and front-loaded; splitting hygiene into later PRs costs more. Recorded as the official cut list if rc.2 timeline pressure hits — codex's position preserved.
 10. **What is now solid** (verbatim): benchmark-first, fresh history, exact internal pins, no workspace:* ambiguity, legacy tarball surface preservation, rc.2 trust tiers, fee-payment vitest/env fixes, Outline B fallback triggers — "the remaining issues are gate precision and release hardening, not architecture."
+
+---
+
+## Post-implementation audit (blueprint protocol final step) — 2026-07-01
+
+- Session: `019f20a7-eaf1-7ac0-94ba-a122d4021595` · xhigh · fresh · audited the BUILT artifact on `chore/aztec-5.0.0-rc.2` + the code-review dispositions as first-class decisions.
+
+### Verdict
+
+`conditional approve (with conditions: fix the benchmark action's unscoped npx execution and restore prerelease dist-tag hygiene)`
+
+### Findings → dispositions
+
+1. **HIGH — dependency confusion in the GitHub Action** (`action/index.cjs:55` shelled `npx aztec-benchmark`; the unscoped registry name is not ours → RCE target on runners without a local install; upstream-inherited). FIXED: `exec.exec('npx', ['--yes', '@alejoamiras/aztec-benchmark', ...cliArgs])` + ncc rebundle.
+2. **HIGH — latest-tag remediation contradicted the plan's "no latest until stable"** AND codex contradicted the code-review verifier on npm first-publish behavior (docs say `--tag` avoids `latest`; verifier claimed the registry always sets it). RESOLVED BEHAVIOR-AGNOSTICALLY: canary attempts `npm dist-tag rm latest` when latest lands on a canary; release retries removal and only re-points latest→rc as the logged least-bad fallback if the registry refuses removal. Auditor disagreement recorded — the code covers both realities.
+3. Skipped code-review findings (FeeWrappedInteraction semantics) judged **defensible** for the compat rc. Idempotency guard's dist-tag re-add judged correct. No further consumer-breaking manifest issues found.
