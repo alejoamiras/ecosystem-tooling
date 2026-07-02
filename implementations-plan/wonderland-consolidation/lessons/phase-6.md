@@ -36,3 +36,9 @@
 1. 1Password unlock → push main + `chore/aztec-5.0.0-rc.2` → PR (body ready: `release-pr-body.md`) → gates green (Phase 5 gate part 1).
 2. `npm login` + A2 scope token in env `npm-publish` → dispatch `canary.yml` → configure trusted publishers ×3 → revoke token (Phase 5 gate part 2).
 3. Merge bump PR → dispatch `release.yml 5.0.0-rc.2` → post-release assertions (Phase 6 gate).
+
+## Addendum — the ghost sandbox & root fan-out serialization (late 2026-07-01)
+
+- Root `bun run --filter '*' test:nr` runs package suites IN PARALLEL → the two TXE suites LMDB-contend with each other (vault 181/187). Root test/bench scripts now serialize via `--cwd` chains.
+- Even serialized runs kept flaking (token 63/65) until the REAL culprit surfaced: the first relocated-sandbox attempt (PID 99380, `--port 18080`, rc.1) survived 4 hours because the restart overwrote the pidfile — every later "teardown" killed the wrong PID. It held a bb SHARED-MEMORY sync ring (`bb-sync-99380-0-0.shm`), poisoning TXE runs machine-wide. Plus a leaked `--txe --port 8081` server from the failing run. Both trees killed (lineage-verified) → clean machine → **`bun run test:nr` 340/340 exit 0 + lint exit 0**.
+- Lessons hardened: pidfile writes must NEVER overwrite before confirming the old process tree is dead; the roadmap run-registry (liveness-reaped rows, one row per RUN not per file) is the structural fix. `| head` exit-masking bit us FOUR times total — banned in this repo's runbooks; always capture `rc=$?` on the command line itself.
