@@ -26,7 +26,8 @@
     "./utils": {
       "import": "./dist/src/ts/utils/index.js",
       "types": "./dist/src/ts/utils/index.d.ts"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/src/ts/index.js",
   "types": "./dist/src/ts/index.d.ts",
