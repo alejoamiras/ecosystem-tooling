@@ -71,7 +71,7 @@ ecosystem-tooling/
 
 > Retry policy: human-driven — reassess after 3 failures on a step; `/loop` autonomous — after 5. Lessons in `lessons/phase-N.md`.
 
-### Phase 1 — Repo bootstrap & skeleton — ALL GATE ITEMS ✓ except `npm whoami` (401 — awaiting user `npm login`; names-free check ✓). Repo live: github.com/alejoamiras/ecosystem-tooling. I3 resolved FALSE empirically (lessons/phase-1.md).
+### Phase 1 ✓ — Repo bootstrap & skeleton (gate FULLY green 2026-07-01: install/lint/actionlint/hooks/min-age checks ✓; npm preflight complete — `npm whoami` → alejoamiras ✓, all three names free ✓. Repo live: github.com/alejoamiras/ecosystem-tooling. I3 resolved FALSE empirically — lessons/phase-1.md)
 
 - `git init` (`main`), `gh repo create alejoamiras/ecosystem-tooling --public`.
 - Root package.json (private, workspaces, engines node ≥22), bunfig.toml (min-age 7d + generated `@aztec/*` exclusions — **verify glob support empirically; else enumerate from lockfile**), biome.json (+ per-package override scaffolding), commitlint.config.ts, husky (pre-commit: lint-staged incl. `*.nr` → per-package-cwd `aztec-nargo fmt`; commit-msg: commitlint), lint-staged, sort-package-json, tsconfig.base.json, root scripts (`lint`, `lint:actions`, `test:nr`, `test:js`, `compile`, `codegen`, `bench` fan-outs).
