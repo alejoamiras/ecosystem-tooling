@@ -112,7 +112,7 @@ ecosystem-tooling/
 
 **Gate** (local network running): `aztec test` **11 green** · `test:js` **11 green** (8 unit + 3 integration incl. L1 bridge + revert paths) · **one integration re-run with non-default `NODE_URL`/`L1_RPC_URL`** against a relocated sandbox (proves env seam) · `benchmark` completes · `bun run lint`. Layers: lint + TXE + integration(+L1) + bench + isolation seam.
 
-### Phase 5 — CI pipeline + canary publish e2e
+### Phase 5 — CI pipeline + canary publish e2e — PIPELINE PROVEN (PR #1: full matrix green ×2 heads; merged d6dc120; baselines seeding on main; spike deleted). REMAINING: canary publish + trusted publishers = user OTP runbook (lessons/phase-5.md)
 
 - `.github/actions/setup-aztec` (composite, hardened): setup-bun + `bun install --frozen-lockfile`; setup-node 24; foundry-toolchain@v1 (v1.4.1); cache `~/.aztec` by version; **version from root `config.aztecVersion`, regex-validated (`^[0-9A-Za-z.+-]+$`), passed via env, quoted everywhere; `curl --fail --proto '=https' --tlsv1.2`**; inputs `start-local-network`/`run-compile`/`run-codegen`/`working-directory`; :8080 readiness poll.
 - `_package-checks.yml` (reusable): noir-tests + js-tests jobs, **both PTY-wrapped** (`script -e -c`), per-package working-directory; bench via `_pr-benchmark.yml`.
@@ -126,7 +126,7 @@ ecosystem-tooling/
 
 **Gate**: actionlint 0 · PR exercising all three gates → `gh pr checks` all green · canary on npm: `npm view` shows `canary` dist-tag ×3 AND **`latest` absent/never `0.0.0-*`** · **npm-client install smoke**: `npm install` (not bun) of each canary in a temp dir + `scripts/verify-tarball.ts` imports every legacy subpath (artifacts/dist/target/deployments.json for standards; exports map for fee-payment; CLI + `action/comparison.cjs` for benchmark) · baselines seeded on main. Layers: lint + TXE + integration + bench (CI) + publish e2e + tarball compat.
 
-### Phase 6 — Aztec 5.0.0-rc.2 bump + THE release
+### Phase 6 — Aztec 5.0.0-rc.2 bump + THE release — LOCAL HALF ✓ + MERGED to main (340/340 TXE, 40/40 vitest, benches, verify-tarball 15/15, audits dispositioned). REMAINING: release.yml dispatch post-canary (user runbook)
 
 - `scripts/bump-aztec.ts`: sweeps root `config.aztecVersion`, every `@aztec/*` pin (deps/devDeps/peerDeps), package versions + internal exact pins (lockstep), every `Nargo.toml` `tag = "v<...>"`, PRD header; **regenerates the bunfig `@aztec/*` min-age exclusion list in two phases** (a new rc can add `@aztec/*` transitives absent from the old lockfile, deadlocking install: use the verified glob if bun supports it, else compute the new `@aztec/*` dependency closure from registry metadata BEFORE `bun install`, then regenerate the exact list from the fresh lockfile after); emits a supply-chain report (publish dates + provenance/attestation status of every bumped `@aztec/*` version) for the PR description.
 - Run `bun scripts/bump-aztec.ts 5.0.0-rc.2` + `bun install`.
