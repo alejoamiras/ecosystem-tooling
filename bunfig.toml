@@ -1,11 +1,13 @@
-# Supply-chain hardening (see implementations-plan/wonderland-consolidation/plan.md §4)
+# Supply-chain hardening
 [install]
 # 7-day quarantine for new npm publishes (supply-chain worm protection).
 minimumReleaseAge = 604800
-# EMPIRICAL (2026-07-01, bun 1.3.13 — lessons/phase-1.md): glob patterns like "@aztec/*" are
-# NOT supported here, and transitives are gated independently — an exclusion must enumerate
-# the full @aztec/* dependency closure. Current pins (5.0.0-rc.1, published 2026-06-15) are
-# older than 7 days, so no exclusions are needed today. `scripts/bump-aztec.ts` (Phase 6)
-# generates the enumerated closure BEFORE bumping to a younger version, and regenerates it
-# from the fresh lockfile after install.
+# EMPIRICAL (bun 1.3.x): glob patterns like "@aztec/*" are NOT supported here, and
+# transitives are gated independently — an exclusion must enumerate the full @aztec/*
+# dependency closure (alias-aware: `viem` resolves to @aztec/viem at its OWN version).
+# @aztec/* is exempted BY DESIGN: lockstep tooling installs upstream the day it ships;
+# compensating controls live in the bump-aztec supply-chain report (publish date,
+# provenance, publisher continuity). NEVER hand-edit the excludes line —
+# `bun scripts/bump-aztec.ts <version>` writes the registry closure pre-bump, and
+# `--regenerate-excludes` rewrites it from the real lockfile post-install (runbook steps).
 minimumReleaseAgeExcludes = ["@aztec/accounts", "@aztec/aztec.js", "@aztec/bb-prover", "@aztec/bb.js", "@aztec/blob-lib", "@aztec/builder", "@aztec/constants", "@aztec/entrypoints", "@aztec/ethereum", "@aztec/foundation", "@aztec/key-store", "@aztec/kv-store", "@aztec/l1-artifacts", "@aztec/native", "@aztec/noir-acvm_js", "@aztec/noir-contracts.js", "@aztec/noir-noir_codegen", "@aztec/noir-noirc_abi", "@aztec/noir-protocol-circuits-types", "@aztec/noir-types", "@aztec/protocol-contracts", "@aztec/pxe", "@aztec/simulator", "@aztec/sqlite3mc-wasm", "@aztec/standard-contracts", "@aztec/stdlib", "@aztec/telemetry-client", "@aztec/viem", "@aztec/wallet-sdk", "@aztec/wallets", "@aztec/world-state"]

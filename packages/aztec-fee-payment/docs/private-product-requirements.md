@@ -2,7 +2,7 @@
 
 **Version**: 1.5
 **Status**: Active
-**Target Aztec Version**: 5.0.0-rc.2
+**Target Aztec Version**: 5.0.0
 **Audience**: Implementation Engineers
 **Date**: May 2026
 
