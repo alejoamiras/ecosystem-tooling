@@ -4,7 +4,7 @@ Bun monorepo consolidating Wonderland's Aztec packages (`aztec-standards`, `azte
 
 ## Current state
 
-**Live**: all three packages released as `@alejoamiras/*@5.0.0-rc.2` on npm (rc + latest dist-tags, provenance attestations) via the tokenless OIDC `release.yml`. The consolidation plan is COMPLETE — `implementations-plan/wonderland-consolidation/plan.md` (decision ledger §7) explains every convention below; `docs/roadmap.md` tracks what's next.
+**Live**: all three packages released as `@alejoamiras/*@5.0.0-rc.2` on npm (rc + latest dist-tags, provenance attestations) via the tokenless OIDC `release.yml`. The consolidation plan is COMPLETE — `implementations-plan/wonderland-consolidation/plan.md` (local-only, untracked; decision ledger §7) explains every convention below; `docs/roadmap.md` tracks what's next.
 
 ## Commands
 

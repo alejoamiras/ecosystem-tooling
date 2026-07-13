@@ -46,7 +46,6 @@ Heads-up for local runs: don't run `aztec test` while a local network is up on t
 
 - [docs/ci-pipeline.md](docs/ci-pipeline.md) — workflow map, release runbook, hard-won npm registry findings
 - [docs/roadmap.md](docs/roadmap.md) — deferred work and future plans
-- [implementations-plan/](implementations-plan/) — the full consolidation plan, audits, decision ledger, and per-phase lessons
 
 ## Attribution & license
 

@@ -1,4 +1,4 @@
-# deps / builds
+# ── deps / builds ────────────────────────────────────────────────────────────
 node_modules/
 dist/
 target/
@@ -7,11 +7,13 @@ src/artifacts/
 action/dist/
 codegenCache.json
 *.tsbuildinfo
+*.tgz
 packages/aztec-standards/artifacts/
 packages/aztec-standards/deployments.json
 
-# aztec / test state
+# ── aztec / test state ───────────────────────────────────────────────────────
 log/
+*.log
 store*/
 pxe_data*/
 wallet_data*/
@@ -19,6 +21,11 @@ pxe-test*/
 benchmarks/*.benchmark.json
 .run-state/
 
-# env / os
+# ── local-only (never published with the repo) ──────────────────────────────
+.claude/
+implementations-plan/
+
+# ── env / OS ─────────────────────────────────────────────────────────────────
 .env
+.env.local
 .DS_Store
