@@ -47,6 +47,7 @@
     "test": "bun run test:nr && bun run test:js",
     "test:js": "vitest run",
     "test:nr": "aztec test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "upload:artifacts": "tsx scripts/upload-artifact.ts"
   },
   "devDependencies": {

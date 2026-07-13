@@ -12,14 +12,12 @@
   "type": "module",
   "exports": {
     "./artifacts/*": "./artifacts/*",
-    "./dist/*": "./dist/*",
     "./target/*": "./target/*",
     "./deployments.json": "./deployments.json",
     "./package.json": "./package.json"
   },
   "files": [
     "artifacts",
-    "dist",
     "target",
     "deployments.json",
     "README.md",
@@ -36,7 +34,8 @@
     "deploy": "NODE_NO_WARNINGS=1 tsx scripts/deploy.ts",
     "test": "bun run test:nr && bun run test:js",
     "test:js": "vitest run",
-    "test:nr": "aztec test"
+    "test:nr": "aztec test",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "devDependencies": {
     "@alejoamiras/aztec-benchmark": "5.0.0",

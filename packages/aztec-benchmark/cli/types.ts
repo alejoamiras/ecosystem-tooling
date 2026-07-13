@@ -1,7 +1,7 @@
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
 import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { SystemInfo } from './systemInfo.js';
 
 export type { SystemInfo } from './systemInfo.js';
@@ -22,7 +22,9 @@ export type GasLimits = {
 
 /** Benchmark specific setup/teardown context */
 export interface BenchmarkContext {
-  wallet?: EmbeddedWallet;
+  /** Typed as the Wallet interface so suite contexts can extend with any wallet
+   *  implementation; the CLI narrows structurally for lifecycle calls (stop). */
+  wallet?: Wallet;
   /** Optional fee payment method used when sending profiled transactions.
    *  When set, the profiler passes this to every send/prove call.
    *  When unset, the sender must have pre-existing Fee Juice. */

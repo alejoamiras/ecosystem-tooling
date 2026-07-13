@@ -6,7 +6,7 @@ import {
 } from '@aztec/aztec.js/authorization';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { ContractDeployer } from '@aztec/aztec.js/deployment';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fq, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 
@@ -104,7 +104,7 @@ describe('Token', () => {
 
   it('mint in public, prepare partial note and finalize it', async () => {
     // We create a new account manager for bob and override the address for this test
-    const bobAccountManager = await wallet.createSchnorrAccount(Fr.random(), Fr.random());
+    const bobAccountManager = await wallet.createSchnorrAccount(Fr.random(), Fr.random(), Fq.random());
     const bob = bobAccountManager.address;
 
     const { receipt: mintTx } = await token.methods.mint_to_public(alice, AMOUNT).send({ from: alice });

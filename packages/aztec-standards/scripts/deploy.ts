@@ -1,6 +1,8 @@
 import 'dotenv/config';
 
+import { deriveSecretKeyFromSigningKey } from '@aztec/accounts/utils';
 import type { AztecAddressLike, ContractArtifact, FieldLike } from '@aztec/aztec.js/abi';
+import { NO_FROM } from '@aztec/aztec.js/account';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import {
   Contract,
@@ -9,13 +11,12 @@ import {
   type InteractionFeeOptions,
 } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fq, Fr } from '@aztec/aztec.js/fields';
 import { PublicKeys } from '@aztec/aztec.js/keys';
 import { type AztecNode, createAztecNodeClient } from '@aztec/aztec.js/node';
 import { TxStatus } from '@aztec/aztec.js/tx';
 import type { AccountManager, Wallet } from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import { poseidon2Hash } from '@aztec/foundation/crypto/poseidon';
 import { createLogger } from '@aztec/foundation/log';
 import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
@@ -122,9 +123,9 @@ function getDeploymentData(
 // --- CLI ---
 
 interface CLIOptions {
-  deployerSecret?: string;
   dryRun?: boolean;
   output?: string;
+  writeDeployments?: boolean;
   network: Network;
 }
 
@@ -196,7 +197,9 @@ async function deployAccount(
   logger.info(`Deploying account contract at ${address.toString()}...`);
   try {
     const deployMethod = await manager.getDeployMethod();
-    const result = await deployMethod.send({ fee: feeOptions, from: AztecAddress.ZERO });
+    // 5.0.0: self-paid account deploys use the NO_FROM sentinel (AztecAddress.ZERO now
+    // fails with "Account 0x00…00 does not exist on this wallet").
+    const result = await deployMethod.send({ fee: feeOptions, from: NO_FROM });
     logger.info(`Account contract deployed at ${result.contract.address.toString()}`);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -396,18 +399,32 @@ export async function deployContracts(options: CLIOptions, config: DeploymentCon
 
   const nodeUrl = config.network.nodeUrl;
 
-  const deployerSecretStr = options.deployerSecret || process.env.DEPLOYER_SECRET;
-  if (!deployerSecretStr || deployerSecretStr.trim().length === 0) {
-    throw new Error('Deployer secret is required (use --deployer-secret or DEPLOYER_SECRET env var)');
+  // Dev utility (not published): at 5.0.0 the signing key is the account's ownership root.
+  // Env-only (never argv — shell history), strict when provided, random for throwaway runs.
+  const signingKeyHex = process.env.DEPLOYER_SIGNING_KEY;
+  let signingKey: Fq;
+  if (signingKeyHex && signingKeyHex.trim().length > 0) {
+    const v = BigInt(signingKeyHex.trim());
+    if (v <= 0n || v >= Fq.MODULUS) {
+      throw new Error('DEPLOYER_SIGNING_KEY must be a hex scalar in (0, Fq.MODULUS) — no reduction applied');
+    }
+    signingKey = new Fq(v);
+  } else {
+    signingKey = Fq.random();
+    logger.warn(
+      'DEPLOYER_SIGNING_KEY not set — using a RANDOM signing key (throwaway account, address not reproducible)',
+    );
   }
-  const deployerSecret = await poseidon2Hash([Fr.fromBufferReduce(Buffer.from(deployerSecretStr, 'utf8'))]);
+  const deployerSecret = await deriveSecretKeyFromSigningKey(signingKey);
 
   const node = createAztecNodeClient(nodeUrl);
   const isLocalNetwork = config.network.name === 'local-network';
   const wallet = await EmbeddedWallet.create(nodeUrl, {
     pxe: {
       proverEnabled: !isLocalNetwork,
-      dataDirectory: config.deployer.dataDirectory,
+      // 5.0.0 resets PXE stores on schema change; DEPLOYER_DATA_DIR lets test runs
+      // use a scratch dir instead of the configured persistent one (run isolation).
+      dataDirectory: process.env.DEPLOYER_DATA_DIR ?? config.deployer.dataDirectory,
       dataStoreMapSizeKb: 1e6,
     },
   });
@@ -417,7 +434,7 @@ export async function deployContracts(options: CLIOptions, config: DeploymentCon
     const nodeInfo = await node.getNodeInfo();
     logger.info(`Connected to Aztec node version: ${nodeInfo.nodeVersion}`);
 
-    const manager = await wallet.createSchnorrAccount(deployerSecret, Fr.ZERO);
+    const manager = await wallet.createSchnorrAccount(deployerSecret, Fr.ZERO, signingKey);
     const account = await manager.getAccount();
     logger.info(`Account created: ${account.getAddress().toString()}`);
 
@@ -518,8 +535,8 @@ const program = new Command();
 program
   .name('deploy')
   .description('Deploy Aztec Standards contracts')
-  .version(packageJson.version)
-  .option('--deployer-secret <secret>', 'Deployer secret (or use DEPLOYER_SECRET env var)')
+  .version(String(packageJson.version))
+  .option('--write-deployments', 'Update src/deployments.json with the deployed addresses (off by default)')
   .option('--dry-run', 'Show configuration without deploying')
   .option('--output <file>', 'Write deployment JSON to file')
   .addOption(
@@ -534,7 +551,7 @@ program
       const result = await deployContracts(options, activeConfig);
       logDeployedContracts(result.contracts);
 
-      if (!options.dryRun) {
+      if (!options.dryRun && options.writeDeployments) {
         const tokenAddresses = Object.fromEntries(
           Object.entries(result.contracts.tokens).map(([k, v]) => [k, v.contract.address]),
         );
