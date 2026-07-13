@@ -3,7 +3,7 @@ use bignum::U512;
 use sha512::sha512;
 
 use aztec::protocol::constants::{
-    DEFAULT_FBPK_M_HASH, DEFAULT_MSPK_M_HASH, DOM_SEP__IVSK_M, DOM_SEP__NHK_M, DOM_SEP__OVSK_M,
+    DOM_SEP__FBSK_M, DOM_SEP__IVSK_M, DOM_SEP__MSSK_M, DOM_SEP__NHK_M, DOM_SEP__OVSK_M,
     DOM_SEP__TSK_M,
 };
 use aztec::protocol::point::EmbeddedCurvePoint;
@@ -116,7 +116,7 @@ pub fn derive_master_tagging_secret_key(secret_key: Field) -> EmbeddedCurveScala
     sha512_to_grumpkin_scalar(secret_key, DOM_SEP__TSK_M)
 }
 
-/// Derive all four master secret keys at once from a secret key
+/// Derive all six master secret keys at once from a secret key
 /// Optimized to serialize the secret key only once and reuse the buffer
 pub fn derive_keys(secret_key: Field) -> MasterSecretKeys {
     let sk_bytes: [u8; 32] = secret_key.to_be_bytes();
@@ -137,7 +137,13 @@ pub fn derive_keys(secret_key: Field) -> MasterSecretKeys {
     set_generator_index(&mut buffer, DOM_SEP__TSK_M);
     let tsk_m = hash_and_reduce(buffer);
 
-    MasterSecretKeys { nhk_m, ivsk_m, ovsk_m, tsk_m }
+    set_generator_index(&mut buffer, DOM_SEP__MSSK_M);
+    let mssk_m = hash_and_reduce(buffer);
+
+    set_generator_index(&mut buffer, DOM_SEP__FBSK_M);
+    let fbsk_m = hash_and_reduce(buffer);
+
+    MasterSecretKeys { nhk_m, ivsk_m, ovsk_m, tsk_m, mssk_m, fbsk_m }
 }
 
 /// @notice Derives public keys from master secret keys.
@@ -148,14 +154,18 @@ pub fn master_secret_keys_to_public_keys(master_secret_keys: MasterSecretKeys) -
     let ivpk_m: EmbeddedCurvePoint = fixed_base_scalar_mul(master_secret_keys.ivsk_m);
     let ovpk_m: EmbeddedCurvePoint = fixed_base_scalar_mul(master_secret_keys.ovsk_m);
     let tpk_m: EmbeddedCurvePoint = fixed_base_scalar_mul(master_secret_keys.tsk_m);
+    // Aztec 5.0.0: upstream deriveKeys dropped the DEFAULT_{MSPK,FBPK}_M_HASH placeholders —
+    // message-signing and fallback keys are genuinely derived and hashed into PublicKeys.
+    let mspk_m: EmbeddedCurvePoint = fixed_base_scalar_mul(master_secret_keys.mssk_m);
+    let fbpk_m: EmbeddedCurvePoint = fixed_base_scalar_mul(master_secret_keys.fbsk_m);
 
     PublicKeys {
         npk_m_hash: hash_public_key(npk_m),
         ivpk_m: IvpkM { inner: ivpk_m },
         ovpk_m_hash: hash_public_key(ovpk_m),
         tpk_m_hash: hash_public_key(tpk_m),
-        mspk_m_hash: DEFAULT_MSPK_M_HASH,
-        fbpk_m_hash: DEFAULT_FBPK_M_HASH,
+        mspk_m_hash: hash_public_key(mspk_m),
+        fbpk_m_hash: hash_public_key(fbpk_m),
     }
 }
 

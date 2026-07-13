@@ -36,7 +36,7 @@ Users bridging FeeJuice (FJ) from L1 into Aztec must deposit via `FeeJuicePortal
 
 **As a user who bridged FJ to the FPC on L1**, I want internal FJ so I can sponsor transactions:
 
-- L1: `FeeJuicePortal.depositToAztecPublic(_to=FPC, _amount, _secretHash)` where `_secretHash = compute_secret_hash(derive_bridge_secret(salt, claimer))`
+- L1: `FeeJuicePortal.depositToAztecPublic(_to=FPC, _amount, _secretHash)` where `_secretHash = compute_secret_hash([derive_bridge_secret(salt, claimer)])`
 - L2 (can batch in same tx):
   - `FeeJuice.claim(FPC, amount, secret, leaf_index)`
   - `FPC.mint(amount, salt, leaf_index)` with my wallet
@@ -57,7 +57,7 @@ Users bridging FeeJuice (FJ) from L1 into Aztec must deposit via `FeeJuicePortal
 | BR-1 | **Private `mint`**                | `mint(amount, salt, leaf_index)`; claimer = `msg_sender`. Fully private, no public call.                                                                                                                                                                                                                     | Planned |
 | BR-2 | **Destination check**             | Content hash encodes recipient=FPC. Reconstruct `get_bridge_gas_msg_hash(FPC_address, amount)` — identical to `FeeJuicePortal` encoding.                                                                                                                                                                     | Planned |
 | BR-3 | **Bridge claim proof**            | Assert FeeJuice nullifier exists via private `assert_nullifier_exists`. Supports pending (same-tx) and settled.                                                                                                                                                                                              | Planned |
-| BR-4 | **Claimer auth**                  | `secretHash = compute_secret_hash(poseidon2([salt, claimer], DOM_SEP__FPC_BRIDGE_SECRET))`; L1 deposit uses this hash. Only the claimer can reproduce the secret.                                                                                                                                            | Planned |
+| BR-4 | **Claimer auth**                  | `secretHash = compute_secret_hash([poseidon2([salt, claimer], DOM_SEP__FPC_BRIDGE_SECRET)])`; L1 deposit uses this hash. Only the claimer can reproduce the secret.                                                                                                                                            | Planned |
 | BR-5 | **Double-spend prevention**       | FPC emits siloed nullifier (same raw value, siloed under FPC address); distinct from FeeJuice's siloed nullifier. Second `mint` call with same deposit fails.                                                                                                                                                | Planned |
 | BR-6 | **Correct amount**                | `amount` must match the bridged amount exactly; mismatch yields a wrong nullifier that fails the existence check.                                                                                                                                                                                            | Planned |
 | BR-7 | **Cold-start `mint_and_pay_fee`** | `mint_and_pay_fee(amount, salt, leaf_index)` combines bridge claim proof with fee payment in one call. Asserts `amount >= max_gas_cost`; credits `amount - max_gas_cost` to claimer; sets FPC as fee payer. Same security guarantees as `mint` (claimer auth, nullifier existence, double-spend prevention). | Planned |
@@ -123,7 +123,7 @@ L2:  FeeJuice.claim(FPC, amount, secret, leaf_index)
 // FeeJuicePortal.sol
 function depositToAztecPublic(bytes32 _to, uint256 _amount, bytes32 _secretHash)
 // contentHash = sha256(abi.encodeWithSignature("claim(bytes32,uint256)", _to, _amount))
-// _secretHash = compute_secret_hash(derive_bridge_secret(salt, claimer_aztec_address))
+// _secretHash = compute_secret_hash([derive_bridge_secret(salt, claimer_aztec_address)])
 ```
 
 ### Cryptographic Design
@@ -132,7 +132,7 @@ function depositToAztecPublic(bytes32 _to, uint256 _amount, bytes32 _secretHash)
 
 ```
 secret = poseidon2_hash_with_separator([salt, claimer.to_field()], DOM_SEP__FPC_BRIDGE_SECRET)
-secretHash = compute_secret_hash(secret)
+secretHash = compute_secret_hash([secret])
 ```
 
 Domain separator (`poseidon2_hash_bytes("az_dom_sep__fpc_bridge_secret")` = `3952304070` / `0xEB935FC6`) avoids collisions with other poseidon2 usages. Only the claimer (the specific Aztec address) can reproduce the secret.
@@ -148,7 +148,7 @@ The 4-byte selector is computed at compile-time via `comptime { keccak256::kecca
 **FeeJuice nullifier reconstruction**:
 
 ```
-secret_hash = compute_secret_hash(secret)
+secret_hash = compute_secret_hash([secret])
 message_hash = sha256(portal_eth_addr | chain_id | FEE_JUICE_L2_ADDR | version | content_hash | secret_hash | leaf_index)
 feejuice_nullifier = poseidon2([message_hash, secret], DOM_SEP__MESSAGE_NULLIFIER)
 ```
@@ -295,3 +295,4 @@ The FPC's public FeeJuice balance (used to pay sequencers) is funded separately 
 | 1.4.2   | 2026-05-20 | Updated Target Aztec Version from `4.3.0-rc.1` to `4.3.0` (final release) to match package dependencies. No code or spec changes — version bump only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 1.5     | 2026-06-15 | Upgrade to Aztec 5.0.0-rc.1: MessageDelivery API + gas-estimation API adaptation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 1.5.1   | 2026-06-25 | **SDK input hardening**: `estimateGasSettings` now validates `estimatedGasPadding` up front — throws if it is not a non-negative finite number (rejects `NaN`/`Infinity`/negative; `0` allowed), failing fast before the simulation round-trip. Mirrors the existing `maxFeeMultiplier` (`normalizeMultiplier`) validation. Happy-path behavior unchanged for valid inputs.                                                                                                                                                                                                                                                                            |
+| 1.5.2   | 2026-07-13 | Aztec `5.0.0` (stable) migration: `compute_secret_hash` / `compute_l1_to_l2_message_nullifier` now take the secret as `[Field; N]` — contract wraps its single-field bridge secret as `[secret]` (N=1 hashes are unchanged upstream, so all previously derived hashes/addresses are preserved). All PRD formula sites updated to the array form. Target Aztec Version bumped `5.0.0-rc.2` → `5.0.0`. No spec-level / public-API / security-property changes. |

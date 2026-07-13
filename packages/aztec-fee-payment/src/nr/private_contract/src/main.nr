@@ -113,7 +113,7 @@ pub contract PrivateFPC {
     ///   1. On L1: FeeJuicePortal.depositToAztecPublic(
     ///        _to        = this_fpc_address,
     ///        _amount    = amount,
-    ///        _secretHash = compute_secret_hash(derive_bridge_secret(salt, claimer_aztec_address))
+    ///        _secretHash = compute_secret_hash([derive_bridge_secret(salt, claimer_aztec_address)])
     ///      )
     ///   2. On L2: FeeJuice.claim(
     ///        to                 = this_fpc_address,
@@ -225,7 +225,7 @@ pub contract PrivateFPC {
     ///
     /// Only the claimer can compute this, since it binds their Aztec address.
     /// The corresponding L1 secretHash must be:
-    ///   compute_secret_hash(derive_bridge_secret(salt, claimer_aztec_address))
+    ///   compute_secret_hash([derive_bridge_secret(salt, claimer_aztec_address)])
     ///
     /// @param salt    A random value chosen by the claimer at deposit time.
     /// @param claimer The Aztec address of the claimer.
@@ -272,7 +272,7 @@ pub contract PrivateFPC {
     /// @notice Reconstructs the nullifier that FeeJuice.claim emits when consuming the bridge message.
     ///
     /// FeeJuice.claim calls consume_l1_to_l2_message which:
-    ///   1. Derives secret_hash = compute_secret_hash(secret)
+    ///   1. Derives secret_hash = compute_secret_hash([secret])
     ///   2. Computes message_hash = sha256(portal | chain_id | fee_juice_l2 | version | content | secret_hash | leaf_index)
     ///   3. Emits nullifier = poseidon2([message_hash, secret], DOM_SEP__MESSAGE_NULLIFIER)
     ///
@@ -301,7 +301,9 @@ pub contract PrivateFPC {
     ) -> Field {
         let secret = derive_bridge_secret(salt, claimer);
         let content_hash = get_bridge_gas_msg_hash(fpc_address, amount);
-        let secret_hash = compute_secret_hash(secret);
+        // 5.0.0: secrets are [Field; N]; N=1 hashes are unchanged, so wrapping preserves
+        // every hash derived pre-migration.
+        let secret_hash = compute_secret_hash([secret]);
 
         let fee_juice_portal = EthAddress::from_field(FEE_JUICE_ADDRESS.to_field());
 
@@ -315,7 +317,7 @@ pub contract PrivateFPC {
             leaf_index,
         );
 
-        compute_l1_to_l2_message_nullifier(message_hash, secret)
+        compute_l1_to_l2_message_nullifier(message_hash, [secret])
     }
 
 }
