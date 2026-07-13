@@ -185,7 +185,9 @@ jobs:
           - Migrating from `@defi-wonderland/*`: scope swap + `dist/…` imports move to `artifacts/…` — [migration table](https://github.com/alejoamiras/ecosystem-tooling#migrating-from-defi-wonderland)
           TEMPLATE
           sed -i "s/__VERSION__/$INPUT_VERSION/g; s/__AZTEC_VERSION__/$AZTEC_VERSION/g; s/__DIST_TAG__/$DIST_TAG/g" release-notes.md
-          grep -q "__" release-notes.md && { echo "unreplaced placeholder in notes" >&2; exit 1; } || true
+          if grep -q "__" release-notes.md; then
+            echo "unreplaced placeholder in notes" >&2; exit 1
+          fi
       - uses: actions/upload-artifact@v6
         with:
           name: release-notes
