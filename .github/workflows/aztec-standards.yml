@@ -48,6 +48,7 @@ jobs:
     uses: ./.github/workflows/_package-checks.yml
     with:
       package-dir: packages/aztec-standards
+      min-txe-tests: 329
 
   benchmark:
     name: Benchmark

@@ -23,6 +23,10 @@ on:
         description: Per-job timeout in minutes
         type: number
         default: 60
+      min-txe-tests:
+        description: Minimum TXE tests that must EXECUTE (0 = skip the floor check). Exit codes alone let silently-skipped suites pass.
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -41,9 +45,12 @@ jobs:
           run-compile: 'true'
           run-codegen: 'false'
           working-directory: ${{ inputs.package-dir }}
-      - name: Run TXE suite (PTY-wrapped)
+      - name: Run TXE suite (PTY-wrapped, transcript kept for the count floor)
         working-directory: ${{ inputs.package-dir }}
-        run: script -e -c "aztec test" /dev/null
+        run: script -e -c "aztec test" txe-transcript.log
+      - name: Enforce TXE count floor
+        if: inputs.min-txe-tests > 0
+        run: ./scripts/check-txe-counts.sh "${{ inputs.package-dir }}/txe-transcript.log" "${{ inputs.min-txe-tests }}"
 
   js-tests:
     name: JS integration tests
@@ -58,6 +65,11 @@ jobs:
           run-compile: 'true'
           run-codegen: 'true'
           working-directory: ${{ inputs.package-dir }}
+      - name: Build workspace type dependencies (benchmark dist consumed by suite typings)
+        run: bun run --cwd packages/aztec-benchmark build
+      - name: Typecheck (full surface — src, tests, benchmarks, scripts)
+        working-directory: ${{ inputs.package-dir }}
+        run: bun run typecheck
       - name: Run vitest suite (PTY-wrapped)
         working-directory: ${{ inputs.package-dir }}
         run: script -e -c "NODE_NO_WARNINGS=1 bunx vitest run" /dev/null
