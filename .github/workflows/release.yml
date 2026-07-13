@@ -366,7 +366,10 @@ jobs:
               continue
             fi
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
-            npm publish "$tgz" --access public --provenance --tag "$DIST_TAG"
+            # ./ prefix is load-bearing: without it npm's spec parser reads
+            # "release-tarballs/<file>" as a GitHub owner/repo shorthand and
+            # tries `git ls-remote ssh://git@github.com/...` (rehearsal #1 failure).
+            npm publish "./$tgz" --access public --provenance --tag "$DIST_TAG"
           done
 
       - name: Remediate canary-as-latest (release mode only; best-effort — OIDC grants publish ONLY)
