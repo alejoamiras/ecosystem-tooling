@@ -1,0 +1,6 @@
+{
+  "$comment": "Canonical PrivateFPC deployment parameters. The address is derived from compiled bytecode + salt: it is ONLY valid for the exact aztecVersion below (see README DANGER block — funds sent to a stale address are unrecoverable). The canonical salt is a fixed project constant from 5.0.0 onward (plan aztec-5-stable, Ask A7); rc-era computations used operator-local salts and are not canonical. Machine-asserted by src/ts/test/canonical.test.ts — regenerate via `PRIVATE_FPC_SALT=<salt> bun run compute` after any Aztec version bump and update this file in the same commit.",
+  "aztecVersion": "5.0.0",
+  "salt": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "expectedAddress": "0x257aa8701e8801b2c03a6b03cdf385c4fa9200efda1dc41f94a905980efc86e9"
+}

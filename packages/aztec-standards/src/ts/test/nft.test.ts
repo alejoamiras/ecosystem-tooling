@@ -6,7 +6,7 @@ import {
 } from '@aztec/aztec.js/authorization';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { ContractDeployer } from '@aztec/aztec.js/deployment';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fq, Fr } from '@aztec/aztec.js/fields';
 import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type NFTContract, NFTContractArtifact } from '../../../src/artifacts/NFT.js';
@@ -94,7 +94,7 @@ describe('NFT', () => {
       await assertOwnsPrivateNFT(nft, tokenId, alice, true);
 
       // We create a new account manager for bob and override the address for this test
-      const bobAccountManager = await wallet.createSchnorrAccount(Fr.random(), Fr.random());
+      const bobAccountManager = await wallet.createSchnorrAccount(Fr.random(), Fr.random(), Fq.random());
       const bob = bobAccountManager.address;
 
       // Generate the commitment

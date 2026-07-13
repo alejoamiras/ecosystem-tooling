@@ -172,7 +172,9 @@ program
               await pxe.blockStateSynchronizer.blockStream?.stop();
               await pxe.blockStateSynchronizer.store?.close();
             }
-            await runContext.wallet.stop();
+            // stop() is EmbeddedWallet lifecycle, not part of the Wallet interface —
+            // narrow structurally so any wallet implementation remains accepted.
+            await (runContext.wallet as { stop?: () => Promise<void> }).stop?.();
             // Close leftover HTTP keep-alive sockets
             for (const h of (process as any)._getActiveHandles()) {
               if (h?.constructor?.name === 'Socket' && !h.destroyed) h.destroy();

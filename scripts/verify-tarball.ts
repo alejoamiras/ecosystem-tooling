@@ -13,7 +13,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
-type Check = { kind: 'import' | 'require' | 'file' | 'json'; spec: string };
+type Check = { kind: 'import' | 'require' | 'file' | 'json' | 'absent-dir'; spec: string };
 
 const CHECKS: Record<string, Check[]> = {
   'aztec-benchmark': [
@@ -24,13 +24,15 @@ const CHECKS: Record<string, Check[]> = {
   ],
   // Paths mirror the REAL legacy 4.2.0 tarball layout (verified 2026-07-01: nested
   // artifacts/src/artifacts/*.js — tsc widens rootDir because bindings import target/*.json).
+  // The legacy dist/ mirror was REMOVED at 5.0.0 ("deprecate at stable") — the negative
+  // check below keeps it from silently coming back and bloating the tarball again.
   'aztec-standards': [
     { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/src/artifacts/Token.js' },
-    { kind: 'import', spec: '@alejoamiras/aztec-standards/dist/src/artifacts/Token.js' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/artifacts/target/token_contract-Token.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/target/token_contract-Token.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/deployments.json' },
     { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/src/artifacts/Vault.js' },
+    { kind: 'absent-dir', spec: 'dist/' },
   ],
   'aztec-fee-payment': [
     { kind: 'import', spec: '@alejoamiras/aztec-fee-payment' },
@@ -45,6 +47,13 @@ const run = (cmd: string, args: string[], cwd: string) =>
   execFileSync(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'inherit'] })
     .toString()
     .trim();
+
+// Zero args used to print "all surfaces OK" having checked nothing (audit finding: vacuous
+// gate). A verification script with no work is a misconfigured invocation, not a pass.
+if (process.argv.length <= 2) {
+  console.error('verify-tarball: no package directories given — refusing to report success on zero checks');
+  process.exit(1);
+}
 
 let failures = 0;
 
@@ -62,10 +71,12 @@ for (const pkgDirArg of process.argv.slice(2)) {
   const packJson = JSON.parse(run('npm', ['pack', '--json'], pkgDir));
   const tarball = join(pkgDir, packJson[0].filename);
 
+  const tarEntries = run('tar', ['tzf', tarball], pkgDir).split('\n');
+
   // No stray build debris in published artifacts (e.g. aztec inspect-contract *.bak backups).
-  const debris = run('tar', ['tzf', tarball], pkgDir)
-    .split('\n')
-    .filter((f) => f.endsWith('.bak') || f.endsWith('.tsbuildinfo') || f.includes('codegenCache'));
+  const debris = tarEntries.filter(
+    (f) => f.endsWith('.bak') || f.endsWith('.tsbuildinfo') || f.includes('codegenCache'),
+  );
   if (debris.length > 0) {
     console.error(`  ✗ tarball contains build debris:\n    ${debris.join('\n    ')}`);
     failures++;
@@ -84,7 +95,14 @@ for (const pkgDirArg of process.argv.slice(2)) {
 
     for (const check of checks) {
       try {
-        if (check.kind === 'import') {
+        if (check.kind === 'absent-dir') {
+          const present = tarEntries.filter((f) => f.startsWith(`package/${check.spec}`));
+          if (present.length > 0) {
+            throw new Error(
+              `${present.length} tarball entries under ${check.spec} (expected none), e.g. ${present[0]}`,
+            );
+          }
+        } else if (check.kind === 'import') {
           execFileSync('node', ['--input-type=module', '-e', `await import(${JSON.stringify(check.spec)});`], {
             cwd: tmp,
             stdio: ['ignore', 'ignore', 'pipe'],

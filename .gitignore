@@ -23,7 +23,8 @@ benchmarks/*.benchmark.json
 
 # ── local-only (never published with the repo) ──────────────────────────────
 .claude/
-implementations-plan/
+# no trailing slash: also matches a worktree-local SYMLINK to the root clone's dir
+implementations-plan
 
 # ── env / OS ─────────────────────────────────────────────────────────────────
 .env

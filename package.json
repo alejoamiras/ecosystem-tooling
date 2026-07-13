@@ -24,7 +24,8 @@
     "prepare": "husky",
     "test": "bun run test:nr && bun run test:js",
     "test:js": "bun run --cwd packages/aztec-standards test:js && bun run --cwd packages/aztec-fee-payment test:js",
-    "test:nr": "bun run --cwd packages/aztec-standards test:nr && bun run --cwd packages/aztec-fee-payment test:nr"
+    "test:nr": "bun run --cwd packages/aztec-standards test:nr && bun run --cwd packages/aztec-fee-payment test:nr",
+    "typecheck": "bun run --cwd packages/aztec-standards typecheck && bun run --cwd packages/aztec-fee-payment typecheck && bun run --cwd packages/aztec-benchmark typecheck"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json}": [
@@ -44,7 +45,7 @@
     ]
   },
   "config": {
-    "aztecVersion": "5.0.0-rc.2"
+    "aztecVersion": "5.0.0"
   },
   "overrides": {
     "@noble/hashes": "1.8.0"

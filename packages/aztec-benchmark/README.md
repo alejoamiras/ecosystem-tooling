@@ -134,6 +134,9 @@ export default class MyContractBenchmark extends Benchmark {
     const fullConfig = { ...config, l1Contracts };
     // IMPORTANT: true enables proof generation for the benchmark, set it to false when using --skip-proving
     fullConfig.proverEnabled = true;
+    // PXE wipes any store whose schema version differs from the running PXE's (Aztec 5.0.0+
+    // resets on upgrade) — a hardcoded version can resurrect or mask a stale store, so use a
+    // fresh dataDirectory per toolchain version when in doubt.
     const pxeVersion = 2;
     const store = await createStore('pxe', pxeVersion, {
       dataDirectory: 'store',

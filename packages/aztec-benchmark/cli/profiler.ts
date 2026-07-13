@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
 import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import type { Wallet } from '@aztec/aztec.js/wallet';
 import { getSystemInfo } from './systemInfo.js';
 import type { Gas, GasLimits, NamedBenchmarkedInteraction, ProfileReport, ProfileResult } from './types.js';
 
@@ -38,7 +38,7 @@ export class Profiler {
   #feePaymentMethod?: FeePaymentMethod;
 
   /** @param _wallet - Unused, kept for backward compatibility with existing callers. */
-  constructor(_wallet?: EmbeddedWallet, options?: ProfilerOptions) {
+  constructor(_wallet?: Wallet, options?: ProfilerOptions) {
     this.#skipProving = options?.skipProving ?? false;
     this.#feePaymentMethod = options?.feePaymentMethod;
   }

@@ -3,7 +3,6 @@ use aztec::{
     event::{event_interface::EventInterface, EventSelector},
     protocol::{
         address::AztecAddress,
-        constants::{DEFAULT_FBPK_M_HASH, DEFAULT_MSPK_M_HASH},
         point::EmbeddedCurvePoint,
         public_keys::{IvpkM, PublicKeys},
         traits::Serialize,
@@ -55,6 +54,11 @@ pub unconstrained fn get_test_vector() -> (PublicKeys, Field, PublicKeys, Field)
     let ovpk_y_1: Field = 0x2bf93b572014c0501320f338b72ad5286cdaea06062814e6f12cf3e63b67c0ce;
     let tpk_x_1: Field = 0x0c4ffde4cefc58fa18045ee1249d0d2fc9f65a2308f408c6a5f1feff56778c1a;
     let tpk_y_1: Field = 0x1ef6fce001c800647bb2b7137517181306c713f671c0e65339dd11d57c863ee8;
+    // mspk/fbpk genuinely derived since Aztec 5.0.0 (vectors from upstream @aztec/stdlib deriveKeys)
+    let mspk_x_1: Field = 0x273d37fb091724edc9703a2ee2e363d51c4d7439fd9eefe0c9b858e0ae0345e7;
+    let mspk_y_1: Field = 0x27ec9691bd4502b97d2304b086f4b76e0c855cc6993b62e6350c93d34566448e;
+    let fbpk_x_1: Field = 0x1da22b8e96ea850a3ead5051c23ed138d6c72aee956805d79b8dd04b774b2f04;
+    let fbpk_y_1: Field = 0x1225692855026af59110e167df880f3c0048ca39e2b0b1ec772fccc98c7b9e42;
 
     let public_keys_1 = PublicKeys {
         npk_m_hash: aztec::protocol::public_keys::hash_public_key(
@@ -67,8 +71,12 @@ pub unconstrained fn get_test_vector() -> (PublicKeys, Field, PublicKeys, Field)
         tpk_m_hash: aztec::protocol::public_keys::hash_public_key(
             EmbeddedCurvePoint { x: tpk_x_1, y: tpk_y_1 },
         ),
-        mspk_m_hash: DEFAULT_MSPK_M_HASH,
-        fbpk_m_hash: DEFAULT_FBPK_M_HASH,
+        mspk_m_hash: aztec::protocol::public_keys::hash_public_key(
+            EmbeddedCurvePoint { x: mspk_x_1, y: mspk_y_1 },
+        ),
+        fbpk_m_hash: aztec::protocol::public_keys::hash_public_key(
+            EmbeddedCurvePoint { x: fbpk_x_1, y: fbpk_y_1 },
+        ),
     };
 
     // Secret key 2: string "RANDOM_SECRET_KEY" left-padded to 32 bytes with spaces
@@ -83,6 +91,10 @@ pub unconstrained fn get_test_vector() -> (PublicKeys, Field, PublicKeys, Field)
     let ovpk_y_2: Field = 0x270a30dbd666fe78c5e54cf5bbc03d6f81a288a24f110b6b72998faca4705294;
     let tpk_x_2: Field = 0x05c9d2066d7aedbad14137c0b34827eda0b300f3808aa221b519a9959facec88;
     let tpk_y_2: Field = 0x0cc1c1631501a99ed1797f4d701df03c9663989fee1fb311266459b47f523e07;
+    let mspk_x_2: Field = 0x25c6041b74fe5d2d01ce55ae238a1af6ae9fd123d6bc110b2dcac0b83c9443b3;
+    let mspk_y_2: Field = 0x25b54026c6496adea9875c9f7cbd4e350408a1960b7796b414f2a67b094569f9;
+    let fbpk_x_2: Field = 0x0799e34bbac32bae06f058eb90dc6bd93bd5469c92b3b9719c814d8a6649f23c;
+    let fbpk_y_2: Field = 0x07e89ccd4e308989abe6d0bb79029e22df6b9d431cd6381a6f555acb31ef2071;
 
     let public_keys_2 = PublicKeys {
         npk_m_hash: aztec::protocol::public_keys::hash_public_key(
@@ -95,8 +107,12 @@ pub unconstrained fn get_test_vector() -> (PublicKeys, Field, PublicKeys, Field)
         tpk_m_hash: aztec::protocol::public_keys::hash_public_key(
             EmbeddedCurvePoint { x: tpk_x_2, y: tpk_y_2 },
         ),
-        mspk_m_hash: DEFAULT_MSPK_M_HASH,
-        fbpk_m_hash: DEFAULT_FBPK_M_HASH,
+        mspk_m_hash: aztec::protocol::public_keys::hash_public_key(
+            EmbeddedCurvePoint { x: mspk_x_2, y: mspk_y_2 },
+        ),
+        fbpk_m_hash: aztec::protocol::public_keys::hash_public_key(
+            EmbeddedCurvePoint { x: fbpk_x_2, y: fbpk_y_2 },
+        ),
     };
 
     (public_keys_1, secret_key_1, public_keys_2, secret_key_2)

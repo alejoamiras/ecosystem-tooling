@@ -46,8 +46,9 @@ type NoirWrappedPoint = {
   };
 };
 
+// 5.0.0: Point's constructor is (x, y) — infinity is the Point.INFINITY singleton.
 const noirWrappedPointToPoint = (wrapped: NoirWrappedPoint) =>
-  new Point(new Fr(wrapped.inner.x), new Fr(wrapped.inner.y), !!wrapped.inner.is_infinite);
+  wrapped.inner.is_infinite ? Point.INFINITY : new Point(new Fr(wrapped.inner.x), new Fr(wrapped.inner.y));
 
 // Builds a JS `PublicKeys` from the new v5 PublicKeys layout returned by the Noir circuit:
 // `{ npk_m_hash, ivpk_m: { inner: { x, y, is_infinite } }, ovpk_m_hash, tpk_m_hash, mspk_m_hash, fbpk_m_hash }`.

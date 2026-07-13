@@ -1,6 +1,6 @@
 {
   "name": "@alejoamiras/aztec-benchmark",
-  "version": "5.0.0-rc.2",
+  "version": "5.0.0",
   "description": "CLI tool and GitHub Action for Aztec contract benchmarking",
   "repository": {
     "type": "git",
@@ -23,7 +23,8 @@
   ],
   "scripts": {
     "build": "tsc && ncc build action/index.cjs -o action/dist -m -C",
-    "start": "tsx cli/cli.ts"
+    "start": "tsx cli/cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "dependencies": {
     "@actions/core": "1.10.1",
@@ -35,15 +36,15 @@
     "typescript": "5.8.3"
   },
   "devDependencies": {
-    "@aztec/aztec.js": "5.0.0-rc.2",
-    "@aztec/stdlib": "5.0.0-rc.2",
-    "@aztec/wallets": "5.0.0-rc.2",
+    "@aztec/aztec.js": "5.0.0",
+    "@aztec/stdlib": "5.0.0",
+    "@aztec/wallets": "5.0.0",
     "@types/node": "22.15.3",
     "@vercel/ncc": "0.38.3"
   },
   "peerDependencies": {
-    "@aztec/aztec.js": "5.0.0-rc.2",
-    "@aztec/wallets": "5.0.0-rc.2"
+    "@aztec/aztec.js": "5.0.0",
+    "@aztec/wallets": "5.0.0"
   },
   "engines": {
     "node": ">=22"

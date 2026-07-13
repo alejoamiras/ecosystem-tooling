@@ -51,38 +51,45 @@ function walkNargoTomls(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-function declaredAztecNames(): string[] {
-  const names = new Set<string>();
+// name -> declared version where the manifest pins one explicitly (alias specs always do;
+// plain @aztec/* deps ride the lockstep target, expressed here as undefined).
+function declaredAztecNames(): Map<string, string | undefined> {
+  const names = new Map<string, string | undefined>();
   const manifests = [join(ROOT, 'package.json'), ...PACKAGES.map((d) => join(ROOT, 'packages', d, 'package.json'))];
   for (const m of manifests) {
     const pkg = JSON.parse(readFileSync(m, 'utf8'));
     for (const section of ['dependencies', 'devDependencies', 'peerDependencies']) {
       for (const [name, spec] of Object.entries((pkg[section] ?? {}) as Record<string, string>)) {
-        if (name.startsWith('@aztec/')) names.add(name);
-        const alias = /^npm:(@aztec\/[^@]+)@/.exec(spec);
-        if (alias?.[1]) names.add(alias[1]);
+        if (name.startsWith('@aztec/') && !names.has(name)) names.set(name, undefined);
+        const alias = /^npm:(@aztec\/[^@]+)@(.+)$/.exec(spec);
+        if (alias?.[1]) names.set(alias[1], alias[2]);
       }
     }
   }
-  return [...names];
+  return names;
 }
 
-function aztecClosure(version: string): string[] {
-  const seen = new Set<string>();
-  const queue = declaredAztecNames();
+// Returns name -> resolved version. Aliased packages (e.g. "viem": "npm:@aztec/viem@2.38.2")
+// live at their OWN version, not the lockstep target — querying them at the target yields
+// false NOT PUBLISHED rows in the report and null dep walks in the BFS.
+function aztecClosure(version: string): Map<string, string> {
+  const seen = new Map<string, string>();
+  const queue: Array<[string, string]> = [...declaredAztecNames()].map(([n, v]) => [n, v ?? version]);
   while (queue.length > 0) {
-    const name = queue.shift();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    const deps = (npmView(`${name}@${version}`, 'dependencies') ?? {}) as Record<string, string>;
+    const entry = queue.shift();
+    if (!entry || seen.has(entry[0])) continue;
+    const [name, resolved] = entry;
+    seen.set(name, resolved);
+    const deps = (npmView(`${name}@${resolved}`, 'dependencies') ?? {}) as Record<string, string>;
     for (const [dep, spec] of Object.entries(deps)) {
-      if (dep.startsWith('@aztec/') && !seen.has(dep)) queue.push(dep);
-      // npm-alias deps hide @aztec packages behind other names (e.g. "viem": "npm:@aztec/viem@x")
-      const alias = /^npm:(@aztec\/[^@]+)@/.exec(spec);
-      if (alias?.[1] && !seen.has(alias[1])) queue.push(alias[1]);
+      // Direct @aztec deps ride the lockstep target unless they pin an exact different version.
+      if (dep.startsWith('@aztec/') && !seen.has(dep))
+        queue.push([dep, /^\d+\.\d+\.\d+(-.+)?$/.test(spec) ? spec : version]);
+      const alias = /^npm:(@aztec\/[^@]+)@(.+)$/.exec(spec);
+      if (alias?.[1] && !seen.has(alias[1])) queue.push([alias[1], alias[2]]);
     }
   }
-  return [...seen].sort();
+  return new Map([...seen.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 function lockfileAztecNames(): string[] {
@@ -200,13 +207,13 @@ const times = (npmView(`@aztec/aztec.js@${target}`, 'time') ?? {}) as Record<str
 const publishedAt = times[target] ? new Date(times[target]) : undefined;
 const ageMs = publishedAt ? Date.now() - publishedAt.getTime() : Number.NaN;
 const needsExcludes = Number.isFinite(ageMs) && ageMs < MIN_AGE_MS;
-let closure: string[] = [];
+let closureMap = new Map<string, string>();
 if (needsExcludes) {
   console.log(
     `\n@aztec/*@${target} is ${(ageMs / 86_400_000).toFixed(1)} days old (<7d) — computing registry closure...`,
   );
-  closure = aztecClosure(target);
-  writeExcludes(closure, 'registry closure (pre-install)');
+  closureMap = aztecClosure(target);
+  writeExcludes([...closureMap.keys()], 'registry closure (pre-install)');
 } else {
   console.log(`\n@aztec/*@${target} clears the 7-day min-age gate — no exclusions needed.`);
 }
@@ -215,13 +222,14 @@ if (needsExcludes) {
 console.log('\n=== supply-chain report ===\n');
 console.log(`| package | version | published (UTC) | age (days) | provenance |`);
 console.log(`|---|---|---|---|---|`);
-const reportSet = closure.length > 0 ? closure : lockfileAztecNames();
-for (const name of reportSet) {
-  const t = (npmView(`${name}@${target}`, 'time') ?? {}) as Record<string, string>;
-  const at = t[target];
+const reportSet: Array<[string, string]> =
+  closureMap.size > 0 ? [...closureMap.entries()] : lockfileAztecNames().map((n) => [n, target]);
+for (const [name, version] of reportSet) {
+  const t = (npmView(`${name}@${version}`, 'time') ?? {}) as Record<string, string>;
+  const at = t[version];
   const age = at ? ((Date.now() - new Date(at).getTime()) / 86_400_000).toFixed(1) : 'n/a';
-  const att = npmView(`${name}@${target}`, 'dist.attestations.url');
-  console.log(`| ${name} | ${target} | ${at ?? 'NOT PUBLISHED'} | ${age} | ${att ? 'yes' : 'NO'} |`);
+  const att = npmView(`${name}@${version}`, 'dist.attestations.url');
+  console.log(`| ${name} | ${version} | ${at ?? 'NOT PUBLISHED'} | ${age} | ${att ? 'yes' : 'NO'} |`);
 }
 
 console.log(

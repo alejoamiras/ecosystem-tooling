@@ -2,7 +2,7 @@
 import { Benchmark, type BenchmarkContext } from '@alejoamiras/aztec-benchmark';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fq, Fr } from '@aztec/aztec.js/fields';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import { parseUnits } from 'viem';
 
@@ -45,7 +45,7 @@ export default class TokenContractBenchmark extends Benchmark {
     // We need an account manager to decrypt the private logs in the initializeTransferCommitment function
     const secret = Fr.random();
     const salt = Fr.random();
-    const commitmentRecipientAccountManager = await wallet.createSchnorrAccount(secret, salt);
+    const commitmentRecipientAccountManager = await wallet.createSchnorrAccount(secret, salt, Fq.random());
     const commitment_1 = await initializeTransferCommitment(
       tokenContract,
       alice,
