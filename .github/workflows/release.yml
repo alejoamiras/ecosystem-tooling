@@ -201,6 +201,43 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+      - name: Generate release notes
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          case "$INPUT_VERSION" in
+            *-*) DIST_TAG="${INPUT_VERSION#*-}"; DIST_TAG="${DIST_TAG%%.*}" ;;
+            *) DIST_TAG="latest" ;;
+          esac
+          cat > /tmp/release-notes.md <<'TEMPLATE'
+          Aztec ecosystem packages, released in lockstep with **Aztec `__VERSION__`**. All three packages are published with [npm provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline that re-runs the full test matrix before publishing.
+
+          ## 📦 Packages
+
+          | Package | What it is |
+          |---|---|
+          | [`@alejoamiras/aztec-standards`](https://www.npmjs.com/package/@alejoamiras/aztec-standards) | Standardized Aztec contracts: token (AIP-20), vault (AIP-4626), NFT, escrow, dripper, proxy |
+          | [`@alejoamiras/aztec-fee-payment`](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | Private Fee Payment Contract (FPC) + TypeScript SDK |
+          | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI tooling (circuit gates, DA/L2 gas, proving) |
+
+          ## 🚀 Install
+
+          Use `__VERSION__` with an Aztec `__VERSION__` node/sandbox — `@aztec/*` peer dependencies install automatically. This release is also available under the `__DIST_TAG__` dist-tag.
+
+          ```bash
+          bun add @alejoamiras/aztec-standards@__VERSION__
+          bun add @alejoamiras/aztec-fee-payment@__VERSION__
+          bun add -D @alejoamiras/aztec-benchmark@__VERSION__
+          ```
+
+          Verify provenance end-to-end: `npm audit signatures`
+
+          ## 📚 Docs & migration
+
+          - Per-package usage: [aztec-standards](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-standards#readme) · [aztec-fee-payment](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-fee-payment#readme) · [aztec-benchmark](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-benchmark#readme)
+          - Migrating from `@defi-wonderland/*`: scope swap only, import paths unchanged — [migration table](https://github.com/alejoamiras/ecosystem-tooling#migrating-from-defi-wonderland)
+          TEMPLATE
+          sed -i "s/__VERSION__/$INPUT_VERSION/g; s/__DIST_TAG__/$DIST_TAG/g" /tmp/release-notes.md
       - name: Create tag and release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -213,4 +250,4 @@ jobs:
             *) PRERELEASE_FLAG="" ;;
           esac
           gh release create "v$INPUT_VERSION" --title "v$INPUT_VERSION" $PRERELEASE_FLAG \
-            --notes "Publishes @alejoamiras/{aztec-benchmark,aztec-standards,aztec-fee-payment}@$INPUT_VERSION (Aztec $INPUT_VERSION, provenance attested)."
+            --notes-file /tmp/release-notes.md
