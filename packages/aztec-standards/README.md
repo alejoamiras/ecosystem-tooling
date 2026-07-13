@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@alejoamiras/aztec-standards.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-standards)
 
-> Continues [defi-wonderland/aztec-standards](https://github.com/defi-wonderland/aztec-standards) (MIT, © Wonderland) as part of the [ecosystem-tooling](https://github.com/alejoamiras/ecosystem-tooling) monorepo. Migrating? `bun add @alejoamiras/aztec-standards` — import paths are unchanged, only the scope moved.
+> Continues [defi-wonderland/aztec-standards](https://github.com/defi-wonderland/aztec-standards) (MIT, © Wonderland) as part of the [ecosystem-tooling](https://github.com/alejoamiras/ecosystem-tooling) monorepo. Migrating? `bun add @alejoamiras/aztec-standards` — `artifacts/…`, `target/*.json` and `deployments.json` import paths are unchanged; the duplicated legacy `dist/…` mirror was removed at 5.0.0 (use the identical `artifacts/…` paths).
 
 Aztec Standards is a comprehensive collection of reusable, standardized contracts for the Aztec Network. It provides a robust foundation of token primitives and utilities that support both private and public operations, empowering developers to build innovative privacy-preserving applications with ease.
 
@@ -18,6 +18,8 @@ aztec start --local-network
 **Benchmarks**: `bun run bench` connects to the same running network.
 
 Set `NODE_URL` to override the default (e.g. `http://localhost:9000`).
+
+**deployments.json**: the addresses shipped in `deployments.json` are HISTORICAL (Wonderland-era testnet deployments, pre-5.0.0). They do not correspond to any 5.0.0 network; the file remains published for legacy import-path compatibility only. Canonical 5.0.0 deployments will replace it when they exist (see the repo roadmap).
 
 ## Table of Contents
 - [Development](#development)

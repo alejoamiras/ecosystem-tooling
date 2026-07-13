@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds the publishable package layout IN the package directory, byte-compatible with the
-# legacy defi-wonderland export/ assembly (flat artifacts/ + flat dist/ mirror + target/ +
-# deployments.json at package root). Replaces the old scripts/build-package.sh + jq trims —
-# the manifest is now curated directly (no lifecycle scripts, peer deps; see plan D7/D15).
+# Builds the publishable package layout IN the package directory (artifacts/ + target/ +
+# deployments.json at package root), byte-compatible with the legacy defi-wonderland
+# export/ assembly MINUS the dist/ mirror — that duplicate tree was carried through the
+# rc releases for migration friction and removed at 5.0.0 as promised ("deprecate at
+# stable"); deep imports use artifacts/… instead. Manifest stays curated directly
+# (no lifecycle scripts, peer deps).
 
 # ── Compile generated TS bindings → package-root artifacts/ ──────────────────
 rm -rf artifacts dist deployments.json
@@ -20,9 +22,6 @@ done
 # ── Drop inspect-contract backup files (they'd bloat the tarball) ────────────
 rm -f target/*.json.bak
 
-# ── Legacy dist/ mirror (deep-import compatibility; deprecate at stable) ─────
-cp -r artifacts dist
-
 # ── deployments.json at package root (legacy path) ───────────────────────────
 if [ -f "src/deployments.json" ]; then
   cp src/deployments.json deployments.json
@@ -30,4 +29,4 @@ else
   echo "src/deployments.json not found, skipping"
 fi
 
-echo "✔ Package layout ready (artifacts/ dist/ target/ deployments.json)"
+echo "✔ Package layout ready (artifacts/ target/ deployments.json)"

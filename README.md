@@ -2,7 +2,7 @@
 
 Aztec ecosystem packages — a bun monorepo continuing the smart-contract standards, fee-payment contracts, and benchmarking tooling originally built by [Wonderland](https://github.com/defi-wonderland) as an Aztec core contributor.
 
-**Current release: `5.0.0-rc.2`** (lockstep with the Aztec version it targets) — published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline.
+**Current release: `5.0.0`** (lockstep with the Aztec version it targets) — published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline.
 
 ## Packages
 
@@ -12,7 +12,7 @@ Aztec ecosystem packages — a bun monorepo continuing the smart-contract standa
 | [`@alejoamiras/aztec-fee-payment`](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-fee-payment.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | Private Fee Payment Contract (FPC) + TypeScript SDK |
 | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI machinery for Aztec contracts (gates, DA/L2 gas, proving) |
 
-Package versions track the Aztec version they support: install `@alejoamiras/aztec-standards@5.0.0-rc.2` for Aztec `5.0.0-rc.2`. Pre-release versions live under the `rc` dist-tag.
+Package versions track the Aztec version they support: install `@alejoamiras/aztec-standards@5.0.0` for Aztec `5.0.0` (`latest`). Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`.
 
 ## Migrating from `@defi-wonderland/*`
 
@@ -20,12 +20,12 @@ These packages continue Wonderland's work after the end of their core-contributo
 
 | Before | After |
 |---|---|
-| `@defi-wonderland/aztec-standards` (last publish: 4.2.0) | `@alejoamiras/aztec-standards` (5.0.0-rc.2+) |
-| `@defi-wonderland/aztec-benchmark` (last publish: 5.0.0-rc.1) | `@alejoamiras/aztec-benchmark` (5.0.0-rc.2+) |
+| `@defi-wonderland/aztec-standards` (last publish: 4.2.0) | `@alejoamiras/aztec-standards` (5.0.0+) |
+| `@defi-wonderland/aztec-benchmark` (last publish: 5.0.0-rc.1) | `@alejoamiras/aztec-benchmark` (5.0.0+) |
 | `@wonderland/aztec-fee-payment` (GitHub tarballs only) | `@alejoamiras/aztec-fee-payment` (first npm releases) |
 | `uses: defi-wonderland/aztec-benchmark/.github/workflows/…` | see [benchmark CI integration](packages/aztec-benchmark/README.md#ci-integration) |
 
-Swap the scope in `package.json` — deep-import subpaths (`artifacts/…`, `dist/…`, `target/*.json`, `deployments.json`) are byte-compatible with the legacy layout.
+Swap the scope in `package.json` — deep-import subpaths (`artifacts/…`, `target/*.json`, `deployments.json`) are byte-compatible with the legacy layout. The duplicated legacy `dist/…` mirror was removed at `5.0.0` (as promised at consolidation): point any `dist/…` deep imports at the identical `artifacts/…` paths.
 
 ## Development
 

@@ -22,7 +22,7 @@ inputs:
     required: false
     default: '.'
   foundry-version:
-    description: Foundry toolchain version (pinned; revisit at stable)
+    description: Foundry toolchain version (pinned; matches upstream aztec-packages' own pin at v5.0.0)
     required: false
     default: 'v1.4.1'
 

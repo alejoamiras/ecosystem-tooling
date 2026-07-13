@@ -137,7 +137,7 @@ pub fn _withdraw_nft(
 The escrow contract includes a standalone `key_derivation` module that replicates the Aztec protocol's key derivation pipeline entirely in Noir. This allows the escrow contract to derive all master secret keys and public keys from a single `secret_key: Field`, without depending on the PXE or any external key management.
 
 This is critical because:
-- The PXE requires the secret key — not the derived master secret keys — to register an account.
+- Account registration is seeded from the secret key (at Aztec 5.0.0+, `wallet.registerContract` accepts either that single Fr seed or a full MasterSecretKeys set; the escrow design uses the seed form — note this is the CONTRACT-held key root, distinct from the new signing-key-rooted USER-account model).
 - Logic contracts need to compute the escrow's public keys to derive its address, but must not leak the secret key publicly.
 - By performing derivation on-chain in Noir, the secret key never leaves the private context.
 
@@ -150,7 +150,9 @@ secret_key (Field)
     ├── SHA512(sk || DOM_SEP__NHK_M)  mod Fq  →  nhk_m (EmbeddedCurveScalar)  →  npk_m
     ├── SHA512(sk || DOM_SEP__IVSK_M) mod Fq  →  ivsk_m (EmbeddedCurveScalar) →  ivpk_m
     ├── SHA512(sk || DOM_SEP__OVSK_M) mod Fq  →  ovsk_m (EmbeddedCurveScalar) →  ovpk_m
-    └── SHA512(sk || DOM_SEP__TSK_M)  mod Fq  →  tsk_m (EmbeddedCurveScalar)  →  tpk_m
+    ├── SHA512(sk || DOM_SEP__TSK_M)  mod Fq  →  tsk_m (EmbeddedCurveScalar)  →  tpk_m
+    ├── SHA512(sk || DOM_SEP__MSSK_M) mod Fq  →  mssk_m (EmbeddedCurveScalar) →  mspk_m   (since Aztec 5.0.0)
+    └── SHA512(sk || DOM_SEP__FBSK_M) mod Fq  →  fbsk_m (EmbeddedCurveScalar) →  fbpk_m   (since Aztec 5.0.0)
 ```
 
 ### Usage
@@ -178,9 +180,9 @@ pub fn secret_key_to_public_keys(secret_key: Field) -> PublicKeys { /* ... */ }
 
 #### derive_keys
 ```rust
-/// @notice Derive all four master secret keys from a secret key.
+/// @notice Derive all six master secret keys from a secret key.
 /// @param secret_key The secret key
-/// @return MasterSecretKeys containing nhk_m, ivsk_m, ovsk_m, tsk_m (as EmbeddedCurveScalar).
+/// @return MasterSecretKeys containing nhk_m, ivsk_m, ovsk_m, tsk_m, mssk_m, fbsk_m (as EmbeddedCurveScalar).
 pub fn derive_keys(secret_key: Field) -> MasterSecretKeys { /* ... */ }
 ```
 
