@@ -254,7 +254,10 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Re-verify Nargo refs at compile time (closes the validate→build TOCTOU window)
+      - name: Re-verify Nargo refs at compile time (narrows the validate→build TOCTOU window)
+        # NOTE: narrows, does not fully close — aztec compile still re-resolves the tags
+        # independently a moment later. Full closure (compile from the locked commit) is a
+        # roadmap/ /harden item. This catches a tag that moved during the checks matrix.
         run: ./scripts/verify-nargo-refs.sh
 
       - name: Overlay version (rehearsal/hotfix — AFTER frozen install, BEFORE build/pack)

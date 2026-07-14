@@ -30,21 +30,22 @@ manifest_pairs() {
     }' | sort -u
 }
 
-# Fail-closed completeness: the extractor above only understands single-line
-# `... git = "..." ... tag = "..." ...` inline tables. Any OTHER git-dep shape
-# (branch=/rev= keys, multi-line TOML tables) would silently escape both lock
-# generation and verification — so its mere presence is a hard error until the
-# extractor learns the shape. (Audit finding: fail-open extraction.)
+# Fail-closed completeness: manifest_pairs only understands single-line inline tables with
+# DOUBLE-QUOTED git= AND tag=. Every OTHER shape must be a hard error, or it escapes the
+# lock silently. A git line is SUPPORTED iff it has a double-quoted git= AND a
+# double-quoted tag= AND no branch=/rev= under EITHER quote style. (Audit: single-quoted
+# and mixed-quote forms previously escaped — codex post-impl medium.)
 assert_extractor_covers_manifests() {
   local bad
   bad="$(find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -print0 |
     xargs -0 grep -h -E "git *= *['\"]" |
     awk '{
-      has_tag = match($0, /tag *= *"[^"]+"/)
-      if (!has_tag || match($0, /(branch|rev) *= *"/)) print
+      supported = (match($0, /git *= *"[^"]+"/) && match($0, /tag *= *"[^"]+"/) \
+                   && !match($0, /(branch|rev) *= *["\x27]/))
+      if (!supported) print
     }')"
   if [ -n "$bad" ]; then
-    echo "ERROR: unsupported Nargo git-dep form(s) — every git dep must be a SINGLE-LINE inline table with a tag= field (branch=/rev=/multi-line escape the commit lock):" >&2
+    echo "ERROR: unsupported Nargo git-dep form(s) — every git dep must be a SINGLE-LINE inline table with DOUBLE-QUOTED git= and tag= and no branch=/rev= (any other form escapes the commit lock):" >&2
     printf '%s\n' "$bad" >&2
     exit 1
   fi

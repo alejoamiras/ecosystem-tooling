@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provenance IDENTITY verification (plan aztec-5-stable D10; post-audit rev 3).
+# Provenance IDENTITY verification (plan aztec-5-stable D10; post-audit rev 4).
 #
-# Identity comes from the VERIFIED SIGNING CERTIFICATE, never from DSSE predicate
-# content (predicates are produced by the attesting workflow itself — GitHub documents
-# them as manipulable by the originating workflow; codex post-impl blocker):
+# Identity comes from the certificate in the bundle NPM ITSELF VERIFIED — never from a
+# re-fetched response, never from DSSE predicate content (predicates are produced by the
+# attesting workflow; a re-fetch is a substitutable TOCTOU — both codex post-impl blockers):
 #
-#   1. Attribution: `npm audit signatures --json` must list EXACTLY this name@version in
-#      verified[] (and it must be absent from invalid[]/missing[]) — npm's sigstore
-#      verification covered the TARGET, not just attested peers. Installed with
-#      --legacy-peer-deps so the audited tree is the target plus its real deps.
-#   2. Artifact binding: the provenance bundle's DSSE subject sha512 must equal the
-#      registry dist.integrity for this exact tarball, and the bundle is fetched from
-#      the same attestations URL npm's verified entry names.
-#   3. Signer identity: parse the bundle's Fulcio certificate —
-#        - SAN URI must EXACTLY equal the expected workflow identity
-#          (https://github.com/<repo>/<workflow>@refs/heads/main),
-#        - the Source Repository Digest extension (OID 1.3.6.1.4.1.57264.1.13,
-#          DER-scanned; node exposes no custom-extension API) must equal expected-sha.
-#      Predicate fields are not consulted for identity at all.
+#   1. `npm audit signatures --json --include-attestations` must list this exact
+#      name@version in verified[] (absent from invalid[]/missing[]) — npm's sigstore
+#      chain verification covered the TARGET. Installed --legacy-peer-deps so the audited
+#      tree is the target plus real deps, not ~30 attested peers.
+#   2. The verified entry's OWN `attestationBundles[]` (the bundles npm just verified — NOT
+#      a re-fetch) supplies the SLSA-provenance bundle; its Fulcio certificate is the
+#      identity source.
+#   3. Certificate assertions (keyless identity is the SAN+issuer PAIR):
+#        - SAN URI == the exact workflow identity (repo/workflow@ref),
+#        - OIDC issuer (OID 1.3.6.1.4.1.57264.1.1) == GitHub Actions token endpoint,
+#        - Source Repository Digest (OID 1.3.6.1.4.1.57264.1.13) == expected-sha,
+#        - DSSE subject sha512 == registry dist.integrity (artifact binding).
+#      A missing issuer, SAN, or (when a sha is requested) source-digest extension REFUSES.
 #
-# Registry reads retry (documented >10 min post-publish read lag; recovery paths run
-# in exactly that window).
+# Registry reads retry (documented >10 min post-publish read lag; recovery paths run then).
 #
 # Usage: verify-attestation-identity.sh <pkg> <version> [expected-sha]
 
 PKG="$1"; VERSION="$2"; EXPECTED_SHA="${3:-}"
 EXPECTED_SAN="URI:https://github.com/alejoamiras/ecosystem-tooling/.github/workflows/release.yml@refs/heads/main"
+EXPECTED_ISSUER="https://token.actions.githubusercontent.com"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -41,78 +41,74 @@ view_retry() {
   return 1
 }
 
-echo "verify-attestation-identity: $PKG@$VERSION (san=$EXPECTED_SAN sha=${EXPECTED_SHA:-<unchecked>})"
+echo "verify-attestation-identity: $PKG@$VERSION (san=$EXPECTED_SAN issuer=$EXPECTED_ISSUER sha=${EXPECTED_SHA:-<unchecked>})"
 
-# Layer 1 — attributed cryptographic verification.
+EXPECTED_INTEGRITY="$(view_retry "$PKG@$VERSION" dist.integrity)" || { echo "ERROR: cannot read dist.integrity" >&2; exit 1; }
+
 (cd "$WORK" \
   && npm init -y > /dev/null 2>&1 \
   && npm install "$PKG@$VERSION" --legacy-peer-deps --ignore-scripts --no-audit --no-fund --loglevel=error > /dev/null \
   && npm audit signatures --json --include-attestations > audit.json 2> audit.err) || { cat "$WORK/audit.err" 2>/dev/null; echo "ERROR: npm audit signatures failed for $PKG@$VERSION" >&2; exit 1; }
 
-ATT_URL="$(PKG="$PKG" VERSION="$VERSION" node -e "
-  const d = JSON.parse(require('fs').readFileSync('$WORK/audit.json', 'utf8'));
-  const bad = [...(d.invalid ?? []), ...(d.missing ?? [])].find((p) => p.name === process.env.PKG);
-  if (bad) { console.error('ERROR: ' + process.env.PKG + ' listed in invalid/missing by npm audit signatures'); process.exit(1); }
-  const t = (d.verified ?? []).find((p) => p.name === process.env.PKG && p.version === process.env.VERSION);
-  if (!t) { console.error('ERROR: ' + process.env.PKG + '@' + process.env.VERSION + ' NOT in npm audit signatures verified[] — target attestation unverified'); process.exit(1); }
-  if (!t.attestations?.url) { console.error('ERROR: verified entry has no attestations url'); process.exit(1); }
-  console.log(t.attestations.url);
-")" || exit 1
-echo "  ✓ npm verified the target's registry signature + attestation ($ATT_URL)"
-
-# Layer 2 — fetch THE bundle npm's verified entry names; bind it to the artifact digest.
-EXPECTED_INTEGRITY="$(view_retry "$PKG@$VERSION" dist.integrity)" || { echo "ERROR: cannot read dist.integrity" >&2; exit 1; }
-for _ in 1 2 3; do curl -sf "$ATT_URL" -o "$WORK/attestations.json" && break; sleep 10; done
-[ -s "$WORK/attestations.json" ] || { echo "ERROR: could not fetch attestation bundle" >&2; exit 1; }
-
-# Layer 3 — certificate-bound identity.
-EXPECTED_INTEGRITY="$EXPECTED_INTEGRITY" EXPECTED_SHA="$EXPECTED_SHA" EXPECTED_SAN="$EXPECTED_SAN" node -e "
+PKG="$PKG" VERSION="$VERSION" EXPECTED_INTEGRITY="$EXPECTED_INTEGRITY" EXPECTED_SHA="$EXPECTED_SHA" \
+EXPECTED_SAN="$EXPECTED_SAN" EXPECTED_ISSUER="$EXPECTED_ISSUER" node -e "
   const fs = require('fs');
   const { X509Certificate } = require('crypto');
   const fail = (m) => { console.error('ERROR: ' + m); process.exit(1); };
+  const env = process.env;
 
-  const data = JSON.parse(fs.readFileSync('$WORK/attestations.json', 'utf8'));
-  const prov = (data.attestations ?? []).find((a) => (a.predicateType ?? '').includes('slsa') || (a.predicateType ?? '').includes('provenance'));
-  if (!prov) fail('no provenance attestation in bundle');
+  const d = JSON.parse(fs.readFileSync('$WORK/audit.json', 'utf8'));
+  if ([...(d.invalid ?? []), ...(d.missing ?? [])].some((p) => p.name === env.PKG))
+    fail(env.PKG + ' listed in invalid/missing by npm audit signatures');
+  const t = (d.verified ?? []).find((p) => p.name === env.PKG && p.version === env.VERSION);
+  if (!t) fail(env.PKG + '@' + env.VERSION + ' NOT in npm audit signatures verified[] — target attestation unverified');
 
-  // Artifact binding: subject digest == registry integrity for this tarball.
+  // The bundles npm JUST VERIFIED — no re-fetch (a re-fetch is substitutable).
+  const prov = (t.attestationBundles ?? []).find((b) => (b.predicateType ?? '').includes('slsa') || (b.predicateType ?? '').includes('provenance'));
+  if (!prov) fail('no verified SLSA-provenance bundle in the target entry');
+
+  // Artifact binding.
   const payload = JSON.parse(Buffer.from(prov.bundle.dsseEnvelope.payload, 'base64').toString('utf8'));
-  const expected = process.env.EXPECTED_INTEGRITY.replace(/^sha512-/, '');
+  const expected = env.EXPECTED_INTEGRITY.replace(/^sha512-/, '');
   const subj = (payload.subject ?? []).find((s) => s.digest?.sha512);
   if (!subj) fail('provenance payload has no sha512 digest subject');
   if (Buffer.from(subj.digest.sha512, 'hex').toString('base64') !== expected)
-    fail('provenance subject digest does not match registry dist.integrity — bundle is not about this artifact');
+    fail('provenance subject digest != registry dist.integrity — bundle is not about this artifact');
 
-  // Signer identity from the VERIFIED CERTIFICATE (never the predicate).
+  // Certificate (keyless) identity.
   const vm = prov.bundle.verificationMaterial ?? {};
   const certB64 = vm.certificate?.rawBytes ?? vm.x509CertificateChain?.certificates?.[0]?.rawBytes;
-  if (!certB64) fail('bundle carries no signing certificate');
+  if (!certB64) fail('verified bundle carries no signing certificate');
   const der = Buffer.from(certB64, 'base64');
-  const cert = new X509Certificate(der);
-  const san = (cert.subjectAltName ?? '').trim();
-  if (san !== process.env.EXPECTED_SAN)
-    fail('certificate SAN is \"' + san + '\", expected \"' + process.env.EXPECTED_SAN + '\"');
+  const san = (new X509Certificate(der).subjectAltName ?? '').trim();
+  if (san !== env.EXPECTED_SAN) fail('certificate SAN is \"' + san + '\", expected \"' + env.EXPECTED_SAN + '\"');
 
-  // Source Repository Digest extension (Fulcio OID 1.3.6.1.4.1.57264.1.13): DER-scan —
-  // node's X509Certificate exposes no custom extensions. OID encodes to
-  // 06 0a 2b 06 01 04 01 83 bf 30 01 0d; the value is an OCTET STRING wrapping a
-  // UTF8/octet payload holding the 40-char commit sha.
+  // Fulcio custom extensions (node exposes no custom-extension API — DER-scan). Each is an
+  // OID header followed shortly by its string value; scan a bounded window after the OID.
+  // Fulcio extension value = OID, then an OCTET STRING (04 len) holding the value. Some
+  // extensions store a raw string there (issuer .1.1); newer ones DER-wrap it again in a
+  // string type (digest .1.13 = 04 <len> 0c <len> <utf8>). Honor the length prefixes
+  // exactly (never charset-scan — trailing DER framing renders as printable bytes).
+  const STRING_TAGS = new Set([0x0c, 0x13, 0x16, 0x1a]); // UTF8/Printable/IA5/Visible
+  const extValue = (oidHex, label, required) => {
+    const oid = Buffer.from(oidHex, 'hex');
+    const at = der.indexOf(oid);
+    if (at === -1) { if (required) fail('certificate lacks the ' + label + ' extension'); return ''; }
+    let i = at + oid.length;
+    if (der[i] === 0x01) i += 3; // optional BOOLEAN criticality (01 01 ff)
+    if (der[i] !== 0x04) { if (required) fail('could not frame ' + label + ' value (no OCTET STRING)'); return ''; }
+    let len = der[i + 1];
+    let start = i + 2;
+    if (STRING_TAGS.has(der[start])) { len = der[start + 1]; start += 2; } // unwrap inner string
+    return der.subarray(start, start + len).toString('latin1');
+  };
+  const issuer = extValue('060a2b0601040183bf300101', 'OIDC issuer', true);
+  if (issuer !== env.EXPECTED_ISSUER) fail('OIDC issuer is ' + JSON.stringify(issuer) + ', expected ' + env.EXPECTED_ISSUER);
+
   let certSha = '';
-  const oid = Buffer.from('060a2b0601040183bf30010d', 'hex');
-  const at = der.indexOf(oid);
-  if (at !== -1) {
-    const window = der.subarray(at + oid.length, at + oid.length + 64).toString('latin1');
-    const m = window.match(/[0-9a-f]{40}/);
-    if (m) certSha = m[0];
+  if (env.EXPECTED_SHA) {
+    certSha = extValue('060a2b0601040183bf30010d', 'Source Repository Digest', true).trim();
+    if (certSha !== env.EXPECTED_SHA) fail('certificate source-digest is ' + certSha + ', expected ' + env.EXPECTED_SHA);
   }
-  if (process.env.EXPECTED_SHA) {
-    if (certSha) {
-      if (certSha !== process.env.EXPECTED_SHA)
-        fail('certificate source-digest is ' + certSha + ', expected ' + process.env.EXPECTED_SHA);
-    } else {
-      // No parsable cert extension: refuse rather than falling back to predicate claims.
-      fail('certificate lacks a parsable Source Repository Digest extension — cannot bind commit sha');
-    }
-  }
-  console.log('  ✓ identity verified (certificate-bound): ' + san.replace(/^URI:/, '') + (certSha ? ' @ ' + certSha : ''));
+  console.log('  ✓ identity verified (npm-verified cert): ' + san.replace(/^URI:/, '') + ' <' + issuer + '>' + (certSha ? ' @ ' + certSha : ''));
 "
