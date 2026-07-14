@@ -92,11 +92,18 @@ function aztecClosure(version: string): Map<string, string> {
   return new Map([...seen.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-function lockfileAztecNames(): string[] {
+// name -> RESOLVED version from bun.lock. The report's >7d fallback path must not query
+// alias packages (e.g. @aztec/viem, resolved at 2.38.x) at the lockstep target — that
+// reintroduces the false NOT-PUBLISHED rows the closure path was fixed to avoid.
+function lockfileAztecPairs(): Map<string, string[]> {
   const lock = readFileSync(join(ROOT, 'bun.lock'), 'utf8');
-  const names = new Set<string>();
-  for (const m of lock.matchAll(/"(@aztec\/[a-z0-9._-]+)@/gi)) names.add(m[1]);
-  return [...names].sort();
+  const pairs = new Map<string, string[]>();
+  for (const m of lock.matchAll(/"(@aztec\/[a-z0-9._-]+)@([0-9][^"]*)"/gi)) {
+    const list = pairs.get(m[1]) ?? [];
+    if (!list.includes(m[2])) list.push(m[2]);
+    pairs.set(m[1], list);
+  }
+  return new Map([...pairs.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 function writeExcludes(names: string[], source: string): void {
@@ -113,7 +120,7 @@ function writeExcludes(names: string[], source: string): void {
 }
 
 if (process.argv[2] === '--regenerate-excludes') {
-  writeExcludes(lockfileAztecNames(), 'from bun.lock');
+  writeExcludes([...lockfileAztecPairs().keys()], 'from bun.lock');
   process.exit(0);
 }
 
@@ -223,7 +230,9 @@ console.log('\n=== supply-chain report ===\n');
 console.log(`| package | version | published (UTC) | age (days) | provenance |`);
 console.log(`|---|---|---|---|---|`);
 const reportSet: Array<[string, string]> =
-  closureMap.size > 0 ? [...closureMap.entries()] : lockfileAztecNames().map((n) => [n, target]);
+  closureMap.size > 0
+    ? [...closureMap.entries()]
+    : [...lockfileAztecPairs().entries()].flatMap(([n, versions]) => versions.map((v): [string, string] => [n, v]));
 for (const [name, version] of reportSet) {
   const t = (npmView(`${name}@${version}`, 'time') ?? {}) as Record<string, string>;
   const at = t[version];

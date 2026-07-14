@@ -126,6 +126,7 @@ interface CLIOptions {
   dryRun?: boolean;
   output?: string;
   writeDeployments?: boolean;
+  randomAccount?: boolean;
   network: Network;
 }
 
@@ -400,20 +401,33 @@ export async function deployContracts(options: CLIOptions, config: DeploymentCon
   const nodeUrl = config.network.nodeUrl;
 
   // Dev utility (not published): at 5.0.0 the signing key is the account's ownership root.
-  // Env-only (never argv — shell history), strict when provided, random for throwaway runs.
-  const signingKeyHex = process.env.DEPLOYER_SIGNING_KEY;
+  // Env-only (never argv — shell history); strictly validated; random ONLY behind an
+  // explicit opt-in flag so a missing credential can never silently deploy from a
+  // throwaway account (the script's pre-5.0.0 fail-hard contract).
+  if (process.env.DEPLOYER_SECRET) {
+    throw new Error(
+      'DEPLOYER_SECRET is no longer used (Aztec 5.0.0 roots accounts on signing keys). ' +
+        'Set DEPLOYER_SIGNING_KEY to a 0x-prefixed Fq scalar — the derivation changed, so addresses change either way.',
+    );
+  }
+  const signingKeyHex = process.env.DEPLOYER_SIGNING_KEY?.trim();
   let signingKey: Fq;
-  if (signingKeyHex && signingKeyHex.trim().length > 0) {
-    const v = BigInt(signingKeyHex.trim());
+  if (signingKeyHex) {
+    if (!/^0x[0-9a-fA-F]{1,64}$/.test(signingKeyHex)) {
+      throw new Error(
+        'DEPLOYER_SIGNING_KEY must be a 0x-prefixed hex scalar (unprefixed or decimal input is rejected, not reinterpreted)',
+      );
+    }
+    const v = BigInt(signingKeyHex);
     if (v <= 0n || v >= Fq.MODULUS) {
       throw new Error('DEPLOYER_SIGNING_KEY must be a hex scalar in (0, Fq.MODULUS) — no reduction applied');
     }
     signingKey = new Fq(v);
-  } else {
+  } else if (options.randomAccount) {
     signingKey = Fq.random();
-    logger.warn(
-      'DEPLOYER_SIGNING_KEY not set — using a RANDOM signing key (throwaway account, address not reproducible)',
-    );
+    logger.warn('--random-account: using a RANDOM signing key (throwaway account, address not reproducible)');
+  } else {
+    throw new Error('DEPLOYER_SIGNING_KEY is required (or pass --random-account for an explicit throwaway run)');
   }
   const deployerSecret = await deriveSecretKeyFromSigningKey(signingKey);
 
@@ -537,6 +551,10 @@ program
   .description('Deploy Aztec Standards contracts')
   .version(String(packageJson.version))
   .option('--write-deployments', 'Update src/deployments.json with the deployed addresses (off by default)')
+  .option(
+    '--random-account',
+    'Deploy from a random throwaway signing key (explicit opt-in; otherwise DEPLOYER_SIGNING_KEY is required)',
+  )
   .option('--dry-run', 'Show configuration without deploying')
   .option('--output <file>', 'Write deployment JSON to file')
   .addOption(
@@ -551,23 +569,26 @@ program
       const result = await deployContracts(options, activeConfig);
       logDeployedContracts(result.contracts);
 
-      if (!options.dryRun && options.writeDeployments) {
+      if (!options.dryRun) {
         const tokenAddresses = Object.fromEntries(
           Object.entries(result.contracts.tokens).map(([k, v]) => [k, v.contract.address]),
         );
         const dripperAddress = result.contracts.dripper?.contract?.address;
         const deploymentData = getDeploymentData(tokenAddresses, dripperAddress, activeConfig);
 
-        // Always update src/deployments.json
-        const deploymentsPath = join(__dirname, '../src/deployments.json');
-        writeFileSync(deploymentsPath, JSON.stringify(deploymentData, null, 4) + '\n');
-        logger.info(`Updated ${deploymentsPath}`);
-
+        // --output honors every real deploy (its pre-5.0.0 contract); only the tracked
+        // src/deployments.json rewrite is opt-in.
         if (options.output) {
           const jsonOutput = JSON.stringify(deploymentData, null, 4);
           mkdirSync(dirname(options.output), { recursive: true });
           writeFileSync(options.output, jsonOutput);
           logger.info(`Deployment data written to ${options.output}`);
+        }
+
+        if (options.writeDeployments) {
+          const deploymentsPath = join(__dirname, '../src/deployments.json');
+          writeFileSync(deploymentsPath, JSON.stringify(deploymentData, null, 4) + '\n');
+          logger.info(`Updated ${deploymentsPath}`);
         }
       }
     } catch (error) {
