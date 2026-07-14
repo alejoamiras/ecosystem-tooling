@@ -34,4 +34,12 @@ describe('canonical-deployment.json matches the compiled artifact', () => {
     });
     expect(instance.address.toString()).toBe(canonical.expectedAddress);
   });
+
+  it('README embeds the canonical address (consumers read the README, not this file)', () => {
+    const readme = readFileSync(join(__dirname, '../../../README.md'), 'utf8');
+    expect(
+      readme.includes(canonical.expectedAddress),
+      'README canonical-address mention drifted from canonical-deployment.json — update the README in the same commit',
+    ).toBe(true);
+  });
 });

@@ -50,6 +50,13 @@ on:
 permissions:
   contents: read
 
+# The choreography is ≥3 dispatches per release (rehearsal, recovery drill, release);
+# overlapping runs would race the shared canary dist-tag and each other's preflight
+# reads. Serialize, never cancel (a cancelled half-published run is worse than a queue).
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
+
 jobs:
   validate:
     name: Validate inputs + render notes
@@ -138,6 +145,12 @@ jobs:
             *-*) TAG="${INPUT_VERSION#*-}"; TAG="${TAG%%.*}"; PRE="--prerelease" ;;
             *) TAG="latest"; PRE="" ;;
           esac
+          # npm rejects dist-tags that parse as semver ranges (e.g. 5.0.0-1 -> tag "1")
+          # only AT PUBLISH TIME — fail here instead, before 45 minutes of validation.
+          if ! printf '%s' "$TAG" | grep -Eq '^[a-z][a-z0-9-]*$'; then
+            echo "Derived dist-tag '$TAG' is not a valid npm tag (prerelease segment must start with a letter, e.g. -revision.1)" >&2
+            exit 1
+          fi
           AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
           {
             echo "dist_tag=$TAG"
@@ -243,6 +256,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Re-verify Nargo refs at compile time (closes the validate→build TOCTOU window)
+        run: ./scripts/verify-nargo-refs.sh
+
       - name: Overlay version (rehearsal/hotfix — AFTER frozen install, BEFORE build/pack)
         if: inputs.mode != 'release'
         env:
@@ -336,7 +352,15 @@ jobs:
         run: |
           published=()
           for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
-            if [ "$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
+            # Retried: a lagging read right after a partial publish would misclassify a
+            # recovery re-run as fresh and then die on E409 at publish.
+            got=""
+            for _ in 1 2 3 4 5; do
+              got=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)
+              [ -n "$got" ] && break
+              sleep 15
+            done
+            if [ "$got" = "$INPUT_VERSION" ]; then
               published+=("$pkg")
             fi
           done
@@ -409,13 +433,34 @@ jobs:
             if [ "$got" != "$INPUT_VERSION" ]; then
               echo "ERROR: @alejoamiras/$pkg@$INPUT_VERSION not resolvable after 10min" >&2; fail=1; continue
             fi
-            tags=$(npm view "@alejoamiras/$pkg" dist-tags --json)
+            # Registry read-lag applies to EVERY read here, not just version visibility
+            # (documented >10 min) — retry dist-tags/integrity before judging.
+            tagged=""
+            for _ in $(seq 1 15); do
+              tags=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null || echo '{}')
+              tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
+              [ "$tagged" = "$INPUT_VERSION" ] && break
+              sleep 20
+            done
             echo "@alejoamiras/$pkg dist-tags: $tags"
-            tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
             if [ "$tagged" != "$INPUT_VERSION" ]; then
               echo "ERROR: dist-tag $DIST_TAG for $pkg is '$tagged', expected $INPUT_VERSION" >&2; fail=1
             fi
-            integrity=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" dist.integrity)
+            latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
+            case "$latest" in
+              0.0.0-*)
+                # canary.yml's old hygiene assert, kept in ALL modes: a first-publish can
+                # force `latest` onto junk; OIDC can't move tags, so surface it loudly.
+                echo "ERROR: latest for $pkg points at a canary ($latest) — run the manual dist-tag runbook step (docs/ci-pipeline.md)" >&2
+                fail=1
+                ;;
+            esac
+            integrity=""
+            for _ in 1 2 3 4 5; do
+              integrity=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" dist.integrity 2>/dev/null || true)
+              [ -n "$integrity" ] && break
+              sleep 15
+            done
             local_tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
             local_integrity="sha512-$(openssl dgst -sha512 -binary "$local_tgz" | base64 -w0)"
             if [ "$integrity" != "$local_integrity" ]; then
@@ -444,7 +489,11 @@ jobs:
           PRERELEASE_FLAG: ${{ needs.validate.outputs.prerelease-flag }}
         run: |
           TAG="v$INPUT_VERSION"
-          existing=$(git ls-remote origin "refs/tags/$TAG" | cut -f1)
+          # Annotated tags: ls-remote's plain line is the TAG OBJECT sha; the peeled
+          # ^{} line is the commit. Prefer peeled so idempotency survives either style.
+          peeled=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+          plain=$(git ls-remote origin "refs/tags/$TAG" | awk '$2 == "refs/tags/'"$TAG"'" {print $1}')
+          existing="${peeled:-$plain}"
           if [ -n "$existing" ]; then
             if [ "$existing" != "$GITHUB_SHA" ]; then
               echo "ERROR: tag $TAG exists at $existing, not at this run's $GITHUB_SHA" >&2; exit 1

@@ -30,13 +30,45 @@ manifest_pairs() {
     }' | sort -u
 }
 
-resolve() { # url tag -> commit sha (annotated tags: prefer ^{} peeled line)
-  local url="$1" tag="$2" out
+# Fail-closed completeness: the extractor above only understands single-line
+# `... git = "..." ... tag = "..." ...` inline tables. Any OTHER git-dep shape
+# (branch=/rev= keys, multi-line TOML tables) would silently escape both lock
+# generation and verification — so its mere presence is a hard error until the
+# extractor learns the shape. (Audit finding: fail-open extraction.)
+assert_extractor_covers_manifests() {
+  local bad
+  bad="$(find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -print0 |
+    xargs -0 grep -h -E 'git *= *"' |
+    awk '{
+      has_tag = match($0, /tag *= *"[^"]+"/)
+      if (!has_tag || match($0, /(branch|rev) *= *"/)) print
+    }')"
+  if [ -n "$bad" ]; then
+    echo "ERROR: unsupported Nargo git-dep form(s) — every git dep must be a SINGLE-LINE inline table with a tag= field (branch=/rev=/multi-line escape the commit lock):" >&2
+    printf '%s\n' "$bad" >&2
+    exit 1
+  fi
+}
+
+resolve() { # url tag -> commit sha; FAILS on branch/tag ambiguity
+  local url="$1" tag="$2" out tag_sha head_sha
   out="$(git ls-remote "$url" "refs/tags/${tag}" "refs/tags/${tag}^{}" "refs/heads/${tag}" 2>/dev/null)" || return 1
   [ -n "$out" ] || return 1
-  # peeled (^{}) wins, else first match
-  printf '%s\n' "$out" | awk '/\^\{\}$/{print $1; found=1; exit} {if(!seen){first=$1; seen=1}} END{if(!found && seen) print first}'
+  # Tag resolution: peeled (^{}) commit wins over the annotated tag object.
+  tag_sha="$(printf '%s\n' "$out" | awk '$2 ~ /^refs\/tags\/.*\^\{\}$/{print $1; exit}')"
+  [ -n "$tag_sha" ] || tag_sha="$(printf '%s\n' "$out" | awk '$2 ~ /^refs\/tags\//{print $1; exit}')"
+  head_sha="$(printf '%s\n' "$out" | awk '$2 ~ /^refs\/heads\//{print $1; exit}')"
+  # Both a branch AND a tag with this name, pointing at different commits: nargo's
+  # fetch semantics vs this lock could diverge — refuse instead of guessing.
+  # (Audit finding: ls-remote is refname-sorted, refs/heads sorts first.)
+  if [ -n "$tag_sha" ] && [ -n "$head_sha" ] && [ "$tag_sha" != "$head_sha" ]; then
+    echo "AMBIGUOUS REF: $url has both a tag and a branch named '$tag' at different commits (tag=$tag_sha branch=$head_sha)" >&2
+    return 2
+  fi
+  if [ -n "$tag_sha" ]; then printf '%s\n' "$tag_sha"; else printf '%s\n' "$head_sha"; fi
 }
+
+assert_extractor_covers_manifests
 
 if [ "$MODE" = "--write" ]; then
   tmp="$(mktemp)"

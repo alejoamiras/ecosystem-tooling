@@ -34,7 +34,8 @@
   "files": [
     "dist",
     "target",
-    "!target/*.json.bak"
+    "!target/*.json.bak",
+    "canonical-deployment.json"
   ],
   "scripts": {
     "benchmark": "aztec-benchmark --suffix _base",
