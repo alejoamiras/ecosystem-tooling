@@ -19,9 +19,15 @@ MODE="${1:-verify}"
 # (url<TAB>tag) pairs from every packages/**/Nargo.toml, deduped.
 # Field order inside the inline table varies (git before tag AND tag before git exist
 # in this repo) — extract each field independently instead of assuming an order.
+# DISCOVERY_RE is a permissive SUPERSET of "line declares a git dependency" — any git key
+# (bare or quoted) with any whitespace (space OR tab) before '='. Discovery must never
+# under-match (a missed dep escapes the lock); the completeness assert below then rejects
+# anything not in the exact supported form. So discovery is broad, acceptance is strict.
+DISCOVERY_RE="[\"']?git[\"']?[[:space:]]*="
+
 manifest_pairs() {
   find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -print0 |
-    xargs -0 grep -h -E "git *= *['\"]" |
+    xargs -0 grep -h -E "$DISCOVERY_RE" |
     awk '{
       url=""; tag="";
       if (match($0, /git *= *"[^"]+"/))  { url=substr($0, RSTART, RLENGTH); gsub(/git *= *"|"/, "", url); }
@@ -38,7 +44,7 @@ manifest_pairs() {
 assert_extractor_covers_manifests() {
   local bad
   bad="$(find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -print0 |
-    xargs -0 grep -h -E "git *= *['\"]" |
+    xargs -0 grep -h -E "$DISCOVERY_RE" |
     awk '{
       supported = (match($0, /git *= *"[^"]+"/) && match($0, /tag *= *"[^"]+"/) \
                    && !match($0, /(branch|rev) *= *["\x27]/))
