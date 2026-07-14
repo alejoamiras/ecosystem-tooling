@@ -42,7 +42,7 @@ Versions are LOCKSTEP with the Aztec version. One release = all three packages. 
 ### One-time publishing bootstrap (COMPLETED 2026-07-02 — kept for reference / future scopes)
 
 1. Before the first publish: create a **scope-level** granular npm automation token (publish, ≤30-day expiry, "Bypass 2FA" ticked), store as `NPM_TOKEN` in the protected GitHub environment `npm-publish`.
-2. First-publish the package names once with that token (at rc.2 this was the since-retired `canary.yml`; for a future scope, a one-off `mode=rehearsal` run with a temporarily-restored token path works the same).
+2. First-publish the package names once with that token. Do this as a TIGHTLY-SCOPED disposable procedure, never a lasting workflow: on a short-lived branch, add `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` to release.yml's publish step, dispatch ONE `mode=rehearsal` run from that branch ref, then delete the branch AND revoke the token in the same sitting (the deletion/revocation steps are part of the procedure, not cleanup afterthoughts). npm trusted publishing cannot create a first version (npm/cli#8544) — this is the only moment a token exists.
 3. On npmjs.com, configure a trusted publisher per package: repo, workflow `release.yml`, environment `npm-publish`, allowed action `npm publish`.
 4. Revoke the bootstrap token — all subsequent publishing is tokenless. *(Executed for @alejoamiras; repeat only if the packages move to a new scope, e.g. aztec-network. The repo no longer references `NPM_TOKEN` anywhere.)*
 

@@ -21,7 +21,7 @@ MODE="${1:-verify}"
 # in this repo) — extract each field independently instead of assuming an order.
 manifest_pairs() {
   find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -print0 |
-    xargs -0 grep -h -E 'git *= *"' |
+    xargs -0 grep -h -E "git *= *['\"]" |
     awk '{
       url=""; tag="";
       if (match($0, /git *= *"[^"]+"/))  { url=substr($0, RSTART, RLENGTH); gsub(/git *= *"|"/, "", url); }
@@ -38,7 +38,7 @@ manifest_pairs() {
 assert_extractor_covers_manifests() {
   local bad
   bad="$(find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -print0 |
-    xargs -0 grep -h -E 'git *= *"' |
+    xargs -0 grep -h -E "git *= *['\"]" |
     awk '{
       has_tag = match($0, /tag *= *"[^"]+"/)
       if (!has_tag || match($0, /(branch|rev) *= *"/)) print

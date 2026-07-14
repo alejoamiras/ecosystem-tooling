@@ -40,6 +40,7 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'import', spec: '@alejoamiras/aztec-fee-payment/utils' },
     { kind: 'import', spec: '@alejoamiras/aztec-fee-payment/artifacts/private' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-fee-payment/target/private_contract-PrivateFPC.json' },
+    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-fee-payment/canonical-deployment.json' },
   ],
 };
 

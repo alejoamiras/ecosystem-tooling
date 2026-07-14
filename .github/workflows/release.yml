@@ -110,13 +110,11 @@ jobs:
               fi
               ;;
             hotfix)
-              if [ "$INPUT_VERSION" = "$AZTEC_VERSION" ]; then
-                echo "hotfix mode: version must differ from config.aztecVersion (use release mode)" >&2; exit 1
+              # Exactly the approved emergency scheme (A2/D18): <aztecVersion>-revision.N.
+              # Anything looser (e.g. -rc.3, -canary.x) must not ride the hotfix pipeline.
+              if ! printf '%s' "$INPUT_VERSION" | grep -Eq "^$(printf '%s' "$AZTEC_VERSION" | sed 's/\./\\./g')-revision\.[1-9][0-9]*$"; then
+                echo "hotfix mode: version must be exactly ${AZTEC_VERSION}-revision.<N> (got $INPUT_VERSION)" >&2; exit 1
               fi
-              case "$INPUT_VERSION" in
-                "$AZTEC_VERSION"-*) : ;;
-                *) echo "hotfix mode: version must be a prerelease of $AZTEC_VERSION (e.g. ${AZTEC_VERSION}-revision.1)" >&2; exit 1 ;;
-              esac
               ;;
             *) echo "unknown mode: $INPUT_MODE" >&2; exit 1 ;;
           esac
@@ -385,7 +383,17 @@ jobs:
         run: |
           for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
             if [ "$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
-              echo "@alejoamiras/$pkg@$INPUT_VERSION already published — skipping (identity verified in preflight)"
+              # A package can become visible AFTER preflight's scan (verify-then-recheck
+              # race) — never skip on visibility alone; repeat the full integrity +
+              # certificate-identity acceptance check at the point of skipping.
+              integrity=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" dist.integrity)
+              local_tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
+              got="sha512-$(openssl dgst -sha512 -binary "$local_tgz" | base64 -w0)"
+              if [ "$got" != "$integrity" ]; then
+                echo "ERROR: $pkg@$INPUT_VERSION appeared on the registry but does NOT match this run's tarball — refusing to continue" >&2; exit 1
+              fi
+              ./scripts/verify-attestation-identity.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$GITHUB_SHA"
+              echo "@alejoamiras/$pkg@$INPUT_VERSION already published — skipping (integrity + identity re-verified at skip time)"
               npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" "$DIST_TAG" || true
               continue
             fi

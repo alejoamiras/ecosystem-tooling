@@ -35,11 +35,15 @@ describe('canonical-deployment.json matches the compiled artifact', () => {
     expect(instance.address.toString()).toBe(canonical.expectedAddress);
   });
 
-  it('README embeds the canonical address (consumers read the README, not this file)', () => {
+  it('README "Current canonical" line embeds the canonical address exactly', () => {
     const readme = readFileSync(join(__dirname, '../../../README.md'), 'utf8');
+    // Anchored to the display line, not readme-wide includes — the correct address
+    // surviving in prose elsewhere must not mask a wrong displayed value.
+    const line = readme.split('\n').find((l) => l.includes('Current canonical'));
+    expect(line, 'README lost its "Current canonical" line').toBeDefined();
     expect(
-      readme.includes(canonical.expectedAddress),
-      'README canonical-address mention drifted from canonical-deployment.json — update the README in the same commit',
+      line?.includes(canonical.expectedAddress),
+      `README "Current canonical" line drifted from canonical-deployment.json (${canonical.expectedAddress})`,
     ).toBe(true);
   });
 });

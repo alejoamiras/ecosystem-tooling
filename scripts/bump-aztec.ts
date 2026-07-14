@@ -95,11 +95,13 @@ function aztecClosure(version: string): Map<string, string> {
 // name -> RESOLVED version from bun.lock. The report's >7d fallback path must not query
 // alias packages (e.g. @aztec/viem, resolved at 2.38.x) at the lockstep target — that
 // reintroduces the false NOT-PUBLISHED rows the closure path was fixed to avoid.
-function lockfileAztecPairs(): Map<string, string> {
+function lockfileAztecPairs(): Map<string, string[]> {
   const lock = readFileSync(join(ROOT, 'bun.lock'), 'utf8');
-  const pairs = new Map<string, string>();
+  const pairs = new Map<string, string[]>();
   for (const m of lock.matchAll(/"(@aztec\/[a-z0-9._-]+)@([0-9][^"]*)"/gi)) {
-    if (!pairs.has(m[1])) pairs.set(m[1], m[2]);
+    const list = pairs.get(m[1]) ?? [];
+    if (!list.includes(m[2])) list.push(m[2]);
+    pairs.set(m[1], list);
   }
   return new Map([...pairs.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
@@ -228,7 +230,9 @@ console.log('\n=== supply-chain report ===\n');
 console.log(`| package | version | published (UTC) | age (days) | provenance |`);
 console.log(`|---|---|---|---|---|`);
 const reportSet: Array<[string, string]> =
-  closureMap.size > 0 ? [...closureMap.entries()] : [...lockfileAztecPairs().entries()];
+  closureMap.size > 0
+    ? [...closureMap.entries()]
+    : [...lockfileAztecPairs().entries()].flatMap(([n, versions]) => versions.map((v): [string, string] => [n, v]));
 for (const [name, version] of reportSet) {
   const t = (npmView(`${name}@${version}`, 'time') ?? {}) as Record<string, string>;
   const at = t[version];
