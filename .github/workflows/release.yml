@@ -185,13 +185,13 @@ jobs:
 
           ## 📣 aztec-standards has moved
 
-          The Aztec Foundation now owns and publishes aztec-standards as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (repo: [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). `@alejoamiras/aztec-standards` is deprecated and will receive no further releases — migrate to the Foundation package.
+          The Aztec Foundation now owns and publishes aztec-standards as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (repo: [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). `@alejoamiras/aztec-standards` is retired and will receive no further releases — migrate to the Foundation package.
 
-          ## ⚠️ Compatibility notes at __VERSION__
+          ## ⚠️ Compatibility notes at 5.0.1
 
-          - No package-local API changes in `aztec-fee-payment` or `aztec-benchmark`.
-          - Upstream Aztec `__AZTEC_VERSION__` includes two breaking changes enforced through the exact `@aztec/*` peers: the fee payer must be set in the non-revertible phase ([#24479](https://github.com/AztecProtocol/aztec-packages/pull/24479)), and note-history validation helpers are re-siloed/renamed ([#24644](https://github.com/AztecProtocol/aztec-packages/pull/24644)).
-          - The canonical PrivateFPC deployment parameters were regenerated for `__AZTEC_VERSION__` — see `canonical-deployment.json` in the fee-payment package (funds sent to a stale-version address are unrecoverable; always read the address from the version you install).
+          - No package-local API changes in `aztec-fee-payment` or `aztec-benchmark` in the initial 5.0.1 release. (Hotfix/`-revision.N` dispatches: hand-edit this section before releasing — it describes 5.0.1, not your fix.)
+          - Upstream Aztec `5.0.1` includes two breaking changes enforced through the exact `@aztec/*` peers: the fee payer must be set in the non-revertible phase ([#24479](https://github.com/AztecProtocol/aztec-packages/pull/24479)), and note-history validation helpers are re-siloed/renamed ([#24644](https://github.com/AztecProtocol/aztec-packages/pull/24644)).
+          - The canonical PrivateFPC deployment parameters were regenerated for `5.0.1` — see `canonical-deployment.json` in the fee-payment package (funds sent to a stale-version address are unrecoverable; always read the address from the version you install).
 
           ## 📚 Docs & migration
 
