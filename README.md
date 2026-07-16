@@ -4,7 +4,7 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 
 > **aztec-standards has moved**: the Aztec Foundation now owns and publishes it as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) ([AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). The `@alejoamiras/aztec-standards` package is deprecated.
 
-**Current release: `5.0.0`** (lockstep with the Aztec version it targets) — published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline.
+**Current release: `5.0.1`** (lockstep with the Aztec version it targets) — published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline.
 
 ## Packages
 
@@ -13,7 +13,7 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 | [`@alejoamiras/aztec-fee-payment`](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-fee-payment.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | Private Fee Payment Contract (FPC) + TypeScript SDK |
 | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI machinery for Aztec contracts (gates, DA/L2 gas, proving) |
 
-Package versions track the Aztec version they support: install `@alejoamiras/aztec-fee-payment@5.0.0` for Aztec `5.0.0` (`latest`). Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`.
+Package versions track the Aztec version they support: install `@alejoamiras/aztec-fee-payment@5.0.1` for Aztec `5.0.1` (`latest`). Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`.
 
 ## Migrating from `@defi-wonderland/*`
 

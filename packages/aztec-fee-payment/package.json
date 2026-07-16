@@ -1,6 +1,6 @@
 {
   "name": "@alejoamiras/aztec-fee-payment",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "Private Fee Payment Contract (FPC) for Aztec — Noir contract + TypeScript SDK",
   "repository": {
     "type": "git",
@@ -52,20 +52,20 @@
     "upload:artifacts": "tsx scripts/upload-artifact.ts"
   },
   "devDependencies": {
-    "@alejoamiras/aztec-benchmark": "5.0.0",
-    "@aztec/accounts": "5.0.0",
-    "@aztec/aztec.js": "5.0.0",
-    "@aztec/bb.js": "5.0.0",
-    "@aztec/constants": "5.0.0",
-    "@aztec/entrypoints": "5.0.0",
-    "@aztec/ethereum": "5.0.0",
-    "@aztec/foundation": "5.0.0",
-    "@aztec/l1-artifacts": "5.0.0",
-    "@aztec/noir-contracts.js": "5.0.0",
-    "@aztec/protocol-contracts": "5.0.0",
-    "@aztec/pxe": "5.0.0",
-    "@aztec/stdlib": "5.0.0",
-    "@aztec/wallets": "5.0.0",
+    "@alejoamiras/aztec-benchmark": "5.0.1",
+    "@aztec/accounts": "5.0.1",
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/bb.js": "5.0.1",
+    "@aztec/constants": "5.0.1",
+    "@aztec/entrypoints": "5.0.1",
+    "@aztec/ethereum": "5.0.1",
+    "@aztec/foundation": "5.0.1",
+    "@aztec/l1-artifacts": "5.0.1",
+    "@aztec/noir-contracts.js": "5.0.1",
+    "@aztec/protocol-contracts": "5.0.1",
+    "@aztec/pxe": "5.0.1",
+    "@aztec/stdlib": "5.0.1",
+    "@aztec/wallets": "5.0.1",
     "@noble/hashes": "1.8.0",
     "@types/node": "25.6.0",
     "dotenv": "17.4.2",
@@ -76,9 +76,9 @@
     "zod": "^4.4.0"
   },
   "peerDependencies": {
-    "@aztec/aztec.js": "5.0.0",
-    "@aztec/protocol-contracts": "5.0.0",
-    "@aztec/stdlib": "5.0.0"
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/protocol-contracts": "5.0.1",
+    "@aztec/stdlib": "5.0.1"
   },
   "engines": {
     "node": ">=22.0.0"
