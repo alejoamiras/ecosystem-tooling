@@ -9,7 +9,7 @@ on:
   workflow_call:
     inputs:
       package-dir:
-        description: Workspace package directory (e.g. packages/aztec-standards)
+        description: Workspace package directory (e.g. packages/aztec-fee-payment)
         required: true
         type: string
       pr-workflow:

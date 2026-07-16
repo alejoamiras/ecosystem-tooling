@@ -6,7 +6,7 @@
  * clean temp project WITH THE NPM CLIENT (not bun — bun masks postinstall breakage),
  * then import every legacy consumer surface with node. Fails loudly on any miss.
  *
- * Usage: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/aztec-standards ...
+ * Usage: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/aztec-fee-payment ...
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,18 +21,6 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'require', spec: '@alejoamiras/aztec-benchmark/action/comparison.cjs' },
     { kind: 'file', spec: 'node_modules/@alejoamiras/aztec-benchmark/bin/aztec-benchmark' },
     { kind: 'file', spec: 'node_modules/@alejoamiras/aztec-benchmark/action/action.yml' },
-  ],
-  // Paths mirror the REAL legacy 4.2.0 tarball layout (verified 2026-07-01: nested
-  // artifacts/src/artifacts/*.js — tsc widens rootDir because bindings import target/*.json).
-  // The legacy dist/ mirror was REMOVED at 5.0.0 ("deprecate at stable") — the negative
-  // check below keeps it from silently coming back and bloating the tarball again.
-  'aztec-standards': [
-    { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/src/artifacts/Token.js' },
-    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/artifacts/target/token_contract-Token.json' },
-    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/target/token_contract-Token.json' },
-    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-standards/deployments.json' },
-    { kind: 'import', spec: '@alejoamiras/aztec-standards/artifacts/src/artifacts/Vault.js' },
-    { kind: 'absent-dir', spec: 'dist/' },
   ],
   'aztec-fee-payment': [
     { kind: 'import', spec: '@alejoamiras/aztec-fee-payment' },

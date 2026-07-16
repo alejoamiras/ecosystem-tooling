@@ -219,7 +219,7 @@ If you return a `feePaymentMethod` in the `BenchmarkContext`, it is automaticall
 
 ### Usage Example
 
-See how this monorepo benchmarks its own contracts in [`packages/aztec-standards/benchmarks`](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-standards/benchmarks).
+See how this monorepo benchmarks its own contracts in [`packages/aztec-fee-payment/benchmarks`](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-fee-payment/benchmarks).
 
 ---
 
@@ -234,7 +234,7 @@ Each entry in the output will be identified by the custom `name` you provided (i
 
 ### Inside this monorepo
 
-The per-package gates (`aztec-standards.yml`, `aztec-fee-payment.yml`) call the repo's reusable workflows:
+The per-package gate (`aztec-fee-payment.yml`) calls the repo's reusable workflows:
 
 - **`_pr-benchmark.yml`** — on every PR: runs the suites on the PR head (`--skip-proving`), downloads the `main` baseline artifact, generates a comparison report (regressions beyond 2.5% highlighted), and posts it as a PR comment. Security split: the job executing PR code is read-only; a separate write-permission job posts the comment without executing anything from the PR.
 - **`_update-baseline.yml`** — on pushes to `main` (+ monthly cron via `update-baselines.yml`): refreshes the baseline artifacts (`benchmark-baseline-<package>-main`).

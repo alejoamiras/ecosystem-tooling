@@ -2,7 +2,7 @@
 
 **Version**: 1.5
 **Status**: Active
-**Target Aztec Version**: 5.0.0
+**Target Aztec Version**: 5.0.1
 **Audience**: Implementation Engineers
 **Date**: May 2026
 
@@ -296,3 +296,4 @@ The FPC's public FeeJuice balance (used to pay sequencers) is funded separately 
 | 1.5     | 2026-06-15 | Upgrade to Aztec 5.0.0-rc.1: MessageDelivery API + gas-estimation API adaptation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 1.5.1   | 2026-06-25 | **SDK input hardening**: `estimateGasSettings` now validates `estimatedGasPadding` up front — throws if it is not a non-negative finite number (rejects `NaN`/`Infinity`/negative; `0` allowed), failing fast before the simulation round-trip. Mirrors the existing `maxFeeMultiplier` (`normalizeMultiplier`) validation. Happy-path behavior unchanged for valid inputs.                                                                                                                                                                                                                                                                            |
 | 1.5.2   | 2026-07-13 | Aztec `5.0.0` (stable) migration: `compute_secret_hash` / `compute_l1_to_l2_message_nullifier` now take the secret as `[Field; N]` — contract wraps its single-field bridge secret as `[secret]` (N=1 hashes are unchanged upstream, so all previously derived hashes/addresses are preserved). All PRD formula sites updated to the array form. Target Aztec Version bumped `5.0.0-rc.2` → `5.0.0`. No spec-level / public-API / security-property changes. |
+| 1.5.3   | 2026-07-16 | Updated Target Aztec Version from `5.0.0` to `5.0.1` (upstream patch). No package-local API changes: `set_as_fee_payer()` already runs pre-`end_setup()` (satisfies the new non-revertible-phase assert, #24479); no note-history validation helpers in use (#24644). Canonical deployment parameters regenerated for the 5.0.1 artifact. |

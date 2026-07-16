@@ -2,7 +2,7 @@
 /**
  * Version overlay for release.yml's rehearsal/hotfix modes (plan aztec-5-stable, D2v3/D16).
  *
- * Stamps OVERLAY_VERSION onto the three publishable packages — `version` plus every
+ * Stamps OVERLAY_VERSION onto the publishable packages — `version` plus every
  * internal `@alejoamiras/aztec-*` exact pin — WITHOUT touching `@aztec/*` peer pins
  * (those stay at the lockstep Aztec version the code was built against).
  *

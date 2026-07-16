@@ -2,7 +2,7 @@
   "name": "ecosystem-tooling",
   "version": "0.0.0",
   "private": true,
-  "description": "Aztec ecosystem packages — bun monorepo continuing Wonderland's aztec-standards, aztec-fee-payment and aztec-benchmark",
+  "description": "Aztec ecosystem packages — bun monorepo continuing Wonderland's aztec-fee-payment and aztec-benchmark",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alejoamiras/ecosystem-tooling.git"
@@ -14,7 +14,7 @@
     "packages/*"
   ],
   "scripts": {
-    "bench": "bun run --cwd packages/aztec-standards bench && bun run --cwd packages/aztec-fee-payment benchmark",
+    "bench": "bun run --cwd packages/aztec-fee-payment benchmark",
     "codegen": "bun run --filter '*' codegen",
     "compile": "bun run --filter '*' compile",
     "lint": "biome check . && sort-package-json --check \"package.json\" \"packages/*/package.json\"",
@@ -23,9 +23,9 @@
     "lint:shell": "shellcheck scripts/*.sh",
     "prepare": "husky",
     "test": "bun run test:nr && bun run test:js",
-    "test:js": "bun run --cwd packages/aztec-standards test:js && bun run --cwd packages/aztec-fee-payment test:js",
-    "test:nr": "bun run --cwd packages/aztec-standards test:nr && bun run --cwd packages/aztec-fee-payment test:nr",
-    "typecheck": "bun run --cwd packages/aztec-standards typecheck && bun run --cwd packages/aztec-fee-payment typecheck && bun run --cwd packages/aztec-benchmark typecheck"
+    "test:js": "bun run --cwd packages/aztec-fee-payment test:js",
+    "test:nr": "bun run --cwd packages/aztec-fee-payment test:nr",
+    "typecheck": "bun run --cwd packages/aztec-fee-payment typecheck && bun run --cwd packages/aztec-benchmark typecheck"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json}": [
@@ -45,7 +45,7 @@
     ]
   },
   "config": {
-    "aztecVersion": "5.0.0"
+    "aztecVersion": "5.0.1"
   },
   "overrides": {
     "@noble/hashes": "1.8.0"
