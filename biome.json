@@ -30,7 +30,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/aztec-benchmark/**", "packages/aztec-standards/**", "packages/aztec-fee-payment/**"],
+      "includes": ["packages/aztec-benchmark/**", "packages/aztec-fee-payment/**"],
       "linter": {
         "rules": {
           "suspicious": {

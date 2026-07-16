@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes all three packages via npm trusted publishing (OIDC + provenance, tokenless).
+# Publishes both packages via npm trusted publishing (OIDC + provenance, tokenless).
 # Re-validates the exact release sha in-workflow BEFORE any publish — never trusts a prior
 # PR run. GitHub-hosted runners only (trusted-publishing requirement).
 #
@@ -23,7 +23,7 @@ name: Release
 #
 # OIDC least privilege: the build job (no id-token) produces sha256-manifested tarballs;
 # the publish job (id-token: write, full-SHA-pinned actions, exact-pinned npm) only
-# downloads, verifies, and publishes them. Publish order: benchmark → standards → fee-payment.
+# downloads, verifies, and publishes them. Publish order: benchmark → fee-payment.
 
 on:
   workflow_dispatch:
@@ -91,7 +91,7 @@ jobs:
               if [ "$INPUT_VERSION" != "$AZTEC_VERSION" ]; then
                 echo "release mode: input $INPUT_VERSION != config.aztecVersion $AZTEC_VERSION" >&2; exit 1
               fi
-              for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+              for pkg in aztec-benchmark aztec-fee-payment; do
                 PKG_VERSION=$(node -p "require('./packages/$pkg/package.json').version")
                 if [ "$INPUT_VERSION" != "$PKG_VERSION" ]; then
                   echo "release mode: input $INPUT_VERSION != packages/$pkg version $PKG_VERSION" >&2; exit 1
@@ -163,13 +163,12 @@ jobs:
           DIST_TAG: ${{ steps.derive.outputs.dist_tag }}
         run: |
           cat > release-notes.md <<'TEMPLATE'
-          Aztec ecosystem packages `__VERSION__`, targeting **Aztec `__AZTEC_VERSION__`**. All three packages are published with [npm provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline that re-runs the full test matrix before publishing.
+          Aztec ecosystem packages `__VERSION__`, targeting **Aztec `__AZTEC_VERSION__`**. Both packages are published with [npm provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline that re-runs the full test matrix before publishing.
 
           ## 📦 Packages
 
           | Package | What it is |
           |---|---|
-          | [`@alejoamiras/aztec-standards`](https://www.npmjs.com/package/@alejoamiras/aztec-standards) | Standardized Aztec contracts: token (AIP-20), vault (AIP-4626), NFT, escrow, dripper, proxy |
           | [`@alejoamiras/aztec-fee-payment`](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | Private Fee Payment Contract (FPC) + TypeScript SDK |
           | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI tooling (circuit gates, DA/L2 gas, proving) |
 
@@ -178,22 +177,26 @@ jobs:
           Use `__VERSION__` with an Aztec `__AZTEC_VERSION__` node/sandbox — `@aztec/*` peer dependencies install automatically. This release is also available under the `__DIST_TAG__` dist-tag.
 
           ```bash
-          bun add @alejoamiras/aztec-standards@__VERSION__
           bun add @alejoamiras/aztec-fee-payment@__VERSION__
           bun add -D @alejoamiras/aztec-benchmark@__VERSION__
           ```
 
           Verify provenance end-to-end: `npm audit signatures`
 
-          ## ⚠️ Breaking changes at 5.0.0
+          ## 📣 aztec-standards has moved
 
-          - **aztec-standards**: the legacy `dist/…` deep-import mirror is removed — switch deep imports to the identical `artifacts/…` paths (`target/*.json` and `deployments.json` are unchanged).
-          - **Aztec 5.0.0 upgrade**: local PXE state resets on first open (upstream schema change) — re-register accounts and re-sync.
+          The Aztec Foundation now owns and publishes aztec-standards as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (repo: [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). `@alejoamiras/aztec-standards` is deprecated and will receive no further releases — migrate to the Foundation package.
+
+          ## ⚠️ Compatibility notes at __VERSION__
+
+          - No package-local API changes in `aztec-fee-payment` or `aztec-benchmark`.
+          - Upstream Aztec `__AZTEC_VERSION__` includes two breaking changes enforced through the exact `@aztec/*` peers: the fee payer must be set in the non-revertible phase ([#24479](https://github.com/AztecProtocol/aztec-packages/pull/24479)), and note-history validation helpers are re-siloed/renamed ([#24644](https://github.com/AztecProtocol/aztec-packages/pull/24644)).
+          - The canonical PrivateFPC deployment parameters were regenerated for `__AZTEC_VERSION__` — see `canonical-deployment.json` in the fee-payment package (funds sent to a stale-version address are unrecoverable; always read the address from the version you install).
 
           ## 📚 Docs & migration
 
-          - Per-package usage: [aztec-standards](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-standards#readme) · [aztec-fee-payment](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-fee-payment#readme) · [aztec-benchmark](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-benchmark#readme)
-          - Migrating from `@defi-wonderland/*`: scope swap + `dist/…` imports move to `artifacts/…` — [migration table](https://github.com/alejoamiras/ecosystem-tooling#migrating-from-defi-wonderland)
+          - Per-package usage: [aztec-fee-payment](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-fee-payment#readme) · [aztec-benchmark](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-benchmark#readme)
+          - Migrating from `@defi-wonderland/*`: scope swap — [migration table](https://github.com/alejoamiras/ecosystem-tooling#migrating-from-defi-wonderland)
           TEMPLATE
           sed -i "s/__VERSION__/$INPUT_VERSION/g; s/__AZTEC_VERSION__/$AZTEC_VERSION/g; s/__DIST_TAG__/$DIST_TAG/g" release-notes.md
           if grep -q "__" release-notes.md; then
@@ -203,14 +206,6 @@ jobs:
         with:
           name: release-notes
           path: release-notes.md
-
-  standards-checks:
-    name: Standards
-    needs: validate
-    uses: ./.github/workflows/_package-checks.yml
-    with:
-      package-dir: packages/aztec-standards
-      min-txe-tests: 329
 
   fee-payment-checks:
     name: Fee Payment
@@ -238,7 +233,7 @@ jobs:
 
   build:
     name: Build + pack (no publish credentials)
-    needs: [validate, standards-checks, fee-payment-checks, benchmark-build]
+    needs: [validate, fee-payment-checks, benchmark-build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -269,11 +264,10 @@ jobs:
       - name: Build all packages
         run: |
           bun run --cwd packages/aztec-benchmark build
-          (cd packages/aztec-standards && aztec compile && aztec codegen target --outdir src/artifacts -f && bash scripts/build.sh)
           (cd packages/aztec-fee-payment && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
 
       - name: Verify tarball surfaces (pre-publish gate)
-        run: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/aztec-standards packages/aztec-fee-payment
+        run: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/aztec-fee-payment
 
       - name: Pack + assert embedded manifests (fail-closed version backstop)
         env:
@@ -281,11 +275,17 @@ jobs:
           AZTEC_VERSION: ${{ needs.validate.outputs.aztec-version }}
         run: |
           mkdir -p release-tarballs
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          for pkg in aztec-benchmark aztec-fee-payment; do
             (cd "packages/$pkg" && npm pack --pack-destination "$GITHUB_WORKSPACE/release-tarballs" > /dev/null)
           done
           ls -la release-tarballs/
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          # Arity is itself fail-closed: symmetric edits dropping a SURVIVING package from
+          # both the publish and assert loops would otherwise release silently-partially.
+          TARBALL_COUNT=$(find release-tarballs -name '*.tgz' | wc -l)
+          if [ "$TARBALL_COUNT" -ne 2 ]; then
+            echo "expected exactly 2 tarballs, packed $TARBALL_COUNT" >&2; exit 1
+          fi
+          for pkg in aztec-benchmark aztec-fee-payment; do
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
             bun scripts/assert-tarball-meta.ts "$tgz" "@alejoamiras/$pkg" "$INPUT_VERSION" "$AZTEC_VERSION"
           done
@@ -298,7 +298,7 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected-head-sha }}
         run: |
           mkdir -p baseline-tarballs
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          for pkg in aztec-benchmark aztec-fee-payment; do
             name="@alejoamiras/$pkg"
             url=$(npm view "$name@$COMPARE_AGAINST" dist.tarball)
             integrity=$(npm view "$name@$COMPARE_AGAINST" dist.integrity)
@@ -352,7 +352,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           published=()
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          for pkg in aztec-benchmark aztec-fee-payment; do
             # Retried: a lagging read right after a partial publish would misclassify a
             # recovery re-run as fresh and then die on E409 at publish.
             got=""
@@ -379,12 +379,12 @@ jobs:
             ./scripts/verify-attestation-identity.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$GITHUB_SHA"
           done
 
-      - name: Publish tarballs (benchmark → standards → fee-payment, idempotent)
+      - name: Publish tarballs (benchmark → fee-payment, idempotent)
         env:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          for pkg in aztec-benchmark aztec-fee-payment; do
             if [ "$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
               # A package can become visible AFTER preflight's scan (verify-then-recheck
               # race) — never skip on visibility alone; repeat the full integrity +
@@ -414,7 +414,7 @@ jobs:
         run: |
           # Trusted-publishing credentials cover `npm publish` only; dist-tag mutations get
           # E401 BY DESIGN. Best-effort, never fatal — the runbook covers manual dist-tag.
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          for pkg in aztec-benchmark aztec-fee-payment; do
             latest=$(npm view "@alejoamiras/$pkg" dist-tags.latest 2>/dev/null || true)
             case "$latest" in
               0.0.0-*)
@@ -432,7 +432,7 @@ jobs:
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
           fail=0
-          for pkg in aztec-benchmark aztec-standards aztec-fee-payment; do
+          for pkg in aztec-benchmark aztec-fee-payment; do
             # Read-API lag after publish can exceed several minutes — retry before judging.
             got=""
             for attempt in $(seq 1 30); do
