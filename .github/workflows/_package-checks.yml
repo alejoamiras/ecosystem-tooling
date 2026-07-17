@@ -73,16 +73,19 @@ jobs:
       - name: Run vitest suite (PTY-wrapped)
         working-directory: ${{ inputs.package-dir }}
         run: script -e -c "NODE_NO_WARNINGS=1 bunx vitest run" /dev/null
-      - name: Verify published package surface (packaging + canonical gates, if present)
+      - name: Verify published package surface (packaging + canonical gates)
         working-directory: ${{ inputs.package-dir }}
         # Package-specific gates that assert the published tarball surface and the
-        # canonical-address guard's dist-layout resolution. Guarded by file existence so
-        # packages without them (e.g. aztec-benchmark) skip cleanly. Runs in both the PR
-        # gate and the release pipeline (release.yml's *-checks jobs reuse this workflow).
+        # canonical-address guard's dist-layout resolution. Runs in both the PR gate and
+        # the release pipeline (release.yml's *-checks jobs reuse this workflow).
+        # Branch on the package (NOT file existence): fee-payment MUST run the gate, so a
+        # future PR that deletes/renames a verifier fails the (missing) `verify:package`
+        # script instead of silently skipping both checks with CI still green. Other
+        # packages have no such gate and skip explicitly.
         run: |
-          if [ -f scripts/verify-pack.ts ] && [ -f scripts/verify-dist-canonical.mjs ]; then
+          if [ "${{ inputs.package-dir }}" = "packages/aztec-fee-payment" ]; then
             bun run build
             bun run verify:package
           else
-            echo "no package-verification gates in ${{ inputs.package-dir }} — skipping"
+            echo "no package-verification gate defined for ${{ inputs.package-dir }} — skipping"
           fi
