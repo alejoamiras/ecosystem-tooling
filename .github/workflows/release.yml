@@ -61,7 +61,11 @@ permissions:
 # Single source of truth for WHICH packages this pipeline publishes (space-separated dir
 # names under packages/, each expected to hold a manifest named @alejoamiras/<dir>). Every
 # publish/assert loop and the arity backstop derive from this one list — so a package add/
-# remove/rename (Phase D) is a one-line edit here, not ~9 duplicated `for pkg in ...` loops.
+# remove/rename (Phase D) updates the machinery from here, not ~9 duplicated `for pkg in ...`
+# loops. NOTE: the human-facing release-notes template (render step) still hardcodes package
+# names + install commands (it carries per-package prose this list can't generate) — a
+# fail-closed guard there asserts each RELEASE_PACKAGES name appears in the rendered notes, so
+# a rename that forgets the template fails the run rather than shipping wrong install text.
 # Publish order is significant (benchmark before fee-payment); keep it in this order.
 env:
   RELEASE_PACKAGES: "aztec-benchmark aztec-fee-payment"
@@ -105,8 +109,18 @@ jobs:
           # shell branch can never drift from the tested matrix. (The runtime/IO bindings —
           # per-package version equality, rehearsal-names-THIS-commit, expected-head-sha /
           # compare-against — need the live checkout and stay in the next step.)
-          node scripts/release-policy.mjs "$INPUT_MODE" "$INPUT_VERSION" "$AZTEC_VERSION" "$SET_LATEST" >> "$GITHUB_OUTPUT"
-          echo "aztec_version=$AZTEC_VERSION" >> "$GITHUB_OUTPUT"
+          # A policy violation makes the helper exit 1 (reason on stderr) and this step fails.
+          POLICY=$(node scripts/release-policy.mjs "$INPUT_MODE" "$INPUT_VERSION" "$AZTEC_VERSION" "$SET_LATEST")
+          # Defense-in-depth: the helper MUST emit a non-empty dist_tag. If it ever exits 0 with
+          # empty stdout (e.g. a broken main-module guard), refuse — an empty DIST_TAG reaching
+          # `npm publish --tag ""` could mis-tag a canary/revision onto latest.
+          if ! printf '%s\n' "$POLICY" | grep -q '^dist_tag=.'; then
+            echo "release-policy.mjs produced no dist_tag (output: '$POLICY')" >&2; exit 1
+          fi
+          {
+            printf '%s\n' "$POLICY"
+            echo "aztec_version=$AZTEC_VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "policy OK: mode=$INPUT_MODE version=$INPUT_VERSION set-latest=$SET_LATEST (aztec $AZTEC_VERSION)"
       - name: Assert package manifests match RELEASE_PACKAGES
         run: |
@@ -211,6 +225,16 @@ jobs:
           if grep -q "__" release-notes.md; then
             echo "unreplaced placeholder in notes" >&2; exit 1
           fi
+          # Fail-closed: the notes template hardcodes package names + install commands (they
+          # carry per-package prose the RELEASE_PACKAGES loops can't generate). Assert every
+          # published package is actually named in the rendered notes — so a package
+          # add/rename that updated RELEASE_PACKAGES but forgot this template FAILS here instead
+          # of shipping a GitHub release that points users at a name that no longer exists.
+          for pkg in $RELEASE_PACKAGES; do
+            if ! grep -q "@alejoamiras/$pkg" release-notes.md; then
+              echo "release notes do not mention @alejoamiras/$pkg — update the notes template for the renamed/added package" >&2; exit 1
+            fi
+          done
       - uses: actions/upload-artifact@v6
         with:
           name: release-notes
@@ -389,23 +413,10 @@ jobs:
               echo "ERROR: published $pkg@$INPUT_VERSION does NOT match the locally built tarball — refusing recovery" >&2; exit 1
             fi
             ./scripts/verify-attestation-identity.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$GITHUB_SHA"
-            # Fail-closed on tag identity: OIDC can only `npm publish`, never repair a dist-tag.
-            # A legitimate recovery re-run must find the desired publish tag ALREADY pointing at
-            # this version (a prior run's publish-time --tag set it atomically with publish). If
-            # it is absent/wrong, refuse — the operator fixes it via the manual OTP runbook, we
-            # never silently mutate a tag we cannot authorize.
-            tagged=""
-            for _ in 1 2 3 4 5; do
-              tags=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null || echo '{}')
-              tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
-              [ "$tagged" = "$INPUT_VERSION" ] && break
-              sleep 15
-            done
-            if [ "$tagged" != "$INPUT_VERSION" ]; then
-              echo "ERROR: recovery of $pkg@$INPUT_VERSION but dist-tag '$DIST_TAG' points at '$tagged', not $INPUT_VERSION." >&2
-              echo "OIDC cannot repair dist-tags; fix it with the manual OTP runbook (docs/ci-pipeline.md) before re-running." >&2
-              exit 1
-            fi
+            # Fail-closed on tag identity (OIDC can only publish, never repair a dist-tag). The
+            # helper retries against the documented >10min dist-tags read-lag before judging, so a
+            # correct-but-un-propagated tag is not mistaken for a wrong one.
+            ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
           done
 
       - name: Publish tarballs (benchmark → fee-payment, idempotent)
@@ -427,13 +438,8 @@ jobs:
               ./scripts/verify-attestation-identity.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$GITHUB_SHA"
               # Fail-closed on tag identity (OIDC can only publish, never repair a dist-tag): the
               # desired tag must ALREADY point at this version (set by the prior run's publish-time
-              # --tag). If not, refuse — manual OTP runbook, never a silent unauthorized mutation.
-              tagged=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''" 2>/dev/null || echo '')
-              if [ "$tagged" != "$INPUT_VERSION" ]; then
-                echo "ERROR: $pkg@$INPUT_VERSION already published but dist-tag '$DIST_TAG' points at '$tagged', not $INPUT_VERSION." >&2
-                echo "OIDC cannot repair dist-tags; use the manual OTP runbook (docs/ci-pipeline.md)." >&2
-                exit 1
-              fi
+              # --tag). Same read-lag-tolerant helper as preflight — never a silent mutation.
+              ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
               echo "@alejoamiras/$pkg@$INPUT_VERSION already published, dist-tag '$DIST_TAG' correct — skipping (integrity + identity + tag re-verified at skip time)"
               continue
             fi

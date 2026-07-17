@@ -18,6 +18,8 @@
 //   | revision  | <aztec>-revision.N   | true       | latest      |
 //   | non-revision (release/rehearsal) with set-latest=true  ->  REJECT
 
+import { pathToFileURL } from 'node:url';
+
 const MODES = ['release', 'rehearsal', 'revision'];
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$/;
 const CANARY_RE = /^0\.0\.0-canary\.g[0-9a-f]{7,40}$/;
@@ -103,7 +105,12 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
 // CLI: node scripts/release-policy.mjs <mode> <version> <aztecVersion> <setLatest>
 // Prints `dist_tag=...` / `prerelease_flag=...` on stdout (for $GITHUB_OUTPUT); exit 1 on
 // any policy violation with the reason on stderr.
-if (import.meta.url === `file://${process.argv[1]}`) {
+//
+// Guard via pathToFileURL, NOT `file://${process.argv[1]}` string concat: a raw concat keeps a
+// literal space (or other URL-encodable char) in the checkout path, while import.meta.url is
+// percent-encoded — so on a runner whose work dir contains a space the guard would be false and
+// the CLI block would silently no-op (exit 0, empty stdout → an empty dist-tag downstream).
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [mode, version, aztecVersion, setLatestRaw] = process.argv.slice(2);
   if (setLatestRaw !== undefined && setLatestRaw !== 'true' && setLatestRaw !== 'false') {
     console.error(`set-latest must be 'true' or 'false' (got '${setLatestRaw}')`);
