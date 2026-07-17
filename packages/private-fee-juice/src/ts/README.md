@@ -1,11 +1,11 @@
-# @alejoamiras/aztec-fee-payment
+# @alejoamiras/private-fee-juice
 
 Fee Payment Contract (FPC) for Aztec. This package provides a fully private fee payment strategy for sponsoring transaction fees on behalf of users.
 
 ## Installation
 
 ```bash
-bun add @alejoamiras/aztec-fee-payment
+bun add @alejoamiras/private-fee-juice
 ```
 
 ## Available Contracts
@@ -26,7 +26,7 @@ import {
   FPCFeePaymentMethod,
   PrivateMintAndPayFeePaymentMethod,
   registerPrivateContract,
-} from '@alejoamiras/aztec-fee-payment';
+} from '@alejoamiras/private-fee-juice';
 import { Fr } from '@aztec/aztec.js/fields';
 
 // Register the PrivateFPC with the PXE — no deployment transaction needed
@@ -101,7 +101,7 @@ If private logic fails, the transaction is never included — no fees are charge
 
 ## Exports
 
-### Main Entry Point (`@alejoamiras/aztec-fee-payment`)
+### Main Entry Point (`@alejoamiras/private-fee-juice`)
 
 ```typescript
 // Contracts
@@ -119,9 +119,9 @@ registerPrivateContract
 
 ### Sub-path Exports
 
-- `@alejoamiras/aztec-fee-payment/artifacts/private` - PrivateFPC contract and artifact
-- `@alejoamiras/aztec-fee-payment/fee-payment-methods` - Fee payment methods only
-- `@alejoamiras/aztec-fee-payment/utils` - Utility functions only
+- `@alejoamiras/private-fee-juice/artifacts/private` - PrivateFPC contract and artifact
+- `@alejoamiras/private-fee-juice/fee-payment-methods` - Fee payment methods only
+- `@alejoamiras/private-fee-juice/utils` - Utility functions only
 
 ## License
 

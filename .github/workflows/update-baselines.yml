@@ -22,8 +22,8 @@ jobs:
   # skip-proving on BOTH baselines and PR benches — comparisons must be like-for-like
   # (review finding). Full-proving baselines return when runner capacity allows (roadmap).
   fee-payment:
-    name: aztec-fee-payment baseline
+    name: private-fee-juice baseline
     uses: ./.github/workflows/_update-baseline.yml
     with:
-      package-dir: packages/aztec-fee-payment
+      package-dir: packages/private-fee-juice
       skip-proving: true

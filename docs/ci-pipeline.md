@@ -9,7 +9,7 @@ All workflows follow the house conventions: per-package PR gates with an interna
 | `lint.yml` | PR, dispatch | biome + sort-package-json + advisory `bun audit` |
 | `actionlint.yml` | PR, dispatch | Workflow linting (checksum-verified binary, no third-party action) |
 | `aztec-benchmark.yml` | PR (path-gated), dispatch | Build (tsc+ncc) + CLI smoke |
-| `aztec-fee-payment.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark` |
+| `private-fee-juice.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark` |
 | `_package-checks.yml` | reusable | `noir-tests` (TXE via `aztec test`, PTY-wrapped, **count floor via `scripts/check-txe-counts.sh`** — exit codes alone let silently-skipped suites pass) + `js-tests` (full-surface `bun run typecheck`, then vitest vs `aztec start --local-network`, PTY-wrapped) |
 | `_pr-benchmark.yml` | reusable | Split-permission benchmark: read-only job runs PR code + uploads report artifact; separate `pull-requests: write` job posts the comment WITHOUT executing PR code. Non-vacuous assertions (results non-empty; baseline present ⇒ ≥1 comparison pair). PR benches run `--skip-proving`. |
 | `_update-baseline.yml` | reusable | Full-proving baselines, artifacts namespaced `benchmark-baseline-<pkg>-<branch>` |

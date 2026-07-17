@@ -101,7 +101,7 @@ To recompute yourself (or for a NON-canonical salt of your own):
 ## Usage
 
 ```bash
-bun add @alejoamiras/aztec-fee-payment
+bun add @alejoamiras/private-fee-juice
 ```
 
 See [src/ts/README.md](src/ts/README.md) for detailed SDK documentation.
@@ -112,7 +112,7 @@ import {
   FPCFeePaymentMethod,
   PrivateMintAndPayFeePaymentMethod,
   registerPrivateContract,
-} from '@alejoamiras/aztec-fee-payment';
+} from '@alejoamiras/private-fee-juice';
 
 // Register the PrivateFPC — no deployment transaction needed (fully private contract)
 const fpc = await registerPrivateContract(wallet, salt);

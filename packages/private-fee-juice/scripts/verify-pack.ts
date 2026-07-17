@@ -68,11 +68,11 @@ try {
   // resolution (proves the map itself resolves, and JSON uses the import attribute).
   const probe = [
     ...jsSubpaths.map(
-      (s) => `await import(${JSON.stringify(`@alejoamiras/aztec-fee-payment/${s}`.replace('/.', ''))});`,
+      (s) => `await import(${JSON.stringify(`@alejoamiras/private-fee-juice/${s}`.replace('/.', ''))});`,
     ),
     ...jsonSubpaths.map(
       (s) =>
-        `await import(${JSON.stringify(`@alejoamiras/aztec-fee-payment/${s.slice(2)}`)}, { with: { type: 'json' } });`,
+        `await import(${JSON.stringify(`@alejoamiras/private-fee-juice/${s.slice(2)}`)}, { with: { type: 'json' } });`,
     ),
     `console.log('exports-smoke: all resolved');`,
   ].join('\n');

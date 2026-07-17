@@ -6,7 +6,7 @@
  * clean temp project WITH THE NPM CLIENT (not bun — bun masks postinstall breakage),
  * then import every legacy consumer surface with node. Fails loudly on any miss.
  *
- * Usage: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/aztec-fee-payment ...
+ * Usage: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/private-fee-juice ...
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,13 +22,13 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'file', spec: 'node_modules/@alejoamiras/aztec-benchmark/bin/aztec-benchmark' },
     { kind: 'file', spec: 'node_modules/@alejoamiras/aztec-benchmark/action/action.yml' },
   ],
-  'aztec-fee-payment': [
-    { kind: 'import', spec: '@alejoamiras/aztec-fee-payment' },
-    { kind: 'import', spec: '@alejoamiras/aztec-fee-payment/fee-payment-methods' },
-    { kind: 'import', spec: '@alejoamiras/aztec-fee-payment/utils' },
-    { kind: 'import', spec: '@alejoamiras/aztec-fee-payment/artifacts/private' },
-    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-fee-payment/target/private_contract-PrivateFPC.json' },
-    { kind: 'json', spec: 'node_modules/@alejoamiras/aztec-fee-payment/canonical-deployment.json' },
+  'private-fee-juice': [
+    { kind: 'import', spec: '@alejoamiras/private-fee-juice' },
+    { kind: 'import', spec: '@alejoamiras/private-fee-juice/fee-payment-methods' },
+    { kind: 'import', spec: '@alejoamiras/private-fee-juice/utils' },
+    { kind: 'import', spec: '@alejoamiras/private-fee-juice/artifacts/private' },
+    { kind: 'json', spec: 'node_modules/@alejoamiras/private-fee-juice/target/private_contract-PrivateFPC.json' },
+    { kind: 'json', spec: 'node_modules/@alejoamiras/private-fee-juice/canonical-deployment.json' },
   ],
 };
 

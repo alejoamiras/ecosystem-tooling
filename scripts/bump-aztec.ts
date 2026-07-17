@@ -5,10 +5,11 @@
  * Sweeps EVERY location the Aztec version lives:
  *   - root package.json  config.aztecVersion
  *   - packages/*'/package.json  version (lockstep) + every @aztec/* pin in
- *     dependencies/devDependencies/peerDependencies + internal @alejoamiras/aztec-* pins
+ *     dependencies/devDependencies/peerDependencies + internal cross-package pins
+ *     (deps whose name is itself a workspace package — detected by name set, not prefix)
  *   - packages/*'/**'/Nargo.toml  `tag = "v<old>"` on lines referencing aztec-packages
  *     (noir-lang deps like keccak256/sha512/bignum are deliberately untouched)
- *   - fee-payment PRD header `**Target Aztec Version**`
+ *   - the FPC PRD header `**Target Aztec Version**`
  *
  * Min-age handling (two-phase — bun's minimumReleaseAgeExcludes takes exact names and
  * transitives are gated independently; empirically verified, lessons/phase-1.md):
@@ -29,6 +30,12 @@ import { join } from 'node:path';
 const ROOT = join(import.meta.dir, '..');
 const MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PACKAGES = readdirSync(join(ROOT, 'packages')).filter((d) => statSync(join(ROOT, 'packages', d)).isDirectory());
+// Workspace package NAMES (from each packages/*/package.json). Internal cross-package pins are
+// bumped by membership in this set — NOT a `@alejoamiras/aztec-*` prefix — so a package rename
+// (e.g. aztec-fee-payment → private-fee-juice) can't silently drop a pin from the sweep.
+const WORKSPACE_NAMES = new Set<string>(
+  PACKAGES.map((d) => JSON.parse(readFileSync(join(ROOT, 'packages', d, 'package.json'), 'utf8')).name),
+);
 
 const npmView = (spec: string, field: string): unknown => {
   try {
@@ -166,7 +173,7 @@ for (const dir of PACKAGES) {
         deps[name] = target;
         count++;
       }
-      if (name.startsWith('@alejoamiras/aztec-')) {
+      if (WORKSPACE_NAMES.has(name)) {
         deps[name] = target;
         count++;
       }
@@ -193,7 +200,7 @@ for (const tomlPath of walkNargoTomls(join(ROOT, 'packages'))) {
 
 // 4. Fee-payment PRD header
 {
-  const prd = join(ROOT, 'packages/aztec-fee-payment/docs/private-product-requirements.md');
+  const prd = join(ROOT, 'packages/private-fee-juice/docs/private-product-requirements.md');
   try {
     const before = readFileSync(prd, 'utf8');
     const after = before.replace(/(\*\*Target Aztec Version\*\*:\s*)\S+/, `$1${target}`);

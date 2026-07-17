@@ -1,11 +1,11 @@
 {
-  "name": "@alejoamiras/aztec-fee-payment",
+  "name": "@alejoamiras/private-fee-juice",
   "version": "5.0.1",
   "description": "Private Fee Payment Contract (FPC) for Aztec — Noir contract + TypeScript SDK",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alejoamiras/ecosystem-tooling.git",
-    "directory": "packages/aztec-fee-payment"
+    "directory": "packages/private-fee-juice"
   },
   "license": "MIT",
   "author": "Wonderland",
