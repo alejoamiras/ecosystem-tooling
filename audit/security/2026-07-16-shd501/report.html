@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security Audit — aztec-fee-payment 5.0.1</title>
+<style>
+  :root {
+    --bg:#ffffff; --fg:#1a1a1a; --muted:#666; --hairline:#e2e2e2; --surface:#fafafa;
+    --code:#f0f0f0; --link:#0366d6;
+    --high:#b00020; --high-bg:#fdecef; --med:#a15c00; --med-bg:#fff6e6; --low:#555; --low-bg:#eee;
+    --green:#1a7f37; --green-bg:#eaf7ee; --amber:#a15c00; --amber-bg:#fff6e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#161616; --fg:#e6e6e6; --muted:#9a9a9a; --hairline:#333; --surface:#1e1e1e;
+      --code:#242424; --link:#5aa2ee;
+      --high:#ff6b81; --high-bg:#2a1518; --med:#e0a94a; --med-bg:#2a2113; --low:#bbb; --low-bg:#262626;
+      --green:#4ac26b; --green-bg:#14241a; --amber:#e0a94a; --amber-bg:#2a2113;
+    }
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--fg);
+         max-width:820px; margin:0 auto; padding:2rem 1rem 4rem; line-height:1.6; }
+  h1 { font-size:1.7rem; margin-bottom:.2rem; }
+  h2 { font-size:1.25rem; margin-top:2.5rem; border-bottom:1px solid var(--hairline); padding-bottom:.3rem; }
+  h3 { font-size:1.05rem; margin-top:1.6rem; }
+  .sub { color:var(--muted); font-size:.92rem; margin-top:0; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.86em; background:var(--code);
+         padding:.1em .35em; border-radius:4px; }
+  a { color:var(--link); }
+  .strip { display:flex; flex-wrap:wrap; gap:.5rem; margin:1.4rem 0; }
+  .stat { background:var(--surface); border:1px solid var(--hairline); border-radius:8px; padding:.6rem .9rem; min-width:74px; }
+  .stat .n { font-size:1.4rem; font-weight:600; display:block; }
+  .stat .l { font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .stat.med .n { color:var(--med); } .stat.low .n { color:var(--low); }
+  .callout { border-radius:8px; padding:1rem 1.2rem; margin:1.2rem 0; }
+  .callout.green { background:var(--green-bg); border:1px solid var(--green); }
+  .callout.amber { background:var(--amber-bg); border:1px solid var(--amber); }
+  .callout h3 { margin-top:0; }
+  .chip { display:inline-block; font-size:.72rem; font-weight:600; padding:.14em .55em; border-radius:20px;
+          text-transform:uppercase; letter-spacing:.03em; }
+  .chip-med { background:var(--med-bg); color:var(--med); }
+  .chip-low { background:var(--low-bg); color:var(--low); }
+  .chip-info { background:var(--code); color:var(--muted); }
+  .finding { background:var(--surface); border:1px solid var(--hairline); border-radius:8px; padding:1.2rem; margin:1.2rem 0; }
+  .finding-header { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+  .finding-id { color:var(--muted); font-size:.85rem; font-family:ui-monospace,monospace; }
+  .finding-title { font-weight:600; }
+  .meta-line { margin:.6rem 0 .9rem; }
+  .eli5 p { margin:.5rem 0; }
+  details { margin-top:.8rem; border-top:1px solid var(--hairline); padding-top:.6rem; }
+  summary { cursor:pointer; font-weight:600; font-size:.9rem; color:var(--muted); }
+  details p { margin:.5rem 0; }
+  ul.tight { margin:.4rem 0; }
+  footer { margin-top:3rem; padding-top:1rem; border-top:1px solid var(--hairline); color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+
+<h1>Security audit — <code>aztec-fee-payment</code> 5.0.1</h1>
+<p class="sub">Package: <code>@alejoamiras/aztec-fee-payment@5.0.1</code> · scope: <code>packages/aztec-fee-payment</code> only · effort: medium · 2026-07-16 · run <code>shd501</code> · two-model (Claude + Codex) per cluster</p>
+
+<div class="strip">
+  <div class="stat"><span class="n">4</span><span class="l">Total</span></div>
+  <div class="stat"><span class="n" style="color:var(--high)">0</span><span class="l">Critical</span></div>
+  <div class="stat"><span class="n" style="color:var(--high)">0</span><span class="l">High</span></div>
+  <div class="stat med"><span class="n">1</span><span class="l">Medium</span></div>
+  <div class="stat low"><span class="n">3</span><span class="l">Low</span></div>
+</div>
+
+<div class="callout green">
+  <h3>The contract core is clean — the important result</h3>
+  <p>The Noir smart-contract logic that actually moves money — how fees get charged, how a bridged deposit is proven and can't be spent twice, how the cryptography ties a deposit to its rightful owner — was examined independently by <strong>two different AI model families, and both found nothing</strong>. Both even re-derived the contract's cryptographic "domain separator" by hand and got the same value it uses. For a contract with no admin, no upgrade button, and no undo, that convergent all-clear on the money-handling core is the headline.</p>
+  <p><strong>None of the four findings is Critical or High, and none needs an emergency patch.</strong> The published contract is not broken. Everything below is about the surrounding TypeScript toolkit and how the package is bundled.</p>
+</div>
+
+<div class="callout amber">
+  <h3>What to actually do (all deferrable to the next release)</h3>
+  <p><strong>F-001</strong> (the one real issue): give SDK users a way to cap how much a transaction can cost, so a hostile network node can't inflate their fee. <strong>F-002</strong>: make the "correct address to send funds to" check enforce itself at runtime, not just in the test suite. <strong>F-003 + F-004</strong>: delete or stop shipping unused/test-only code that rides along in the published package. All four are small, additive, and safe to bundle into the next scheduled release — no hotfix warranted.</p>
+</div>
+
+<h2>Findings</h2>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="chip chip-med">Medium</span>
+    <span class="finding-id">F-001</span>
+    <span class="finding-title">A hostile RPC node can silently drain a user's fee balance</span>
+  </div>
+  <div class="meta-line">
+    <span class="chip chip-info">Found by Claude + Codex</span>
+    <span class="chip chip-info">confidence: high</span>
+    <span class="chip chip-info">CWE-20 / CWE-345</span>
+    <span class="chip chip-info">fix: hours · prod-reachable</span>
+  </div>
+  <div class="eli5">
+    <p><strong>What it is.</strong> Before sending a transaction, apps call a helper (<code>estimateGasSettings</code>) that asks the connected Aztec network node "how much does gas cost right now?" and trusts the answer with no upper limit. Separately, this fee contract charges the <em>full estimated maximum</em> and never refunds the difference (that's intentional — private contracts can't refund). Put together: whatever the node says the fee is, that's what gets permanently taken from the user.</p>
+    <p><strong>What an attacker would do.</strong> Run (or compromise, or sit in the middle of) the network node a wallet talks to — a well-worn threat in crypto, where users routinely point at shared public RPC endpoints. Return a gas price 100× the real one. The user's app faithfully turns that into the transaction's fee cap, signs it, sends it, and the contract burns that inflated amount from the user's internal balance — every transaction, until their balance is gone. It hits one user at a time, but every user of a dApp pointed at that bad node is affected the same way.</p>
+    <p><strong>The fix.</strong> Add an optional "I won't pay more than X" ceiling to the estimate helper, checked on the user's own machine before the number is trusted — independent of anything the node claims. It's a small, backwards-compatible addition to the SDK; ship it in the next release. The contract itself needs no change.</p>
+  </div>
+  <details>
+    <summary>Technical trace</summary>
+    <p><strong>Trace:</strong> <code>estimateGasSettings</code> (root export, <code>src/ts/index.ts:42</code>) reads <code>getCurrentMinFees()</code> and <code>getNodeInfo().txsLimits.gas</code> from a caller-supplied node, applies only a fixed 1.2× multiplier + finite/≥0 padding validation, and returns them as the tx's declared <code>GasSettings</code> — no absolute ceiling (<code>gas.ts:189,192-195,183-234</code>; the <code>padAndClampGas</code> clamp is sourced from the same node, so it is not independent). On-chain, <code>get_max_gas_cost</code> recomputes from the declared settings (<code>fpc_lib/src/lib.nr:17-27</code>) and <code>pay_fee</code> deducts the full amount with an explicit "Does not refund unused gas" (<code>main.nr:46-58</code>).</p>
+    <p><strong>Fix:</strong> add an optional <code>maxAcceptableGasCost</code> (or max-fees-per-gas cap) parameter to <code>estimateGasSettings</code>, throwing client-side if the node-derived cost exceeds it. Blast radius is per-signing-user (GasSettings is per-tx), not a cross-user or FPC-pool drain. Both models traced this independently and converged; main agent re-verified gas.ts:183-234 and index.ts. Defer to next lockstep release (additive). Effort: hours.</p>
+  </details>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="chip chip-low">Low</span>
+    <span class="finding-id">F-002</span>
+    <span class="finding-title">The "send funds here" address guard only checks itself</span>
+  </div>
+  <div class="meta-line">
+    <span class="chip chip-info">Found by Claude (Codex: same facts, rated test-gap)</span>
+    <span class="chip chip-info">confidence: moderate</span>
+    <span class="chip chip-info">CWE-345</span>
+    <span class="chip chip-info">fix: hours</span>
+  </div>
+  <div class="eli5">
+    <p><strong>What it is.</strong> This contract lives at one fixed address that users bridge real funds to; sending to a stale or wrong address means the money is unrecoverable. The safety check that's supposed to prevent that only compares the address against other copies of itself in the same repo (a JSON file, the README, the package version). Nothing anchors it to an outside source of truth, and the actual function apps call to register the contract accepts <em>any</em> address with no check at all.</p>
+    <p><strong>What a user would trigger.</strong> Not a remote attacker — but a single coordinated edit (or a compromised publish pipeline) could change the JSON and README together, pass every test green, and quietly point every future user at a different address. Or an integrator copies a stale address out of old docs; nothing stops them, and because this contract has no on-chain "does this exist?" check, the mistake surfaces only after funds are lost.</p>
+    <p><strong>The fix.</strong> Let apps import the canonical address as real code (not copy it from prose), and add an opt-in "assert this matches canonical" check to the register function so a wrong address throws instead of silently succeeding. Small SDK addition; next release.</p>
+  </div>
+  <details>
+    <summary>Technical trace</summary>
+    <p><strong>Trace:</strong> <code>canonical.test.ts:22-47</code> asserts only version==pin, address==derivation, README-line-embeds-address (all same-repo inputs, no external anchor) and never executes <code>registerPrivateContract</code>. <code>registerPrivateContract</code> (<code>deploy.ts:23-28</code>) takes an arbitrary salt with no canonical cross-check. <code>canonical-deployment.json</code> is not in the <code>exports</code> map (<code>package.json:13-31</code>), so integrators hand-copy the value from README prose. Codex independently confirmed the same test-coverage gap and the documented "noncanonical salt → valid-but-different address" behavior, rating it a gap rather than a finding.</p>
+    <p><strong>Fix:</strong> export the canonical record as a subpath; add opt-in <code>assertCanonical</code> to <code>registerPrivateContract</code>; optionally anchor the test against the prior published tarball's record. Defer. Effort: hours.</p>
+  </details>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="chip chip-low">Low</span>
+    <span class="finding-id">F-003</span>
+    <span class="finding-title">Unused artifact-registry code ships with weak safety checks</span>
+  </div>
+  <div class="meta-line">
+    <span class="chip chip-info">Found by Claude + Codex</span>
+    <span class="chip chip-info">confidence: high (not reachable)</span>
+    <span class="chip chip-info">CWE-494 / CWE-918</span>
+    <span class="chip chip-info">fix: hours</span>
+  </div>
+  <div class="eli5">
+    <p><strong>What it is.</strong> The package contains a module for fetching contract definitions from an external web service. The fetch path trusts whatever the server returns with no validation, and the upload path talks to a URL from an environment variable with no authentication and following redirects. <strong>The good news: the fetch path has zero callers anywhere</strong> — it's dead code — and the upload path is only used by a manual developer command, never in automation.</p>
+    <p><strong>What an attacker would do.</strong> Nothing today — there's no way to reach the dangerous path through the package's normal interface. The concern is forward-looking: if a future change wires this in without noticing the missing validation, a malicious registry could feed a poisoned contract definition and misdirect funds. Shipping the typings also makes it easy for someone to auto-import it and build on it, inheriting the gap.</p>
+    <p><strong>The fix.</strong> Simplest and safest: delete the module, since nothing uses it. If it's kept, add proper validation (schema + hash) to the fetch, force HTTPS with no auto-redirects on the upload, and stop shipping it in the package.</p>
+  </div>
+  <details>
+    <summary>Technical trace</summary>
+    <p><strong>Trace:</strong> <code>artifactRegistry.ts:131-169</code> — <code>return artifact as NoirCompiledContract</code>, bare cast of a network response, no schema/hash/signature check, registry-first over local file. <code>artifactRegistry.ts:27-53</code> — env-controlled base URL (no scheme allowlist), upload POST with no auth, default redirect-follow. Both models grep-confirmed <code>fetchArtifactFromRegistry</code>/<code>loadArtifactWithRegistryFallback</code> have zero callers repo-wide; the only caller of anything here is the manual <code>scripts/upload-artifact.ts</code> dev CLI (not in any workflow). Ships in <code>dist</code> but not in <code>exports</code> (Node blocks the normal import with <code>ERR_PACKAGE_PATH_NOT_EXPORTED</code>). <code>AZTEC_ARTIFACT_REGISTRY_STRICT</code> governs upload error-swallowing only, not fetch validation.</p>
+    <p><strong>Fix:</strong> delete if unused (removes the forward-risk); else add zod + classId-hash validation, <code>https:</code>-only allowlist, <code>redirect:'manual'</code>, and exclude from the tarball. Defer. Effort: hours.</p>
+  </details>
+</div>
+
+<div class="finding">
+  <div class="finding-header">
+    <span class="chip chip-low">Low</span>
+    <span class="finding-id">F-004</span>
+    <span class="finding-title">A test-only contract (1.2MB) ships to every consumer</span>
+  </div>
+  <div class="meta-line">
+    <span class="chip chip-info">Found by Claude + Codex</span>
+    <span class="chip chip-info">confidence: high</span>
+    <span class="chip chip-info">CWE-749</span>
+    <span class="chip chip-info">fix: minutes–hours</span>
+  </div>
+  <div class="eli5">
+    <p><strong>What it is.</strong> The published package bundles a "Counter" contract that exists purely for internal benchmarks and tests — its 1.2MB compiled file plus a fully-usable deploy binding — even though it's not part of the package's advertised interface. Confirmed by packing the real tarball.</p>
+    <p><strong>What a user would trigger.</strong> No direct exploit. But a dependency-scanning tool or a curious developer finds a deployable "Counter" contract inside a package whose job is fee payment, assumes it's a supported, audited part of the product, and builds on benchmark-grade code that was never hardened for production. Plus it needlessly bloats every install.</p>
+    <p><strong>The fix.</strong> Curate what the package ships so only the real fee-payment contract and the public toolkit go out — drop the test contract and the unused registry module from the tarball. Quick config change.</p>
+  </div>
+  <details>
+    <summary>Technical trace</summary>
+    <p><strong>Trace:</strong> <code>package.json:34-39</code> whitelists all of <code>target</code> and <code>dist</code> wholesale (only <code>*.json.bak</code> excluded). <code>npm pack --dry-run --json</code> confirmed the 5.0.1 tarball ships <code>target/counter_contract-Counter.json</code> (1,209,208 bytes, test-only) and <code>target/private_contract-PrivateFPC.json</code> (2.4MB); ~3.6MB unpacked before <code>dist</code>. A deployable <code>CounterContract</code> binding (<code>src/artifacts/Counter.ts</code>) and <code>artifactRegistry.js</code>/<code>.d.ts</code> also ship, none in the <code>exports</code> map.</p>
+    <p><strong>Fix:</strong> curate <code>files</code>/add <code>.npmignore</code> to exclude the Counter artifact + binding and <code>artifactRegistry.*</code>; ship only the PrivateFPC artifact + exported SDK. Defer; bundle with F-003. Effort: minutes–hours.</p>
+  </details>
+</div>
+
+<h2>Cross-cutting observations</h2>
+
+<h3>The three money-moving contract functions have no active unit tests</h3>
+<p>The contract's most security-critical functions — <code>pay_fee</code>, <code>mint</code>, <code>mint_and_pay_fee</code> — have their fast Noir-level unit tests entirely commented out, because the test environment can't simulate a real bridge deposit, runs with zero gas, and can't handle the phase-transition these functions use. They're covered only by slower integration tests that need a full live network running, and one of them (<code>mint_and_pay_fee</code>) only by a benchmark that doesn't assert correctness. This isn't a vulnerability, but the quickest safety net for the riskiest code is switched off — a mock-oracle test harness that lets these run as unit tests would materially strengthen regression protection. (Matches the roadmap's existing "structural test debt" note.)</p>
+
+<h3>The math is solid; the exposure is trusting the network node</h3>
+<p>Every finding of substance lives in the TypeScript trust boundary, not the zero-knowledge circuit. The recurring theme (F-001 especially) is that the SDK should treat the RPC node it talks to as untrusted and give integrators the controls to enforce that. The cryptographic core held up to two independent model families re-deriving it.</p>
+
+<footer>
+  Engineering detail: <a href="report.md">report.md</a> · verified findings: <a href="findings/verified.md">findings/verified.md</a> · consolidated: <a href="findings/consolidated.md">findings/consolidated.md</a> · raw per-cluster outputs: <a href="raw/">raw/</a><br>
+  Two-model map-reduce (Claude Sonnet + Codex gpt-5.6-sol) · 4 clusters · Noir core C1+C2 clean under both models · none Critical/High.
+</footer>
+
+</body>
+</html>

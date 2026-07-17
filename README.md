@@ -2,7 +2,7 @@
 
 Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts and benchmarking tooling originally built by [Wonderland](https://github.com/defi-wonderland) as an Aztec core contributor.
 
-> **aztec-standards has moved**: the Aztec Foundation now owns and publishes it as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) ([AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). The `@alejoamiras/aztec-standards` package is retired — no further releases; migrate to the Foundation package.
+> **aztec-standards has moved**: the Aztec Foundation now owns and publishes it as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) ([AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). The `@alejoamiras/aztec-standards` package is deprecated on npm (all versions) — migrate to the Foundation package.
 
 **Current lockstep target: `5.0.1`** (package versions track the Aztec version they target) — releases are published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline; check the [npm badges below](#packages) for what is live.
 
