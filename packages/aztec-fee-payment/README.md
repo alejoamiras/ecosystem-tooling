@@ -14,7 +14,7 @@ A Fee Payment Contract (FPC) for Aztec that enables private transaction fee spon
 ├── src/
 │   ├── artifacts/                   # Generated contract bindings
 │   ├── nr/                          # Noir smart contracts
-│   │   ├── counter_contract/        # Test utility contract
+│   │   ├── fpc_lib/                 # Shared Noir library (get_max_gas_cost)
 │   │   └── private_contract/        # PrivateFPC
 │   └── ts/                          # TypeScript package
 │       ├── fee-payment-methods/     # Fee payment method classes

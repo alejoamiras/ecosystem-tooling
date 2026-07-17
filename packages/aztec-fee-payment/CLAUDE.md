@@ -81,7 +81,9 @@ Two Noir packages (workspace defined in root `Nargo.toml`):
   - `mint(amount, salt, leaf_index)` — Proves prior `FeeJuice.claim` via nullifier existence, credits FJ to claimer
   - `balance_of(account)` — Unconstrained view
   - Library methods: `derive_bridge_secret`, `get_bridge_gas_msg_hash`, `compute_feejuice_claim_nullifier`
-- **`counter_contract`** — Test utility contract for benchmarks and integration tests
+- **`fpc_lib`** — Shared Noir library (`get_max_gas_cost`), imported by `private_contract`
+
+The sponsored **application** contract that tests and benchmarks exercise is NOT local: it is the stock upstream `@aztec/noir-contracts.js` `SimpleToken` (a devDependency; the FPC sponsors `mint_privately` on it). This replaced the previously-bundled local `counter_contract`, which was deleted — a stock contract needs no maintained Noir crate and never ships to consumers.
 
 ### TypeScript SDK (`src/ts/`)
 
