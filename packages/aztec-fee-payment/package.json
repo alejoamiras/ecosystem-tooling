@@ -27,6 +27,7 @@
       "import": "./dist/src/ts/utils/index.js",
       "types": "./dist/src/ts/utils/index.d.ts"
     },
+    "./canonical-deployment.json": "./canonical-deployment.json",
     "./package.json": "./package.json"
   },
   "main": "./dist/src/ts/index.js",
