@@ -1,10 +1,10 @@
 # ecosystem-tooling
 
-Bun monorepo consolidating Wonderland's Aztec packages (`aztec-fee-payment`, `aztec-benchmark`) under the `@alejoamiras` npm scope. Versions are LOCKSTEP with the Aztec version they target. `aztec-standards` lived here through 5.0.0 and was handed over to the Aztec Foundation (July 2026) — it is now [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards); the `@alejoamiras/aztec-standards` npm package is being retired (no further releases from this repo; deprecation + trusted-publisher removal are tracked in the handover plan and MUST NOT be assumed done — check `npm view @alejoamiras/aztec-standards deprecated`).
+Bun monorepo consolidating Wonderland's Aztec packages (`aztec-fee-payment`, `aztec-benchmark`) under the `@alejoamiras` npm scope. Versions are LOCKSTEP with the Aztec version they target. `aztec-standards` lived here through 5.0.0 and was handed over to the Aztec Foundation (July 2026) — it is now [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards); the `@alejoamiras/aztec-standards` npm package is deprecated (all versions) and its trusted-publisher entry was removed.
 
 ## Current state
 
-**Live**: both packages released as `@alejoamiras/*` on npm (`latest`, provenance attestations, attestation-identity verified) via the tokenless OIDC `release.yml` (mode-based: release/rehearsal/hotfix; rehearse-then-release choreography with SHA binding + payload comparison). Consolidation + the 5.0.0 stable migration plans are COMPLETE; the standards-handover/5.0.1 plan is code-complete with the release + retirement + scoped-audit phases executing (see `docs/roadmap.md` in-flight entry; plans are local-only under `implementations-plan/`); `docs/ci-pipeline.md` has the full release runbook.
+**Live**: both packages released as `@alejoamiras/*@5.0.1` on npm (`latest`, provenance attestations, attestation-identity verified) via the tokenless OIDC `release.yml` (mode-based: release/rehearsal/hotfix; rehearse-then-release choreography with SHA binding + payload comparison). Consolidation, the 5.0.0 stable migration, and the standards-handover/5.0.1 plan (aztec-standards removed, 5.0.1 released, `@alejoamiras/aztec-standards` deprecated, scoped `/harden security medium` on fee-payment) are all COMPLETE (plans are local-only under `implementations-plan/`; audit under `audit/security/`). `docs/roadmap.md` tracks what's next; `docs/ci-pipeline.md` has the full release runbook.
 
 ## Commands
 
