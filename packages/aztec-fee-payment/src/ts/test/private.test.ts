@@ -2,6 +2,7 @@ import { Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
 import { FeeJuiceContract } from '@aztec/noir-contracts.js/FeeJuice';
+import type { SimpleTokenContract } from '@aztec/noir-contracts.js/SimpleToken';
 import { ProtocolContractAddress } from '@aztec/protocol-contracts';
 import type { AztecAddress } from '@aztec/stdlib/aztec-address';
 import type { EmbeddedWallet } from '@aztec/wallets/embedded';
@@ -19,7 +20,7 @@ import {
   LOCAL_AZTEC_NODE_URL,
 } from './harness.js';
 
-import { deployCounter, TEST_SALT, TEST_TIMEOUT } from './utils.js';
+import { deploySponsoredApp, produceL2Block, TEST_SALT, TEST_TIMEOUT } from './utils.js';
 
 describe('Private FPC', () => {
   let wallet: EmbeddedWallet;
@@ -28,6 +29,9 @@ describe('Private FPC', () => {
   let aztecNode: AztecNode;
   let fpc: PrivateFPCContract;
   let paymentMethod: FPCFeePaymentMethod;
+  // Stock upstream SimpleToken standing in as the sponsored application (replaces the
+  // former local Counter). The FPC sponsors a `mint_privately` on it.
+  let token: SimpleTokenContract;
 
   beforeAll(async () => {
     const ctx = await createLocalNetworkContext({
@@ -42,12 +46,15 @@ describe('Private FPC', () => {
     // Register the PrivateFPC — no deployment transaction needed (fully private contract).
     fpc = await registerPrivateContract(wallet, TEST_SALT);
 
+    // Deploy the sponsored-app token before the fund step (its produceL2Block mints on it).
+    token = await deploySponsoredApp(wallet);
+
     // Fund the FPC's public FeeJuice balance so it can pay sequencers.
     // This uses a random internal secret (not the claimer-bound bridge flow).
     const { balance } = await fundL2AddressWithFeeJuiceFromL1(aztecNode, wallet, fpc.address, {
       claimTxSender: alice,
       produceL2Block: async () => {
-        await deployCounter(wallet);
+        await produceL2Block(wallet, token);
       },
       loggerName: 'test:private-fpc-fund',
     });
@@ -65,7 +72,6 @@ describe('Private FPC', () => {
   it(
     'mint SUCCESS → pay_fee: bridge claim credited as FJ, sponsors tx',
     async () => {
-      const counter = await deployCounter(wallet);
       const salt = Fr.random();
 
       // Step 1: Bridge from L1 with alice's claimer-bound secret.
@@ -75,7 +81,7 @@ describe('Private FPC', () => {
         alice,
         salt,
         async () => {
-          await deployCounter(wallet);
+          await produceL2Block(wallet, token);
         },
         { loggerName: 'test:private-mint-success' },
       );
@@ -94,18 +100,20 @@ describe('Private FPC', () => {
 
       expect(balanceAfter).toBe(balanceBefore + BigInt(claimAmount));
 
-      // Step 4: Sponsor a counter increment using the FJ balance.
+      // Step 4: Sponsor a private application call (SimpleToken.mint_privately to bob) using the FJ balance.
       const fpcFeeJuiceBefore = await getFeeJuiceBalance(fpc.address, aztecNode);
       const { result: internalBalanceBefore } = await fpc.methods.balance_of(alice).simulate({ from: alice });
+      const { result: bobTokenBefore } = await token.methods.private_balance_of(bob).simulate({ from: bob });
 
-      const gasSettings = await estimateGasSettings(counter.methods.increment(), {
+      const sponsoredCall = token.methods.mint_privately(alice, bob, 1n);
+      const gasSettings = await estimateGasSettings(sponsoredCall, {
         aztecNode,
         from: alice,
         paymentMethod,
       });
       const maxGasCost = maxGasCostFor(gasSettings.maxFeesPerGas, gasSettings.gasLimits);
 
-      const { receipt } = await counter.methods.increment().send({
+      const { receipt } = await token.methods.mint_privately(alice, bob, 1n).send({
         from: alice,
         fee: {
           paymentMethod,
@@ -118,7 +126,10 @@ describe('Private FPC', () => {
 
       const fpcFeeJuiceAfter = await getFeeJuiceBalance(fpc.address, aztecNode);
       const { result: internalBalanceAfter } = await fpc.methods.balance_of(alice).simulate({ from: alice });
+      const { result: bobTokenAfter } = await token.methods.private_balance_of(bob).simulate({ from: bob });
 
+      // The sponsored application call actually executed (bob received the minted token).
+      expect(bobTokenAfter).toBe(bobTokenBefore + 1n);
       // FPC paid sequencer from its public FeeJuice balance.
       expect(fpcFeeJuiceAfter).toBeLessThan(fpcFeeJuiceBefore);
       // Alice's internal FJ balance decreased by max gas cost (no refund).
@@ -141,7 +152,7 @@ describe('Private FPC', () => {
         alice,
         salt,
         async () => {
-          await deployCounter(wallet);
+          await produceL2Block(wallet, token);
         },
         { loggerName: 'test:private-double-spend' },
       );
@@ -178,7 +189,7 @@ describe('Private FPC', () => {
         alice,
         salt,
         async () => {
-          await deployCounter(wallet);
+          await produceL2Block(wallet, token);
         },
         { loggerName: 'test:private-wrong-claimer' },
       );
