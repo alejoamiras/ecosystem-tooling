@@ -6,6 +6,7 @@ import {
   DEFAULT_FEE_MULTIPLIER,
   estimateGasSettings,
   maxFeesPerGasFromBaseFees,
+  maxGasCostFor,
   maxPriorityFeesPerGasFromMaxFees,
 } from '../utils/gas.js';
 
@@ -207,5 +208,91 @@ describe('gas utilities', () => {
     expect(gasSettings.gasLimits.l2Gas).toBe(200);
     expect(gasSettings.teardownGasLimits.daGas).toBe(10);
     expect(gasSettings.teardownGasLimits.l2Gas).toBe(20);
+  });
+
+  // Standard un-clamped mock: minFees (10,20) × 6/5 = maxFees (12,24);
+  // usage (100,200) × 1.1 = gasLimits (110,220); admission high (no clamp).
+  // => projected max cost = 12*110 + 24*220 = 6600n. Used by the cap tests.
+  const buildCapMock = async () => {
+    const from = await AztecAddress.random();
+    const interaction = {
+      simulate: vi.fn().mockResolvedValue({
+        gasUsed: {
+          totalGas: Gas.from({ daGas: 100, l2Gas: 200 }),
+          teardownGas: Gas.from({ daGas: 10, l2Gas: 20 }),
+        },
+      }),
+    };
+    const aztecNode = {
+      getCurrentMinFees: vi.fn().mockResolvedValue(new GasFees(10n, 20n)),
+      getNodeInfo: vi.fn().mockResolvedValue({
+        txsLimits: { gas: { daGas: 1_000_000, l2Gas: 2_000_000 } },
+      }),
+    };
+    return { from, interaction, aztecNode };
+  };
+
+  // Derive the exact projected max cost the code will compute (Gas.mul applies
+  // padding with ceiling/float behavior, so compute it rather than hardcode):
+  // run uncapped once, then maxGasCostFor over the returned settings.
+  const projectedMaxCost = async () => {
+    const { from, interaction, aztecNode } = await buildCapMock();
+    const gs = await estimateGasSettings(interaction, { aztecNode, from });
+    return maxGasCostFor(gs.maxFeesPerGas, gs.gasLimits);
+  };
+
+  it('returns normally when the projected max cost is at or below maxAcceptableGasCost', async () => {
+    const cost = await projectedMaxCost();
+    // Equality boundary (cost == cap) must NOT throw (strict >), and a cap above must not either.
+    for (const maxAcceptableGasCost of [cost, cost + 1n]) {
+      const { from, interaction, aztecNode } = await buildCapMock();
+      const gasSettings = await estimateGasSettings(interaction, { aztecNode, from, maxAcceptableGasCost });
+      expect(maxGasCostFor(gasSettings.maxFeesPerGas, gasSettings.gasLimits)).toBe(cost);
+    }
+  });
+
+  it('throws when the projected max cost exceeds maxAcceptableGasCost', async () => {
+    const cost = await projectedMaxCost();
+    const { from, interaction, aztecNode } = await buildCapMock();
+    await expect(
+      estimateGasSettings(interaction, { aztecNode, from, maxAcceptableGasCost: cost - 1n }),
+    ).rejects.toThrow(/exceeds maxAcceptableGasCost/);
+  });
+
+  it('rejects a non-positive or non-bigint maxAcceptableGasCost at the boundary', async () => {
+    const { from, interaction, aztecNode } = await buildCapMock();
+    // Invalid values: zero, negative, and a non-bigint (number) — the runtime type guard.
+    for (const badCap of [0n, -1n, 100 as unknown as bigint]) {
+      await expect(estimateGasSettings(interaction, { aztecNode, from, maxAcceptableGasCost: badCap })).rejects.toThrow(
+        /maxAcceptableGasCost must be a positive bigint/,
+      );
+    }
+    // Fail fast: rejected before touching the node/simulation.
+    expect(aztecNode.getCurrentMinFees).not.toHaveBeenCalled();
+    expect(interaction.simulate).not.toHaveBeenCalled();
+  });
+
+  it('warns exactly once (per process) when maxAcceptableGasCost is omitted', async () => {
+    // The no-cap warning flag is module-global; this repo's vitest pool is
+    // singleFork/isolate:false, so the flag persists across tests (and the
+    // earlier no-cap tests already tripped the top-level module's flag). Reset
+    // modules and re-import to get a fresh flag, then assert the one-time nudge.
+    vi.resetModules();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { estimateGasSettings: freshEstimate } = await import('../utils/gas.js');
+
+    const a = await buildCapMock();
+    const b = await buildCapMock();
+    await freshEstimate(a.interaction, { aztecNode: a.aztecNode, from: a.from }); // 1st: warns
+    await freshEstimate(b.interaction, { aztecNode: b.aztecNode, from: b.from }); // 2nd: silent
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/maxAcceptableGasCost/);
+
+    warnSpy.mockRestore();
+    // NB: no trailing vi.resetModules() — this pool is singleFork/isolate:false with a
+    // shared module registry; clearing it here would force the next test file to
+    // re-evaluate its load-bearing @aztec/@noble inline deps. The leading reset above
+    // already isolates this test.
   });
 });

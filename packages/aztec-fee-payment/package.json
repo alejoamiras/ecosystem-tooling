@@ -27,6 +27,7 @@
       "import": "./dist/src/ts/utils/index.js",
       "types": "./dist/src/ts/utils/index.d.ts"
     },
+    "./canonical-deployment.json": "./canonical-deployment.json",
     "./package.json": "./package.json"
   },
   "main": "./dist/src/ts/index.js",
@@ -35,6 +36,7 @@
     "dist",
     "target",
     "!target/*.json.bak",
+    "!target/counter_contract-Counter.json",
     "canonical-deployment.json"
   ],
   "scripts": {
@@ -49,7 +51,9 @@
     "test:js": "vitest run",
     "test:nr": "aztec test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "upload:artifacts": "tsx scripts/upload-artifact.ts"
+    "verify:dist-canonical": "node scripts/verify-dist-canonical.mjs",
+    "verify:pack": "bun scripts/verify-pack.ts",
+    "verify:package": "bun run verify:dist-canonical && bun run verify:pack"
   },
   "devDependencies": {
     "@alejoamiras/aztec-benchmark": "5.0.1",

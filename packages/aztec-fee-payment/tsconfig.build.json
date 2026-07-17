@@ -9,9 +9,8 @@
     "src/ts/index.ts",
     "src/ts/fee-payment-methods/**/*",
     "src/ts/utils/**/*",
-    "src/ts/artifactRegistry.ts",
-    "src/artifacts/**/*",
-    "target/**/*"
+    "src/artifacts/PrivateFPC.ts",
+    "target/private_contract-PrivateFPC.json"
   ],
   "exclude": ["node_modules", "src/ts/test"]
 }
