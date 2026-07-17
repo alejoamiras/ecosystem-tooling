@@ -26,7 +26,7 @@ name: Release
 #
 # OIDC least privilege: the build job (no id-token) produces sha256-manifested tarballs;
 # the publish job (id-token: write, full-SHA-pinned actions, exact-pinned npm) only
-# downloads, verifies, and publishes them. Publish order: benchmark → fee-payment.
+# downloads, verifies, and publishes them. Publish order: benchmark → private-fee-juice.
 
 on:
   workflow_dispatch:
@@ -66,7 +66,7 @@ permissions:
 # names + install commands (it carries per-package prose this list can't generate) — a
 # fail-closed guard there asserts each RELEASE_PACKAGES name appears in the rendered notes, so
 # a rename that forgets the template fails the run rather than shipping wrong install text.
-# Publish order is significant (benchmark before fee-payment); keep it in this order.
+# Publish order is significant (benchmark before private-fee-juice); keep it in this order.
 env:
   RELEASE_PACKAGES: "aztec-benchmark private-fee-juice"
 
@@ -240,8 +240,8 @@ jobs:
           name: release-notes
           path: release-notes.md
 
-  fee-payment-checks:
-    name: Fee Payment
+  private-fee-juice-checks:
+    name: Private Fee Juice
     needs: validate
     uses: ./.github/workflows/_package-checks.yml
     with:
@@ -266,7 +266,7 @@ jobs:
 
   build:
     name: Build + pack (no publish credentials)
-    needs: [validate, fee-payment-checks, benchmark-build]
+    needs: [validate, private-fee-juice-checks, benchmark-build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -419,7 +419,7 @@ jobs:
             ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
           done
 
-      - name: Publish tarballs (benchmark → fee-payment, idempotent)
+      - name: Publish tarballs (benchmark → private-fee-juice, idempotent)
         env:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}

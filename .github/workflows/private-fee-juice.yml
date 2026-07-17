@@ -1,4 +1,4 @@
-name: Aztec Fee Payment
+name: Private Fee Juice
 
 on:
   workflow_dispatch:

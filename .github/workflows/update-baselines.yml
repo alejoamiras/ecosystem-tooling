@@ -21,7 +21,7 @@ concurrency:
 jobs:
   # skip-proving on BOTH baselines and PR benches — comparisons must be like-for-like
   # (review finding). Full-proving baselines return when runner capacity allows (roadmap).
-  fee-payment:
+  private-fee-juice:
     name: private-fee-juice baseline
     uses: ./.github/workflows/_update-baseline.yml
     with:
