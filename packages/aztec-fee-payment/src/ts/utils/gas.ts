@@ -89,6 +89,13 @@ export const DEFAULT_FEE_MULTIPLIER = {
  */
 export const DEFAULT_GAS_ESTIMATE_PADDING = 0.1;
 
+// One-time nudge: fired at most once per process when estimateGasSettings is
+// called without maxAcceptableGasCost. The FPC deducts the full max gas cost
+// with no refund, so an unbounded node-reported fee is a real fund-loss vector;
+// integrators should pass a client-side ceiling. Module-global by design (the
+// warning is per-process advice, not per-call noise).
+let hasWarnedNoGasCap = false;
+
 /**
  * Pads each gas dimension by `pad` (e.g. 0.1 = +10%) and caps it at the
  * network's per-tx admission limit, mirroring the framework's getGasLimits.
@@ -169,6 +176,7 @@ export async function estimateGasSettings(
     additionalScopes,
     maxFeeMultiplier = DEFAULT_FEE_MULTIPLIER,
     estimatedGasPadding = DEFAULT_GAS_ESTIMATE_PADDING,
+    maxAcceptableGasCost,
   }: {
     aztecNode: GasEstimationNode;
     from: AztecAddress;
@@ -176,6 +184,16 @@ export async function estimateGasSettings(
     additionalScopes?: AztecAddress[];
     maxFeeMultiplier?: FeeMultiplier;
     estimatedGasPadding?: number;
+    /**
+     * Optional absolute ceiling (in wei) on the transaction's worst-case gas
+     * cost. When set, this helper throws if the node-derived settings would
+     * declare a max cost above it — an independent, client-side check that does
+     * NOT trust the connected node. Recommended: the FPC deducts the full max
+     * gas cost with no refund, so a compromised/misconfigured node reporting an
+     * inflated fee would otherwise drain the caller's balance. Omit at your own
+     * risk (a one-time warning is emitted).
+     */
+    maxAcceptableGasCost?: bigint;
   },
 ): Promise<GasSettings> {
   // Validate the padding knob at the public boundary so we fail fast before the
@@ -184,6 +202,21 @@ export async function estimateGasSettings(
   // under-declare gas and NaN/Infinity would yield invalid limits the node rejects.
   if (!Number.isFinite(estimatedGasPadding) || estimatedGasPadding < 0) {
     throw new Error(`Gas estimate padding must be a non-negative finite number, got ${estimatedGasPadding}`);
+  }
+
+  // Validate the cost ceiling at the boundary (must be a positive bigint when
+  // provided); nudge once when it is omitted.
+  if (maxAcceptableGasCost !== undefined) {
+    if (typeof maxAcceptableGasCost !== 'bigint' || maxAcceptableGasCost <= 0n) {
+      throw new Error(`maxAcceptableGasCost must be a positive bigint, got ${String(maxAcceptableGasCost)}`);
+    }
+  } else if (!hasWarnedNoGasCap) {
+    hasWarnedNoGasCap = true;
+    console.warn(
+      'estimateGasSettings: called without maxAcceptableGasCost. A compromised or misconfigured RPC node ' +
+        'can inflate the reported fee, and the FPC deducts the full max gas cost with no refund. ' +
+        'Pass maxAcceptableGasCost (a positive bigint, in wei) to cap the client-declared cost.',
+    );
   }
 
   const maxFeesPerGas = maxFeesPerGasFromBaseFees(await aztecNode.getCurrentMinFees(), maxFeeMultiplier);
@@ -225,10 +258,25 @@ export async function estimateGasSettings(
 
   // gasLimits is the padded total gas (teardown is part of the total); the
   // teardown sub-limit is padded separately. Mirrors the framework's getGasLimits.
-  return new GasSettings(
-    padAndClampGas(totalGas, estimatedGasPadding, maxGasLimits),
-    padAndClampGas(teardownGas, estimatedGasPadding, maxGasLimits),
-    maxFeesPerGas,
-    maxPriorityFeesPerGas,
-  );
+  const gasLimits = padAndClampGas(totalGas, estimatedGasPadding, maxGasLimits);
+  const teardownGasLimits = padAndClampGas(teardownGas, estimatedGasPadding, maxGasLimits);
+
+  // Enforce the caller's ceiling against the ACTUAL declared settings: the same
+  // maxFeesPerGas + padded gasLimits the returned GasSettings carry, which is
+  // exactly what the FPC recomputes and deducts on-chain (maxGasCostFor mirrors
+  // the Noir get_max_gas_cost formula). Checking here — not against the node's
+  // admission ceiling or the unpadded simulated usage — makes the cap
+  // non-dodgeable. cost == cap is allowed (strict >).
+  if (maxAcceptableGasCost !== undefined) {
+    const projectedMaxCost = maxGasCostFor(maxFeesPerGas, gasLimits);
+    if (projectedMaxCost > maxAcceptableGasCost) {
+      throw new Error(
+        `Estimated max gas cost ${projectedMaxCost} exceeds maxAcceptableGasCost ${maxAcceptableGasCost}. ` +
+          'The connected node may be reporting an inflated fee; refusing to declare it (the FPC deducts the ' +
+          'full max with no refund).',
+      );
+    }
+  }
+
+  return new GasSettings(gasLimits, teardownGasLimits, maxFeesPerGas, maxPriorityFeesPerGas);
 }
