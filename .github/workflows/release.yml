@@ -11,10 +11,13 @@ name: Release
 #   rehearsal — full-pipeline dry run. version must be 0.0.0-canary.g<short-sha of HEAD>;
 #               package manifests are overlaid to that version before pack (peers stay at
 #               the lockstep Aztec version). Publishes immutable junk versions by design.
-#   hotfix    — emergency patch (e.g. 5.0.0-revision.1, decision A2/D18): overlay like
-#               rehearsal, bindings like release (expected-head-sha + compare-against of
-#               ITS rehearsal). dist-tag derives from the prerelease segment (`revision`);
-#               moving `latest` stays a manual runbook step.
+#   revision  — any repo-side improvement to a published lockstep version that cannot bump
+#               the version number (the version is locked to Aztec). Ships as
+#               <aztecVersion>-revision.N (e.g. 5.0.1-revision.1): overlay like rehearsal,
+#               bindings like release (expected-head-sha + compare-against of ITS rehearsal).
+#               dist-tag derives from the prerelease segment (`revision`); pass set-latest=true
+#               to publish the revision under `latest` instead (a revision-only escape hatch —
+#               publish-time `--tag latest`, OIDC-authorized; a second tag would need manual OTP).
 #
 # Fail-closed backstop in ALL modes: every packed tarball's embedded manifest is asserted
 # (name, version == input, @aztec/* peers == aztecVersion, internal pins == input) —
@@ -29,26 +32,39 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions; rehearsal — 0.0.0-canary.g<short-sha>; hotfix — prerelease of aztecVersion (e.g. 5.0.0-revision.1)
+        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions; rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
         required: true
         type: string
       mode:
-        description: release = real publish · rehearsal = full-pipeline dry run with junk version · hotfix = emergency patch via overlay
+        description: release = real publish · rehearsal = full-pipeline dry run with junk version · revision = repo-side improvement to a published lockstep version, via overlay
         required: true
         type: choice
         default: release
-        options: [release, rehearsal, hotfix]
+        options: [release, rehearsal, revision]
       expected-head-sha:
-        description: REQUIRED for release/hotfix — full commit SHA this run must execute (the rehearsed commit). Leave empty for rehearsal.
+        description: REQUIRED for release/revision — full commit SHA this run must execute (the rehearsed commit). Leave empty for rehearsal.
         required: false
         type: string
       compare-against:
-        description: REQUIRED for release/hotfix — the rehearsal version (0.0.0-canary.g<sha7>) whose registry tarballs this build must byte-match. Leave empty for rehearsal.
+        description: REQUIRED for release/revision — the rehearsal version (0.0.0-canary.g<sha7>) whose registry tarballs this build must byte-match. Leave empty for rehearsal.
         required: false
         type: string
+      set-latest:
+        description: revision mode ONLY — publish the revision under the `latest` dist-tag (publish-time --tag latest). Rejected in release/rehearsal. Default false → the revision goes to the `revision` tag.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+# Single source of truth for WHICH packages this pipeline publishes (space-separated dir
+# names under packages/, each expected to hold a manifest named @alejoamiras/<dir>). Every
+# publish/assert loop and the arity backstop derive from this one list — so a package add/
+# remove/rename (Phase D) is a one-line edit here, not ~9 duplicated `for pkg in ...` loops.
+# Publish order is significant (benchmark before fee-payment); keep it in this order.
+env:
+  RELEASE_PACKAGES: "aztec-benchmark aztec-fee-payment"
 
 # The choreography is ≥3 dispatches per release (rehearsal, recovery drill, release);
 # overlapping runs would race the shared canary dist-tag and each other's preflight
@@ -74,24 +90,50 @@ jobs:
             echo "Releases run from main only (got ${GITHUB_REF})" >&2
             exit 1
           fi
-      - name: Check mode/version consistency + SHA binding
+      - name: Validate policy + derive dist-tag via scripts/release-policy.mjs
+        id: derive
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_MODE: ${{ inputs.mode }}
+          SET_LATEST: ${{ inputs.set-latest }}
+        run: |
+          AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
+          # release-policy.mjs is the ONE place the version-shape + set-latest + dist-tag
+          # policy lives (mode/version shape, revision base==aztec, set-latest is revision-
+          # only, tag derivation). It prints dist_tag/prerelease_flag or exits 1 with the
+          # reason. node --test scripts/release-policy.test.mjs covers the same code, so this
+          # shell branch can never drift from the tested matrix. (The runtime/IO bindings —
+          # per-package version equality, rehearsal-names-THIS-commit, expected-head-sha /
+          # compare-against — need the live checkout and stay in the next step.)
+          node scripts/release-policy.mjs "$INPUT_MODE" "$INPUT_VERSION" "$AZTEC_VERSION" "$SET_LATEST" >> "$GITHUB_OUTPUT"
+          echo "aztec_version=$AZTEC_VERSION" >> "$GITHUB_OUTPUT"
+          echo "policy OK: mode=$INPUT_MODE version=$INPUT_VERSION set-latest=$SET_LATEST (aztec $AZTEC_VERSION)"
+      - name: Assert package manifests match RELEASE_PACKAGES
+        run: |
+          # Every dir in the single-source list must hold a manifest named @alejoamiras/<dir>.
+          # This is what lets Phase D's rename be a one-line RELEASE_PACKAGES edit: if a dir is
+          # renamed without its package name, or vice versa, the pipeline fails HERE, not mid-publish.
+          for pkg in $RELEASE_PACKAGES; do
+            name=$(node -p "require('./packages/$pkg/package.json').name")
+            if [ "$name" != "@alejoamiras/$pkg" ]; then
+              echo "packages/$pkg is named '$name', expected '@alejoamiras/$pkg'" >&2; exit 1
+            fi
+          done
+          echo "package manifests OK: $RELEASE_PACKAGES"
+      - name: Check release bindings (IO + SHA)
         env:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_MODE: ${{ inputs.mode }}
           EXPECTED_SHA: ${{ inputs.expected-head-sha }}
           COMPARE_AGAINST: ${{ inputs.compare-against }}
         run: |
-          if ! printf '%s' "$INPUT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
-            echo "Invalid semver input: $INPUT_VERSION" >&2; exit 1
-          fi
-          AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
+          # Version/mode SHAPE + set-latest already validated by release-policy.mjs above.
+          # This step owns only the checks that need the live checkout / runtime SHA.
           SHORT_SHA="${GITHUB_SHA:0:7}"
           case "$INPUT_MODE" in
             release)
-              if [ "$INPUT_VERSION" != "$AZTEC_VERSION" ]; then
-                echo "release mode: input $INPUT_VERSION != config.aztecVersion $AZTEC_VERSION" >&2; exit 1
-              fi
-              for pkg in aztec-benchmark aztec-fee-payment; do
+              # Committed package versions must equal the release version (lockstep).
+              for pkg in $RELEASE_PACKAGES; do
                 PKG_VERSION=$(node -p "require('./packages/$pkg/package.json').version")
                 if [ "$INPUT_VERSION" != "$PKG_VERSION" ]; then
                   echo "release mode: input $INPUT_VERSION != packages/$pkg version $PKG_VERSION" >&2; exit 1
@@ -99,9 +141,6 @@ jobs:
               done
               ;;
             rehearsal)
-              if ! printf '%s' "$INPUT_VERSION" | grep -Eq '^0\.0\.0-canary\.g[0-9a-f]{7,40}$'; then
-                echo "rehearsal mode: version must be 0.0.0-canary.g<sha> (got $INPUT_VERSION)" >&2; exit 1
-              fi
               if [ "$INPUT_VERSION" != "0.0.0-canary.g${SHORT_SHA}" ]; then
                 echo "rehearsal mode: version $INPUT_VERSION does not name THIS commit (expected 0.0.0-canary.g${SHORT_SHA})" >&2; exit 1
               fi
@@ -109,18 +148,10 @@ jobs:
                 echo "rehearsal mode: expected-head-sha / compare-against must be empty" >&2; exit 1
               fi
               ;;
-            hotfix)
-              # Exactly the approved emergency scheme (A2/D18): <aztecVersion>-revision.N.
-              # Anything looser (e.g. -rc.3, -canary.x) must not ride the hotfix pipeline.
-              if ! printf '%s' "$INPUT_VERSION" | grep -Eq "^$(printf '%s' "$AZTEC_VERSION" | sed 's/\./\\./g')-revision\.[1-9][0-9]*$"; then
-                echo "hotfix mode: version must be exactly ${AZTEC_VERSION}-revision.<N> (got $INPUT_VERSION)" >&2; exit 1
-              fi
-              ;;
-            *) echo "unknown mode: $INPUT_MODE" >&2; exit 1 ;;
           esac
           # Mandatory rehearsal binding for anything that can touch real consumers
           # (a bare dispatch must NOT be able to bypass the rehearsal controls).
-          if [ "$INPUT_MODE" = "release" ] || [ "$INPUT_MODE" = "hotfix" ]; then
+          if [ "$INPUT_MODE" = "release" ] || [ "$INPUT_MODE" = "revision" ]; then
             if [ -z "$EXPECTED_SHA" ] || [ -z "$COMPARE_AGAINST" ]; then
               echo "$INPUT_MODE mode: expected-head-sha AND compare-against are REQUIRED" >&2; exit 1
             fi
@@ -131,31 +162,9 @@ jobs:
               echo "$INPUT_MODE mode: compare-against $COMPARE_AGAINST is not the rehearsal of $EXPECTED_SHA (expected 0.0.0-canary.g${EXPECTED_SHA:0:7})" >&2; exit 1
             fi
           fi
-          echo "Mode $INPUT_MODE OK for $INPUT_VERSION (aztec $AZTEC_VERSION, HEAD $GITHUB_SHA)"
+          echo "Bindings OK: mode $INPUT_MODE, version $INPUT_VERSION, HEAD $GITHUB_SHA"
       - name: Verify Nargo git refs against committed lock
         run: ./scripts/verify-nargo-refs.sh
-      - name: Derive dist-tag
-        id: derive
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          case "$INPUT_VERSION" in
-            *-*) TAG="${INPUT_VERSION#*-}"; TAG="${TAG%%.*}"; PRE="--prerelease" ;;
-            *) TAG="latest"; PRE="" ;;
-          esac
-          # npm rejects dist-tags that parse as semver ranges (e.g. 5.0.0-1 -> tag "1")
-          # only AT PUBLISH TIME — fail here instead, before 45 minutes of validation.
-          if ! printf '%s' "$TAG" | grep -Eq '^[a-z][a-z0-9-]*$'; then
-            echo "Derived dist-tag '$TAG' is not a valid npm tag (prerelease segment must start with a letter, e.g. -revision.1)" >&2
-            exit 1
-          fi
-          AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
-          {
-            echo "dist_tag=$TAG"
-            echo "prerelease_flag=$PRE"
-            echo "aztec_version=$AZTEC_VERSION"
-          } >> "$GITHUB_OUTPUT"
-          echo "dist-tag: $TAG"
       - name: Render release notes (pre-publish — fails fast, reused verbatim by tag-release)
         env:
           INPUT_VERSION: ${{ inputs.version }}
@@ -189,7 +198,7 @@ jobs:
 
           ## ⚠️ Compatibility notes at 5.0.1
 
-          - No package-local API changes in `aztec-fee-payment` or `aztec-benchmark` in the initial 5.0.1 release. (Hotfix/`-revision.N` dispatches: hand-edit this section before releasing — it describes 5.0.1, not your fix.)
+          - No package-local API changes in `aztec-fee-payment` or `aztec-benchmark` in the initial 5.0.1 release. (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 5.0.1, not your fix.)
           - Upstream Aztec `5.0.1` includes two breaking changes enforced through the exact `@aztec/*` peers: the fee payer must be set in the non-revertible phase ([#24479](https://github.com/AztecProtocol/aztec-packages/pull/24479)), and note-history validation helpers are re-siloed/renamed ([#24644](https://github.com/AztecProtocol/aztec-packages/pull/24644)).
           - **The canonical PrivateFPC address CHANGED at 5.0.1** (recompiled bytecode): the 5.0.1 canonical address is `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0`. The 5.0.0 address `0x257aa8701e8801b2c03a6b03cdf385c4fa9200efda1dc41f94a905980efc86e9` is STALE for 5.0.1 — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
 
@@ -255,7 +264,7 @@ jobs:
         # roadmap/ /harden item. This catches a tag that moved during the checks matrix.
         run: ./scripts/verify-nargo-refs.sh
 
-      - name: Overlay version (rehearsal/hotfix — AFTER frozen install, BEFORE build/pack)
+      - name: Overlay version (rehearsal/revision — AFTER frozen install, BEFORE build/pack)
         if: inputs.mode != 'release'
         env:
           INPUT_VERSION: ${{ inputs.version }}
@@ -275,30 +284,32 @@ jobs:
           AZTEC_VERSION: ${{ needs.validate.outputs.aztec-version }}
         run: |
           mkdir -p release-tarballs
-          for pkg in aztec-benchmark aztec-fee-payment; do
+          for pkg in $RELEASE_PACKAGES; do
             (cd "packages/$pkg" && npm pack --pack-destination "$GITHUB_WORKSPACE/release-tarballs" > /dev/null)
           done
           ls -la release-tarballs/
           # Arity is itself fail-closed: symmetric edits dropping a SURVIVING package from
           # both the publish and assert loops would otherwise release silently-partially.
+          # The expected count derives from RELEASE_PACKAGES (single source), not a literal.
+          EXPECTED_COUNT=$(echo "$RELEASE_PACKAGES" | wc -w)
           TARBALL_COUNT=$(find release-tarballs -name '*.tgz' | wc -l)
-          if [ "$TARBALL_COUNT" -ne 2 ]; then
-            echo "expected exactly 2 tarballs, packed $TARBALL_COUNT" >&2; exit 1
+          if [ "$TARBALL_COUNT" -ne "$EXPECTED_COUNT" ]; then
+            echo "expected exactly $EXPECTED_COUNT tarballs, packed $TARBALL_COUNT" >&2; exit 1
           fi
-          for pkg in aztec-benchmark aztec-fee-payment; do
+          for pkg in $RELEASE_PACKAGES; do
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
             bun scripts/assert-tarball-meta.ts "$tgz" "@alejoamiras/$pkg" "$INPUT_VERSION" "$AZTEC_VERSION"
           done
           (cd release-tarballs && shasum -a 256 ./*.tgz > SHA256SUMS && cat SHA256SUMS)
 
-      - name: Compare payload against rehearsed baseline (release/hotfix)
+      - name: Compare payload against rehearsed baseline (release/revision)
         if: inputs.mode != 'rehearsal'
         env:
           COMPARE_AGAINST: ${{ inputs.compare-against }}
           EXPECTED_SHA: ${{ inputs.expected-head-sha }}
         run: |
           mkdir -p baseline-tarballs
-          for pkg in aztec-benchmark aztec-fee-payment; do
+          for pkg in $RELEASE_PACKAGES; do
             name="@alejoamiras/$pkg"
             url=$(npm view "$name@$COMPARE_AGAINST" dist.tarball)
             integrity=$(npm view "$name@$COMPARE_AGAINST" dist.integrity)
@@ -347,12 +358,13 @@ jobs:
           npm install -g npm@11.18.0
           [ "$(npm -v)" = "11.18.0" ] || { echo "npm version drift: $(npm -v)" >&2; exit 1; }
 
-      - name: Preflight — fresh release requires absent versions; recovery requires identity
+      - name: Preflight — fresh release requires absent versions; recovery requires identity + tag
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
           published=()
-          for pkg in aztec-benchmark aztec-fee-payment; do
+          for pkg in $RELEASE_PACKAGES; do
             # Retried: a lagging read right after a partial publish would misclassify a
             # recovery re-run as fresh and then die on E409 at publish.
             got=""
@@ -368,7 +380,7 @@ jobs:
           if [ "${#published[@]}" -eq 0 ]; then
             echo "fresh run: no target versions on the registry" && exit 0
           fi
-          echo "recovery run — already published: ${published[*]} (verifying integrity + attestation identity before accepting)"
+          echo "recovery run — already published: ${published[*]} (verifying integrity + attestation identity + dist-tag before accepting)"
           for pkg in "${published[@]}"; do
             integrity=$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" dist.integrity)
             local_tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
@@ -377,6 +389,23 @@ jobs:
               echo "ERROR: published $pkg@$INPUT_VERSION does NOT match the locally built tarball — refusing recovery" >&2; exit 1
             fi
             ./scripts/verify-attestation-identity.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$GITHUB_SHA"
+            # Fail-closed on tag identity: OIDC can only `npm publish`, never repair a dist-tag.
+            # A legitimate recovery re-run must find the desired publish tag ALREADY pointing at
+            # this version (a prior run's publish-time --tag set it atomically with publish). If
+            # it is absent/wrong, refuse — the operator fixes it via the manual OTP runbook, we
+            # never silently mutate a tag we cannot authorize.
+            tagged=""
+            for _ in 1 2 3 4 5; do
+              tags=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null || echo '{}')
+              tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
+              [ "$tagged" = "$INPUT_VERSION" ] && break
+              sleep 15
+            done
+            if [ "$tagged" != "$INPUT_VERSION" ]; then
+              echo "ERROR: recovery of $pkg@$INPUT_VERSION but dist-tag '$DIST_TAG' points at '$tagged', not $INPUT_VERSION." >&2
+              echo "OIDC cannot repair dist-tags; fix it with the manual OTP runbook (docs/ci-pipeline.md) before re-running." >&2
+              exit 1
+            fi
           done
 
       - name: Publish tarballs (benchmark → fee-payment, idempotent)
@@ -384,7 +413,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
-          for pkg in aztec-benchmark aztec-fee-payment; do
+          for pkg in $RELEASE_PACKAGES; do
             if [ "$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
               # A package can become visible AFTER preflight's scan (verify-then-recheck
               # race) — never skip on visibility alone; repeat the full integrity +
@@ -396,8 +425,16 @@ jobs:
                 echo "ERROR: $pkg@$INPUT_VERSION appeared on the registry but does NOT match this run's tarball — refusing to continue" >&2; exit 1
               fi
               ./scripts/verify-attestation-identity.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$GITHUB_SHA"
-              echo "@alejoamiras/$pkg@$INPUT_VERSION already published — skipping (integrity + identity re-verified at skip time)"
-              npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" "$DIST_TAG" || true
+              # Fail-closed on tag identity (OIDC can only publish, never repair a dist-tag): the
+              # desired tag must ALREADY point at this version (set by the prior run's publish-time
+              # --tag). If not, refuse — manual OTP runbook, never a silent unauthorized mutation.
+              tagged=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''" 2>/dev/null || echo '')
+              if [ "$tagged" != "$INPUT_VERSION" ]; then
+                echo "ERROR: $pkg@$INPUT_VERSION already published but dist-tag '$DIST_TAG' points at '$tagged', not $INPUT_VERSION." >&2
+                echo "OIDC cannot repair dist-tags; use the manual OTP runbook (docs/ci-pipeline.md)." >&2
+                exit 1
+              fi
+              echo "@alejoamiras/$pkg@$INPUT_VERSION already published, dist-tag '$DIST_TAG' correct — skipping (integrity + identity + tag re-verified at skip time)"
               continue
             fi
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
@@ -407,32 +444,13 @@ jobs:
             npm publish "./$tgz" --access public --provenance --tag "$DIST_TAG"
           done
 
-      - name: Remediate canary-as-latest (release mode only; best-effort — OIDC grants publish ONLY)
-        if: inputs.mode == 'release'
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          # Trusted-publishing credentials cover `npm publish` only; dist-tag mutations get
-          # E401 BY DESIGN. Best-effort, never fatal — the runbook covers manual dist-tag.
-          for pkg in aztec-benchmark aztec-fee-payment; do
-            latest=$(npm view "@alejoamiras/$pkg" dist-tags.latest 2>/dev/null || true)
-            case "$latest" in
-              0.0.0-*)
-                echo "latest for $pkg is a canary ($latest) — attempting removal"
-                npm dist-tag rm "@alejoamiras/$pkg" latest \
-                  || npm dist-tag add "@alejoamiras/$pkg@$INPUT_VERSION" latest \
-                  || echo "WARN: dist-tag mutation unauthorized under OIDC — run the manual runbook step (docs/ci-pipeline.md)"
-                ;;
-            esac
-          done
-
       - name: Assert published state (dist-tags + integrity + attestation identity)
         env:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
           fail=0
-          for pkg in aztec-benchmark aztec-fee-payment; do
+          for pkg in $RELEASE_PACKAGES; do
             # Read-API lag after publish can exceed several minutes — retry before judging.
             got=""
             for attempt in $(seq 1 30); do

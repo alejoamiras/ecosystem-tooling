@@ -33,10 +33,18 @@ Versions are LOCKSTEP with the Aztec version. One release = both packages (bench
    - builds in a job WITHOUT publish credentials, hands sha256-manifested tarballs to a minimal OIDC publish job (full-SHA-pinned actions, exact-pinned npm),
    - authenticates the rehearsal baseline (dist.integrity + attestation identity) and **byte-compares the payload** (normalized tar entries: path/type/mode/link/digest) against it,
    - fresh runs require BOTH versions absent; recovery re-runs accept only integrity- and identity-verified prior publishes,
-   - derives the dist-tag from the prerelease segment (stable → `latest`; `-rc.N` → `rc`; `-revision.N` → `revision`),
+   - derives the dist-tag from the prerelease segment via `scripts/release-policy.mjs` (stable → `latest`; `-rc.N` → `rc`; `-revision.N` → `revision`), with `set-latest=true` in `revision` mode overriding to `latest` (see the Revision path below),
    - asserts published versions + dist-tags + registry integrity vs the built tarballs + **attestation identity** (repo/workflow/commit parsed from the Sigstore-verified provenance bundle — presence is not enough),
    - tags `v<version>` + creates/edits the GitHub release idempotently with notes rendered BEFORE publish.
-4. **Hotfix path** (emergency only, decision A2/D18): fixes to an already-published lockstep version ship as `<aztecVersion>-revision.N` via `mode=hotfix` (same overlay + binding rules as release, rehearse first). They land under the `revision` dist-tag; moving `latest` is the manual OTP step below. Semver caveats (documented deliberately): `-revision.N` sorts BELOW the base version and `^`-ranges won't auto-match it — lockstep consumers install exact versions, and `latest` is moved by hand.
+4. **Revision path** (any repo-side improvement to a published lockstep version — the version is locked to Aztec, so we cannot bump it; decision A2/D18, renamed to the `revision` mode in plan fee-payment-revisions-rename): ship as `<aztecVersion>-revision.N` via `mode=revision` (same overlay + binding rules as release — `expected-head-sha` + `compare-against` of its OWN rehearsal, rehearse first). Not emergency-only; use it for security fixes, doc-visible corrections, or any change worth publishing between Aztec bumps. Dist-tag:
+   - default (`set-latest=false`) → the revision lands under the `revision` dist-tag; `latest` is untouched.
+   - `set-latest=true` → the revision is published under `latest` at **publish time** (`npm publish --tag latest`, OIDC-authorized — NOT a post-publish `npm dist-tag add`, which gets E401). **One-tag limit**: a `set-latest` revision gets `latest` ONLY, not also `revision` (a second tag needs the manual OTP step). `set-latest` is rejected in `release`/`rehearsal` mode, and is effective only on a version's FIRST publish (re-dispatching after it's visible no-ops the publish; the hardened recovery then fail-closes if the desired tag is absent/wrong — "OIDC cannot repair dist-tags; use the manual runbook").
+
+   Semver caveats (documented deliberately — a prerelease revision is **opt-in** for consumers):
+   - `5.0.1-revision.1` sorts BELOW `5.0.1`, so `^5.0.1` will NOT resolve to it.
+   - `^5.0.1-revision.1` DOES include stable `5.0.1` (which sorts higher), so a resolver may pick the OLD unfixed payload — pinning a range does not guarantee the revision.
+   - Moving `latest` does NOT rewrite existing lockfiles; `bun install --frozen-lockfile` stays on the pinned version.
+   - **To actually adopt the fixes, consumers must pin EXACTLY `@alejoamiras/<pkg>@5.0.1-revision.N`.** Because of this, deprecating the superseded base version (`npm deprecate ...@5.0.1`) to warn `^5.0.1` consumers is part of the revision runbook, not an afterthought. `latest` remains reversible via the manual OTP step below.
 
 ### One-time publishing bootstrap (COMPLETED 2026-07-02 — kept for reference / future scopes)
 
