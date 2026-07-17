@@ -9,7 +9,6 @@
     "src/ts/index.ts",
     "src/ts/fee-payment-methods/**/*",
     "src/ts/utils/**/*",
-    "src/ts/artifactRegistry.ts",
     "src/artifacts/**/*",
     "target/**/*"
   ],
