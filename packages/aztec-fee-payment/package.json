@@ -36,6 +36,7 @@
     "dist",
     "target",
     "!target/*.json.bak",
+    "!target/counter_contract-Counter.json",
     "canonical-deployment.json"
   ],
   "scripts": {
