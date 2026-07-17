@@ -50,7 +50,10 @@
     "test": "bun run test:nr && bun run test:js",
     "test:js": "vitest run",
     "test:nr": "aztec test",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify:dist-canonical": "node scripts/verify-dist-canonical.mjs",
+    "verify:pack": "bun scripts/verify-pack.ts",
+    "verify:package": "bun run verify:dist-canonical && bun run verify:pack"
   },
   "devDependencies": {
     "@alejoamiras/aztec-benchmark": "5.0.1",

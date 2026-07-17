@@ -290,6 +290,9 @@ describe('gas utilities', () => {
     expect(warnSpy.mock.calls[0]?.[0]).toMatch(/maxAcceptableGasCost/);
 
     warnSpy.mockRestore();
-    vi.resetModules();
+    // NB: no trailing vi.resetModules() — this pool is singleFork/isolate:false with a
+    // shared module registry; clearing it here would force the next test file to
+    // re-evaluate its load-bearing @aztec/@noble inline deps. The leading reset above
+    // already isolates this test.
   });
 });

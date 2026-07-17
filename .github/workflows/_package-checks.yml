@@ -73,3 +73,16 @@ jobs:
       - name: Run vitest suite (PTY-wrapped)
         working-directory: ${{ inputs.package-dir }}
         run: script -e -c "NODE_NO_WARNINGS=1 bunx vitest run" /dev/null
+      - name: Verify published package surface (packaging + canonical gates, if present)
+        working-directory: ${{ inputs.package-dir }}
+        # Package-specific gates that assert the published tarball surface and the
+        # canonical-address guard's dist-layout resolution. Guarded by file existence so
+        # packages without them (e.g. aztec-benchmark) skip cleanly. Runs in both the PR
+        # gate and the release pipeline (release.yml's *-checks jobs reuse this workflow).
+        run: |
+          if [ -f scripts/verify-pack.ts ] && [ -f scripts/verify-dist-canonical.mjs ]; then
+            bun run build
+            bun run verify:package
+          else
+            echo "no package-verification gates in ${{ inputs.package-dir }} — skipping"
+          fi

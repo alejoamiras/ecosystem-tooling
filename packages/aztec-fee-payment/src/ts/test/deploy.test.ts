@@ -1,3 +1,4 @@
+import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import canonical from '../../../canonical-deployment.json' with { type: 'json' };
@@ -12,11 +13,12 @@ import { registerPrivateContract } from '../utils/deploy.js';
 const CANONICAL_SALT = Fr.fromString(canonical.salt);
 const NON_CANONICAL_SALT = Fr.fromString('0x0000000000000000000000000000000000000000000000000000000000000002');
 
-/** A stub DeployMethod whose getInstance() returns the given address string. */
+/** A stub DeployMethod whose getInstance() returns a real AztecAddress (so the guard's
+ *  semantic `.equals()` comparison runs against a genuine field-backed address). */
 function stubDeploy(addressString: string) {
   const registeredContract = {} as PrivateFPCContract;
   const deployMethod = {
-    getInstance: vi.fn().mockResolvedValue({ address: { toString: () => addressString } }),
+    getInstance: vi.fn().mockResolvedValue({ address: AztecAddress.fromStringUnsafe(addressString) }),
     register: vi.fn().mockResolvedValue(registeredContract),
   };
   const wallet = {} as Parameters<typeof registerPrivateContract>[0];
@@ -58,7 +60,8 @@ describe('registerPrivateContract assertCanonical guard (F-002)', () => {
   });
 
   it('without the flag, registers any salt unchanged (no canonical check)', async () => {
-    const { deployMethod, wallet } = stubDeploy('0xirrelevant');
+    // Any valid address — never inspected without the flag (getInstance isn't called).
+    const { deployMethod, wallet } = stubDeploy('0x00000000000000000000000000000000000000000000000000000000deadbeef');
     await registerPrivateContract(wallet, NON_CANONICAL_SALT);
     expect(deployMethod.getInstance).not.toHaveBeenCalled();
     expect(deployMethod.register).toHaveBeenCalledOnce();

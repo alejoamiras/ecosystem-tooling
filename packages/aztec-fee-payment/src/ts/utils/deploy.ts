@@ -1,3 +1,4 @@
+import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 // Static JSON import (NOT a runtime readFileSync): with tsconfig.build rootDir ".",
@@ -51,7 +52,10 @@ export async function registerPrivateContract(
       );
     }
     const instance = await deployMethod.getInstance();
-    if (instance.address.toString() !== canonicalDeployment.expectedAddress) {
+    // Semantic address equality (not raw string ===), symmetric with the salt's
+    // .equals() above, so a serialization drift (e.g. checksum casing) can't make
+    // the guard reject the CORRECT canonical address.
+    if (!instance.address.equals(AztecAddress.fromStringUnsafe(canonicalDeployment.expectedAddress))) {
       throw new Error(
         `registerPrivateContract: derived address ${instance.address.toString()} does not match the canonical ` +
           `address ${canonicalDeployment.expectedAddress} for Aztec ${canonicalDeployment.aztecVersion}. ` +
