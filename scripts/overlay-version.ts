@@ -4,8 +4,11 @@
  * `hotfix` mode renamed to `revision` in plan fee-payment-revisions-rename).
  *
  * Stamps OVERLAY_VERSION onto the publishable packages — `version` plus every
- * internal `@alejoamiras/aztec-*` exact pin — WITHOUT touching `@aztec/*` peer pins
- * (those stay at the lockstep Aztec version the code was built against).
+ * internal cross-package exact pin (any dep whose name is itself a workspace package) —
+ * WITHOUT touching `@aztec/*` peer pins (those stay at the lockstep Aztec version the code
+ * was built against). Internal pins are detected by the workspace package-name SET, not a
+ * name prefix, so a package rename (e.g. aztec-fee-payment → private-fee-juice) can't
+ * silently drop a pin from the overlay.
  *
  * Must run AFTER `bun install --frozen-lockfile` (the overlay diverges manifests from
  * bun.lock by design) and BEFORE build/pack. The workflow's post-pack assertion verifies
@@ -33,6 +36,13 @@ if (overlay === aztecVersion) {
 
 const pkgDirs = readdirSync(join(ROOT, 'packages')).filter((d) => statSync(join(ROOT, 'packages', d)).isDirectory());
 
+// The set of workspace package NAMES (from each packages/*/package.json). Internal cross-
+// package pins are detected by membership in this set — NOT a `@alejoamiras/aztec-*` prefix —
+// so renaming a package doesn't silently exclude it from the overlay.
+const workspaceNames = new Set<string>(
+  pkgDirs.map((d) => JSON.parse(readFileSync(join(ROOT, 'packages', d, 'package.json'), 'utf8')).name),
+);
+
 for (const dir of pkgDirs) {
   const p = join(ROOT, 'packages', dir, 'package.json');
   const pkg = JSON.parse(readFileSync(p, 'utf8'));
@@ -41,7 +51,7 @@ for (const dir of pkgDirs) {
   let pins = 0;
   for (const section of ['dependencies', 'devDependencies', 'peerDependencies']) {
     for (const name of Object.keys(pkg[section] ?? {})) {
-      if (name.startsWith('@alejoamiras/aztec-')) {
+      if (workspaceNames.has(name)) {
         pkg[section][name] = overlay;
         pins++;
       }

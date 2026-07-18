@@ -1,4 +1,4 @@
-name: Aztec Fee Payment
+name: Private Fee Juice
 
 on:
   workflow_dispatch:
@@ -24,15 +24,15 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/aztec-fee-payment/**'
-              - '!packages/aztec-fee-payment/**/*.md'
+              - 'packages/private-fee-juice/**'
+              - '!packages/private-fee-juice/**/*.md'
               - 'packages/aztec-benchmark/cli/**'
               - 'packages/aztec-benchmark/package.json'
               - 'biome.json'
               - 'package.json'
               - 'bun.lock'
               - 'bunfig.toml'
-              - '.github/workflows/aztec-fee-payment.yml'
+              - '.github/workflows/private-fee-juice.yml'
               - '.github/workflows/_package-checks.yml'
               - '.github/workflows/_pr-benchmark.yml'
               - '.github/actions/**'
@@ -47,7 +47,7 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     uses: ./.github/workflows/_package-checks.yml
     with:
-      package-dir: packages/aztec-fee-payment
+      package-dir: packages/private-fee-juice
       min-txe-tests: 11
 
   benchmark:
@@ -61,5 +61,5 @@ jobs:
       actions: read
     uses: ./.github/workflows/_pr-benchmark.yml
     with:
-      package-dir: packages/aztec-fee-payment
-      pr-workflow: aztec-fee-payment.yml
+      package-dir: packages/private-fee-juice
+      pr-workflow: private-fee-juice.yml

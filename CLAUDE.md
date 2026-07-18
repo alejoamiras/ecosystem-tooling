@@ -1,6 +1,6 @@
 # ecosystem-tooling
 
-Bun monorepo consolidating Wonderland's Aztec packages (`aztec-fee-payment`, `aztec-benchmark`) under the `@alejoamiras` npm scope. Versions are LOCKSTEP with the Aztec version they target. `aztec-standards` lived here through 5.0.0 and was handed over to the Aztec Foundation (July 2026) — it is now [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards); the `@alejoamiras/aztec-standards` npm package is deprecated (all versions) and its trusted-publisher entry was removed.
+Bun monorepo consolidating Wonderland's Aztec packages under the `@alejoamiras` npm scope: `private-fee-juice` (the FPC + SDK, renamed from `aztec-fee-payment` — plan fee-payment-revisions-rename) and `aztec-benchmark`. Versions are LOCKSTEP with the Aztec version they target. `aztec-standards` lived here through 5.0.0 and was handed over to the Aztec Foundation (July 2026) — it is now [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards); the `@alejoamiras/aztec-standards` npm package is deprecated (all versions) and its trusted-publisher entry was removed.
 
 ## Current state
 

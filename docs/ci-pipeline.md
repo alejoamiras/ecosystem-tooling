@@ -9,11 +9,11 @@ All workflows follow the house conventions: per-package PR gates with an interna
 | `lint.yml` | PR, dispatch | biome + sort-package-json + advisory `bun audit` |
 | `actionlint.yml` | PR, dispatch | Workflow linting (checksum-verified binary, no third-party action) |
 | `aztec-benchmark.yml` | PR (path-gated), dispatch | Build (tsc+ncc) + CLI smoke |
-| `aztec-fee-payment.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark` |
+| `private-fee-juice.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark` |
 | `_package-checks.yml` | reusable | `noir-tests` (TXE via `aztec test`, PTY-wrapped, **count floor via `scripts/check-txe-counts.sh`** — exit codes alone let silently-skipped suites pass) + `js-tests` (full-surface `bun run typecheck`, then vitest vs `aztec start --local-network`, PTY-wrapped) |
 | `_pr-benchmark.yml` | reusable | Split-permission benchmark: read-only job runs PR code + uploads report artifact; separate `pull-requests: write` job posts the comment WITHOUT executing PR code. Non-vacuous assertions (results non-empty; baseline present ⇒ ≥1 comparison pair). PR benches run `--skip-proving`. |
 | `_update-baseline.yml` | reusable | Full-proving baselines, artifacts namespaced `benchmark-baseline-<pkg>-<branch>` |
-| `update-baselines.yml` | push main, monthly cron, dispatch | Baselines for the fee-payment contract package |
+| `update-baselines.yml` | push main, monthly cron, dispatch | Baselines for the private-fee-juice (FPC) contract package |
 | `release.yml` | dispatch (main only; `version` + `mode` + optional SHA-binding inputs) | See release runbook below. Rehearsals run through THIS workflow (`mode: rehearsal`) — the bootstrap-era `canary.yml` (revoked-token based, could not attest provenance) was retired at 5.0.0 |
 
 `setup-aztec` composite action (`.github/actions/setup-aztec`): bun (frozen lockfile) + node 24 + foundry v1.4.1 (matches upstream's pin at v5.0.0) + aztec CLI pinned from **root `package.json` `config.aztecVersion`** (regex-validated, env-passed, TLS-pinned curl), `~/.aztec` cached by version, optional local network start with :8080 readiness poll, optional per-package compile/codegen.
@@ -24,7 +24,7 @@ Measured on `ubuntu-latest` (2026-07-01 spike): toolchain install + compile + co
 
 ## Release runbook
 
-Versions are LOCKSTEP with the Aztec version. One release = both packages (benchmark + fee-payment; aztec-standards left for the Aztec Foundation after 5.0.0). Since 5.0.0 the workflow has three modes and a mandatory rehearse-then-release choreography.
+Versions are LOCKSTEP with the Aztec version. One release = both packages (benchmark + private-fee-juice; aztec-standards left for the Aztec Foundation after 5.0.0). Since 5.0.0 the workflow has three modes and a mandatory rehearse-then-release choreography.
 
 1. **Bump**: `bun scripts/bump-aztec.ts <version>` → review sweep + supply-chain report (mechanical rules: zero NOT-PUBLISHED / provenance regressions on resolved alias-aware pairs) → `./scripts/verify-nargo-refs.sh --write` + commit the lock → `bun install` → `bun scripts/bump-aztec.ts --regenerate-excludes` → full local validation → PR → gates green → squash-merge.
 2. **Rehearse** (main HEAD = the merge commit, note its `<sha>`): dispatch `release.yml` `mode=rehearsal` `version=0.0.0-canary.g<sha7>` (must name THIS commit — validated). Runs the ENTIRE production path: overlay → build → fail-closed tarball assertions → OIDC publish with provenance → identity assertions → tag + prerelease notes. Publishes immutable junk versions (by design; precedented). Then **re-dispatch the exact same inputs** — the recovery drill: preflight must accept via dist.integrity + attestation-identity checks and finish without changing the registry. Clean up the junk tag/GH prerelease after (`git push --delete origin v0.0.0-canary.g<sha7>` + `gh release delete`).
@@ -66,4 +66,4 @@ Versions are LOCKSTEP with the Aztec version. One release = both packages (bench
 
 - `bun run lint` / `lint:actions` before pushing workflow changes.
 - Local TXE runs (`aztec test`) MUST NOT overlap a running local network on the same machine — LMDB (`mdb_txn_begin: 22`) flakes roam across packages otherwise (macOS; see lessons/phase-3.md). CI is unaffected (separate runners).
-- Integration tests expect the local network on :8080 (`NODE_URL` override) and L1 anvil on :8545 (`L1_RPC_URL` override, fee-payment).
+- Integration tests expect the local network on :8080 (`NODE_URL` override) and L1 anvil on :8545 (`L1_RPC_URL` override, private-fee-juice).

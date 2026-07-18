@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       package-dir:
-        description: Workspace package directory (e.g. packages/aztec-fee-payment)
+        description: Workspace package directory (e.g. packages/private-fee-juice)
         required: true
         type: string
       runner:

@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       package-dir:
-        description: Workspace package directory (e.g. packages/aztec-fee-payment)
+        description: Workspace package directory (e.g. packages/private-fee-juice)
         required: true
         type: string
       run-noir-tests:
@@ -78,12 +78,12 @@ jobs:
         # Package-specific gates that assert the published tarball surface and the
         # canonical-address guard's dist-layout resolution. Runs in both the PR gate and
         # the release pipeline (release.yml's *-checks jobs reuse this workflow).
-        # Branch on the package (NOT file existence): fee-payment MUST run the gate, so a
+        # Branch on the package (NOT file existence): private-fee-juice MUST run the gate, so a
         # future PR that deletes/renames a verifier fails the (missing) `verify:package`
         # script instead of silently skipping both checks with CI still green. Other
         # packages have no such gate and skip explicitly.
         run: |
-          if [ "${{ inputs.package-dir }}" = "packages/aztec-fee-payment" ]; then
+          if [ "${{ inputs.package-dir }}" = "packages/private-fee-juice" ]; then
             bun run build
             bun run verify:package
           else

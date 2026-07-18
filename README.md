@@ -10,10 +10,10 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 
 | Package | npm | Description |
 |---|---|---|
-| [`@alejoamiras/aztec-fee-payment`](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-fee-payment.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-fee-payment) | Private Fee Payment Contract (FPC) + TypeScript SDK |
+| [`@alejoamiras/private-fee-juice`](https://www.npmjs.com/package/@alejoamiras/private-fee-juice) | [![npm](https://img.shields.io/npm/v/@alejoamiras/private-fee-juice.svg)](https://www.npmjs.com/package/@alejoamiras/private-fee-juice) | Private Fee Payment Contract (FPC) + TypeScript SDK |
 | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI machinery for Aztec contracts (gates, DA/L2 gas, proving) |
 
-Package versions track the Aztec version they support — e.g. install `@alejoamiras/aztec-fee-payment@5.0.1` when targeting Aztec `5.0.1`. Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`.
+Package versions track the Aztec version they support — e.g. install `@alejoamiras/private-fee-juice@5.0.1` when targeting Aztec `5.0.1`. Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`.
 
 ## Migrating from `@defi-wonderland/*`
 
@@ -23,7 +23,7 @@ These packages continue Wonderland's work after the end of their core-contributo
 |---|---|
 | `@defi-wonderland/aztec-standards` / `@alejoamiras/aztec-standards` | [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (Aztec Foundation, 5.0.1+) |
 | `@defi-wonderland/aztec-benchmark` (last publish: 5.0.0-rc.1) | `@alejoamiras/aztec-benchmark` (5.0.0+) |
-| `@wonderland/aztec-fee-payment` (GitHub tarballs only) | `@alejoamiras/aztec-fee-payment` (first npm releases) |
+| `@wonderland/aztec-fee-payment` (GitHub tarballs only) | `@alejoamiras/private-fee-juice` (first npm releases) |
 | `uses: defi-wonderland/aztec-benchmark/.github/workflows/…` | see [benchmark CI integration](packages/aztec-benchmark/README.md#ci-integration) |
 
 For fee-payment and benchmark: swap the scope in `package.json` — import paths are unchanged from the legacy layout. For aztec-standards: migrate to the Foundation package (its layout is owned by [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards) — check its README for import paths).

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Aztec Fee Payment — a Fee Payment Contract (FPC) for Aztec that sponsors transaction fees using internal balances. Includes a Noir smart contract and a TypeScript SDK (published as `@alejoamiras/aztec-fee-payment`).
+Aztec Fee Payment — a Fee Payment Contract (FPC) for Aztec that sponsors transaction fees using internal balances. Includes a Noir smart contract and a TypeScript SDK (published as `@alejoamiras/private-fee-juice`).
 
 - **Private FPC** (`src/nr/private_contract/`) — Bridge-based flow: users bridge FJ directly via `FeeJuicePortal` to the FPC address, then call `mint` to convert the bridge claim into private FJ. Fully private, no owner, no off-chain agent.
 
@@ -87,7 +87,7 @@ The sponsored **application** contract that tests and benchmarks exercise is NOT
 
 ### TypeScript SDK (`src/ts/`)
 
-Published as `@alejoamiras/aztec-fee-payment` with export paths:
+Published as `@alejoamiras/private-fee-juice` with export paths:
 - `.` — Main: `PrivateFPCContract`, `FPCFeePaymentMethod`, gas utils, registration helper
 - `./artifacts` — Generated contract bindings
 - `./fee-payment-methods` — `FPCFeePaymentMethod` (no refund), `PrivateMintAndPayFeePaymentMethod`
