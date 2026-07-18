@@ -32,17 +32,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions; rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1); bootstrap — must equal config.aztecVersion (first publish of private-fee-juice)
+        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions; rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
         required: true
         type: string
       mode:
-        description: release = real publish · rehearsal = full-pipeline dry run with junk version · revision = repo-side improvement to a published lockstep version, via overlay · bootstrap = ONE-TIME token first-publish of a NEW package name (private-fee-juice) whose first version cannot use OIDC (npm/cli#8544)
+        description: release = real publish · rehearsal = full-pipeline dry run with junk version · revision = repo-side improvement to a published lockstep version, via overlay
         required: true
         type: choice
         default: release
-        options: [release, rehearsal, revision, bootstrap]
+        options: [release, rehearsal, revision]
       expected-head-sha:
-        description: REQUIRED for release/revision/bootstrap — full commit SHA this run must execute. Leave empty for rehearsal.
+        description: REQUIRED for release/revision — full commit SHA this run must execute (the rehearsed commit). Leave empty for rehearsal.
         required: false
         type: string
       compare-against:
@@ -80,10 +80,6 @@ concurrency:
 jobs:
   validate:
     name: Validate inputs + render notes
-    # The standard release/rehearsal/revision chain. `bootstrap` mode skips this entire chain
-    # (every downstream job needs `validate`, so skipping it cascades) and runs the temporary
-    # one-package bootstrap-* jobs below instead.
-    if: inputs.mode != 'bootstrap'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -549,209 +545,4 @@ jobs:
             args=(release create "$TAG" --title "$TAG" --notes-file release-notes.md)
             [ -n "$PRERELEASE_FLAG" ] && args+=("$PRERELEASE_FLAG")
             gh "${args[@]}"
-          fi
-
-  # ==========================================================================================
-  # TEMPORARY Phase-D bootstrap (plan fee-payment-revisions-rename, D-D2 / D-AUD2).
-  # REMOVE THIS BLOCK (and the `bootstrap` mode option) after the one-time first publish.
-  #
-  # A brand-new npm package name cannot use OIDC trusted publishing for its FIRST version
-  # (npm/cli#8544) — the trusted publisher can only be configured AFTER the package exists.
-  # So this publishes private-fee-juice@<aztecVersion> ONCE with a scope-granular token, but
-  # it STILL carries `id-token: write` so `npm publish --provenance` mints an attestation whose
-  # certificate SAN is release.yml@refs/heads/main — identical to every future OIDC release, so
-  # verify-attestation-identity.sh accepts it. It runs INSIDE release.yml (not a separate
-  # workflow) precisely so that SAN matches. Publishes ONLY private-fee-juice; benchmark already
-  # exists at this version. `mode != bootstrap` skips this; `mode == bootstrap` skips validate → publish.
-  # ==========================================================================================
-  bootstrap-build:
-    name: Bootstrap build + pack (no credentials)
-    if: inputs.mode == 'bootstrap'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v6
-      - name: Guardrails (main-only, version == aztecVersion, exact SHA)
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          EXPECTED_SHA: ${{ inputs.expected-head-sha }}
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "bootstrap: runs from main only (got $GITHUB_REF)" >&2; exit 1
-          fi
-          AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
-          if [ "$INPUT_VERSION" != "$AZTEC_VERSION" ]; then
-            echo "bootstrap: version $INPUT_VERSION must equal config.aztecVersion $AZTEC_VERSION" >&2; exit 1
-          fi
-          if [ -z "$EXPECTED_SHA" ] || [ "$GITHUB_SHA" != "$EXPECTED_SHA" ]; then
-            echo "bootstrap: HEAD $GITHUB_SHA != expected-head-sha ${EXPECTED_SHA:-<empty>}" >&2; exit 1
-          fi
-          echo "bootstrap guardrails OK: private-fee-juice@$INPUT_VERSION at $GITHUB_SHA"
-      - uses: ./.github/actions/setup-aztec
-        with:
-          start-local-network: 'false'
-          run-compile: 'false'
-          run-codegen: 'false'
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - name: Verify Nargo refs against committed lock
-        run: ./scripts/verify-nargo-refs.sh
-      - name: Build private-fee-juice (committed version — NO overlay)
-        run: |
-          (cd packages/private-fee-juice && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
-      - name: Verify tarball surface (pre-publish gate)
-        run: bun scripts/verify-tarball.ts packages/private-fee-juice
-      - name: Pack + assert embedded manifest (fail-closed version/name backstop)
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
-          mkdir -p release-tarballs
-          (cd packages/private-fee-juice && npm pack --pack-destination "$GITHUB_WORKSPACE/release-tarballs" > /dev/null)
-          COUNT=$(find release-tarballs -name '*.tgz' | wc -l)
-          if [ "$COUNT" -ne 1 ]; then
-            echo "bootstrap: expected exactly 1 tarball, packed $COUNT" >&2; exit 1
-          fi
-          tgz=$(ls release-tarballs/alejoamiras-private-fee-juice-*.tgz)
-          bun scripts/assert-tarball-meta.ts "$tgz" "@alejoamiras/private-fee-juice" "$INPUT_VERSION" "$AZTEC_VERSION"
-          (cd release-tarballs && shasum -a 256 ./*.tgz > SHA256SUMS && cat SHA256SUMS)
-      - uses: actions/upload-artifact@v6
-        with:
-          name: bootstrap-tarball
-          path: release-tarballs/
-
-  bootstrap-publish:
-    name: Bootstrap publish (one-time token + provenance)
-    if: inputs.mode == 'bootstrap'
-    needs: bootstrap-build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: npm-publish
-    permissions:
-      contents: read
-      # id-token MINTS the provenance attestation via OIDC; the NODE_AUTH_TOKEN authenticates
-      # the registry for the FIRST publish (which OIDC alone cannot do — npm/cli#8544). Both
-      # coexist on npm's pre-trusted-publishing provenance path. This is the ONLY moment a token exists.
-      id-token: write
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
-        with:
-          name: bootstrap-tarball
-          path: release-tarballs/
-      - name: Verify tarball checksum (handoff integrity)
-        run: cd release-tarballs && shasum -a 256 -c SHA256SUMS
-      - name: Exact-pin npm (provenance-capable CLI)
-        run: |
-          npm install -g npm@11.18.0
-          [ "$(npm -v)" = "11.18.0" ] || { echo "npm version drift: $(npm -v)" >&2; exit 1; }
-      - name: Preflight — version ABSENT (fresh) or integrity+identity-verified rerun
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          got=""
-          for _ in 1 2 3 4 5; do
-            got=$(npm view "@alejoamiras/private-fee-juice@$INPUT_VERSION" version 2>/dev/null || true)
-            [ -n "$got" ] && break
-            sleep 15
-          done
-          if [ -z "$got" ]; then
-            echo "fresh bootstrap: private-fee-juice@$INPUT_VERSION is absent" && exit 0
-          fi
-          echo "rerun — private-fee-juice@$INPUT_VERSION already published (verifying integrity + identity + tag before accepting)"
-          integrity=$(npm view "@alejoamiras/private-fee-juice@$INPUT_VERSION" dist.integrity)
-          local_tgz=$(ls release-tarballs/alejoamiras-private-fee-juice-*.tgz)
-          got_i="sha512-$(openssl dgst -sha512 -binary "$local_tgz" | base64 -w0)"
-          if [ "$got_i" != "$integrity" ]; then
-            echo "ERROR: published private-fee-juice@$INPUT_VERSION does NOT match this run's tarball — refusing" >&2; exit 1
-          fi
-          ./scripts/verify-attestation-identity.sh "@alejoamiras/private-fee-juice" "$INPUT_VERSION" "$GITHUB_SHA"
-          ./scripts/verify-dist-tag.sh "@alejoamiras/private-fee-juice" "$INPUT_VERSION" latest
-      - name: Publish (token → registry auth; --provenance → attestation via id-token)
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          # Idempotent: a rerun whose version is already visible was integrity/identity-verified
-          # in preflight — skip the publish rather than E409.
-          if [ "$(npm view "@alejoamiras/private-fee-juice@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
-            echo "private-fee-juice@$INPUT_VERSION already published — skipping (verified in preflight)"; exit 0
-          fi
-          tgz=$(ls release-tarballs/alejoamiras-private-fee-juice-*.tgz)
-          # ./ prefix is load-bearing (npm spec parser reads a bare path as a GitHub shorthand).
-          npm publish "./$tgz" --access public --provenance --tag latest
-      - name: Assert published state (version + latest + integrity + attestation identity)
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          fail=0
-          got=""
-          for attempt in $(seq 1 30); do
-            got=$(npm view "@alejoamiras/private-fee-juice@$INPUT_VERSION" version 2>/dev/null || true)
-            [ "$got" = "$INPUT_VERSION" ] && break
-            echo "  view attempt $attempt: not visible yet, waiting 20s..."
-            sleep 20
-          done
-          if [ "$got" != "$INPUT_VERSION" ]; then
-            echo "ERROR: private-fee-juice@$INPUT_VERSION not resolvable after 10min" >&2; exit 1
-          fi
-          ./scripts/verify-dist-tag.sh "@alejoamiras/private-fee-juice" "$INPUT_VERSION" latest
-          latest=$(npm view "@alejoamiras/private-fee-juice" dist-tags.latest 2>/dev/null || true)
-          case "$latest" in
-            0.0.0-*) echo "ERROR: latest points at a canary ($latest)" >&2; fail=1 ;;
-          esac
-          integrity=""
-          for _ in 1 2 3 4 5; do
-            integrity=$(npm view "@alejoamiras/private-fee-juice@$INPUT_VERSION" dist.integrity 2>/dev/null || true)
-            [ -n "$integrity" ] && break
-            sleep 15
-          done
-          local_tgz=$(ls release-tarballs/alejoamiras-private-fee-juice-*.tgz)
-          local_i="sha512-$(openssl dgst -sha512 -binary "$local_tgz" | base64 -w0)"
-          if [ "$integrity" != "$local_i" ]; then
-            echo "ERROR: registry integrity for private-fee-juice@$INPUT_VERSION differs from this run's tarball" >&2; fail=1
-          fi
-          ./scripts/verify-attestation-identity.sh "@alejoamiras/private-fee-juice" "$INPUT_VERSION" "$GITHUB_SHA" || fail=1
-          exit "$fail"
-
-  bootstrap-tag:
-    name: Bootstrap tag + GitHub release
-    if: inputs.mode == 'bootstrap'
-    needs: bootstrap-publish
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-      - name: Create tag private-fee-juice-v<version> (v<version> is occupied by the old name)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          # The plain v<version> tag belongs to the old @alejoamiras/aztec-fee-payment release —
-          # the renamed package gets a name-qualified tag instead.
-          TAG="private-fee-juice-v$INPUT_VERSION"
-          peeled=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
-          plain=$(git ls-remote origin "refs/tags/$TAG" | awk '$2 == "refs/tags/'"$TAG"'" {print $1}')
-          existing="${peeled:-$plain}"
-          if [ -n "$existing" ]; then
-            if [ "$existing" != "$GITHUB_SHA" ]; then
-              echo "ERROR: tag $TAG exists at $existing, not at this run's $GITHUB_SHA" >&2; exit 1
-            fi
-            echo "tag $TAG already exists at this commit — ok (re-run)"
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-          NOTES="@alejoamiras/private-fee-juice@$INPUT_VERSION — first publish under the new package name (renamed from @alejoamiras/aztec-fee-payment, functionally equivalent to aztec-fee-payment@$INPUT_VERSION-revision.1). Attested via provenance (npm audit signatures)."
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release edit "$TAG" --notes "$NOTES"
-          else
-            gh release create "$TAG" --title "$TAG" --notes "$NOTES"
           fi
