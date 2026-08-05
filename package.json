@@ -23,9 +23,10 @@
     "lint:shell": "shellcheck scripts/*.sh",
     "prepare": "husky",
     "test": "bun run test:nr && bun run test:js",
-    "test:js": "bun run --cwd packages/private-fee-juice test:js",
-    "test:nr": "bun run --cwd packages/private-fee-juice test:nr",
-    "typecheck": "bun run --cwd packages/private-fee-juice typecheck && bun run --cwd packages/aztec-benchmark typecheck"
+    "test:js": "bun run --cwd packages/private-fee-juice test:js && bun run --cwd packages/quota-paymaster test:js",
+    "test:nr": "bun run --cwd packages/private-fee-juice test:nr && bun run --cwd packages/quota-paymaster test:nr",
+    "test:warp": "bun run --cwd packages/quota-paymaster test:warp",
+    "typecheck": "bun run --cwd packages/private-fee-juice typecheck && bun run --cwd packages/aztec-benchmark typecheck && bun run --cwd packages/quota-paymaster typecheck"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json}": [

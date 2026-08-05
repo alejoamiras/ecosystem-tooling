@@ -27,6 +27,15 @@ on:
         description: Minimum TXE tests that must EXECUTE (0 = skip the floor check). Exit codes alone let silently-skipped suites pass.
         type: number
         default: 0
+      run-warp-tests:
+        description: >-
+          After the main vitest step, run the package's `test:warp` script — a
+          time-travel suite that self-provisions its own DISPOSABLE network
+          (never the job's shared one; warps poison a chain irreversibly).
+          Boolean + a hardcoded script name on purpose: a free-form command
+          input would let a caller re-point the quarantine.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,6 +82,13 @@ jobs:
       - name: Run vitest suite (PTY-wrapped)
         working-directory: ${{ inputs.package-dir }}
         run: script -e -c "NODE_NO_WARNINGS=1 bunx vitest run" /dev/null
+      - name: Run time-travel suite (self-provisioned disposable network)
+        if: inputs.run-warp-tests
+        working-directory: ${{ inputs.package-dir }}
+        # Deliberately AFTER the main suite, and a hardcoded script name: the
+        # warp config boots its own network on ephemeral ports and tears it
+        # down by owned pgid, so the job's shared network is never warped.
+        run: script -e -c "NODE_NO_WARNINGS=1 bun run test:warp" /dev/null
       - name: Verify published package surface (packaging + canonical gates)
         working-directory: ${{ inputs.package-dir }}
         # Package-specific gates that assert the published tarball surface and the
