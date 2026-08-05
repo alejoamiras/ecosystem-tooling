@@ -36,10 +36,19 @@ for (const [rel, expected] of Object.entries<string>(provenance.vendoredSha256))
   if (modIdx === -1) {
     failures.push('main.nr: the sanctioned `pub mod test;` registration line is missing');
   } else {
-    const reconstructed = [...lines.slice(0, modIdx), ...lines.slice(modIdx + 1)].join('\n');
+    // Reverse the enumerated deviations, then require byte-identity with upstream:
+    // the registration line is removed, and the two sanctioned visibility markers
+    // (both proven class-id-neutral) are reverted. Anything else fails.
+    const PUB_MARKERS = ['assert_fee_within_max', 'assert_generation_fresh'];
+    const reverted = [...lines.slice(0, modIdx), ...lines.slice(modIdx + 1)].map((line) => {
+      const marker = PUB_MARKERS.find(
+        (name) => line.trimStart() === `pub fn ${name}` || line.trimStart().startsWith(`pub fn ${name}(`),
+      );
+      return marker ? line.replace(`pub fn ${marker}`, `fn ${marker}`) : line;
+    });
     const upstream = provenance.upstreamSha256['contracts/fpc/quota_fpc/src/main.nr'];
-    if (sha256(reconstructed) !== upstream) {
-      failures.push('main.nr deviates from upstream by MORE than the single registration line');
+    if (sha256(reverted.join('\n')) !== upstream) {
+      failures.push('main.nr deviates from upstream beyond the enumerated sanctioned deviations');
     }
   }
   const targetUpstream = provenance.upstreamSha256['contracts/fpc/fpc_test_target/src/main.nr'];

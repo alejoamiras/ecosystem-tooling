@@ -258,7 +258,7 @@ contract QuotaFpc {
     /// the allowance cannot be proven, so it can never reach a sequencer and
     /// leave the contract liable for more than `max_fee`.
     #[contract_library_method]
-    fn assert_fee_within_max(gas_settings: GasSettings, max_fee: u128) {
+    pub fn assert_fee_within_max(gas_settings: GasSettings, max_fee: u128) {
         // Matches the protocol's own `GasSettings.getFeeLimit()`, which bills
         // `gas_limits x max_fees_per_gas` and does NOT add teardown — teardown is
         // already reserved within `gas_limits` at v5.0.1. The aztec-kit fork this
@@ -310,7 +310,7 @@ contract QuotaFpc {
     /// closing grace window. The protocol independently requires inclusion
     /// within 24h of the anchor, so this bounds how far sponsorship can reach.
     #[contract_library_method]
-    fn assert_generation_fresh(anchor_timestamp: u64, generation: u32) {
+    pub fn assert_generation_fresh(anchor_timestamp: u64, generation: u32) {
         let today = anchor_timestamp / SECONDS_PER_DAY;
         let seconds_into_day = anchor_timestamp % SECONDS_PER_DAY;
         let in_grace_window = seconds_into_day >= (SECONDS_PER_DAY - ROLLOVER_GRACE_SECONDS);
