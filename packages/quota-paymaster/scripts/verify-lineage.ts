@@ -9,7 +9,12 @@
 //      against;
 //  (c) the compiled target artifact AND the codegen'd consumer artifact both have the
 //      chain-verified class id from known-deployments.json.
-// A source edit without recompile fails (a); a stale artifact fails (c).
+// An edit to a PINNED file without recompile fails (a); a stale artifact fails (c).
+// Deliberately unpinned: the TXE test modules (src/test/*.nr). They do not compile
+// into the release artifact — the class-id checks in (c) prove that — and pinning
+// them would turn every legitimate test change into a provenance ceremony. Their
+// integrity is guarded by git review plus the CI TXE count floor, not by lineage
+// (post-impl audit finding #9: this scope is a choice, not an oversight).
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { classIdOfArtifact, classIdOfArtifactJson } from './artifact-class-id.js';

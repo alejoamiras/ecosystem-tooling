@@ -3,10 +3,11 @@
  * for. These tests use real files in a temp dir — the hardening IS filesystem
  * behavior, so mocking fs would test nothing.
  */
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { findClaimInJournal } from '../../operator/claim.js';
 import {
   appendJournalRecord,
   BRIDGE_JOURNAL_FILE,
@@ -52,6 +53,23 @@ describe('journal directory', () => {
     const dir = join(tempDir(), 'loose');
     mkdirSync(dir, { mode: 0o755 });
     expect(() => openJournalDir(dir)).toThrow(/group\/world accessible/);
+  });
+
+  test('a rotated/replaced directory is refused — path resolution must land in the held dir', () => {
+    // Node has no true openat: appends re-resolve the PATH. If the directory
+    // is swapped after opening (parent-symlink rotation), a path-based open
+    // would write the secret into the REPLACEMENT while the held FD gets the
+    // fsync (post-impl audit finding #5).
+    const { dir, handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
+    const moved = `${dir}-moved`;
+    renameSync(dir, moved);
+    cleanups.push(() => rmSync(moved, { recursive: true, force: true }));
+    mkdirSync(dir, { mode: 0o700 }); // impostor at the original path
+    expect(() => appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('DEPOSIT_CONFIRMED'))).toThrow(
+      /no longer resolves/,
+    );
+    expect(() => readJournalRecords(handle, BRIDGE_JOURNAL_FILE)).toThrow(/no longer resolves/);
   });
 
   test('a symlinked journal file is refused (O_NOFOLLOW), not silently followed', () => {
@@ -131,5 +149,37 @@ describe('locking', () => {
     ).rejects.toThrow('boom');
     // Releasable again immediately:
     await withJournalLock(handle, async () => {}, { timeoutMs: 300 });
+  });
+});
+
+describe('findClaimInJournal', () => {
+  const RECIPIENT = `0x0${'7'.repeat(63)}`;
+  const deposit = (messageHash: string) =>
+    record('DEPOSIT_CONFIRMED', {
+      to: RECIPIENT,
+      amountWei: '1000',
+      claimSecret: '0xsecret',
+      messageLeafIndex: '5',
+      messageHash,
+    });
+
+  test('latest-unclaimed selection skips deposits already recorded CLAIMED', () => {
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xbb'));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('CLAIMED', { to: RECIPIENT, messageHash: '0xbb' }));
+    // Without the claimed-set filter this would re-target 0xbb (the newest).
+    expect(findClaimInJournal(handle, { recipient: RECIPIENT }).messageHash).toBe('0xaa');
+  });
+
+  test('an EXPLICIT message hash that is already CLAIMED is refused, not rebuilt', () => {
+    // The explicit-hash path must not bypass the claimed-set (post-impl audit
+    // finding #8) — retrying a redeemed claim burns gas on a doomed tx.
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('CLAIMED', { to: RECIPIENT, messageHash: '0xaa' }));
+    expect(() => findClaimInJournal(handle, { recipient: RECIPIENT, messageHash: '0xaa' })).toThrow(
+      /already recorded as CLAIMED/,
+    );
   });
 });

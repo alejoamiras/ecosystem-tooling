@@ -186,20 +186,31 @@ export async function schedulePolicyChange(
   /** Extra abort condition checked with the CAS immediately before sending. */
   revalidateAlso?: () => Promise<string | undefined>,
 ): Promise<{ scheduledRevision: bigint }> {
+  // Snapshot the caller-owned change BEFORE validating or confirming — with a
+  // COPY of the target array, which would otherwise stay aliased to caller
+  // memory: a confirmation callback mutating it after the digest was shown
+  // would schedule targets the human never saw (post-impl audit finding #1).
+  const requested = {
+    maxFeeWei: change.maxFeeWei,
+    maxUses: change.maxUses,
+    maxUsers: change.maxUsers,
+    allowedTargets: change.allowedTargets ? [...change.allowedTargets] : undefined,
+  };
+
   // The UPDATE path enforces the SAME target rules as deploys (review finding
   // #4): without this, a typo'd address is silently TRUNCATED by the parser
   // into a different address than the plan showed, live 12h later.
-  if (change.allowedTargets) {
-    assertValidTargetList(change.allowedTargets);
+  if (requested.allowedTargets) {
+    assertValidTargetList(requested.allowedTargets);
   }
 
-  const state = await readPolicyState(deps, guards.gasProfile);
+  const [state, info] = await Promise.all([readPolicyState(deps, guards.gasProfile), deps.node.getNodeInfo()]);
 
   const next: PolicyValues & { allowedTargets: string[] } = {
-    maxFeeWei: change.maxFeeWei ?? state.live.maxFeeWei,
-    maxUses: change.maxUses ?? state.live.maxUses,
-    maxUsers: change.maxUsers ?? state.live.maxUsers,
-    allowedTargets: change.allowedTargets ?? state.live.allowedTargets,
+    maxFeeWei: requested.maxFeeWei ?? state.live.maxFeeWei,
+    maxUses: requested.maxUses ?? state.live.maxUses,
+    maxUsers: requested.maxUsers ?? state.live.maxUsers,
+    allowedTargets: requested.allowedTargets ?? [...state.live.allowedTargets],
   };
 
   // The floor the CLIENT will actually spend against. Below it, every
@@ -228,6 +239,8 @@ export async function schedulePolicyChange(
 
   const expectedRevision = state.scheduled.revision;
   const plan = createActionPlan('schedule-policy-change', {
+    l1ChainId: info.l1ChainId,
+    rollupVersion: info.rollupVersion,
     fpc: deps.fpcAddress.toString(),
     expectedRevision: expectedRevision.toString(),
     maxFeeWei: next.maxFeeWei.toString(),
@@ -244,13 +257,29 @@ export async function schedulePolicyChange(
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     // The CAS the contract enforces, pre-checked with fresh eyes so a race
     // surfaces as a clean abort instead of a reverted transaction.
-    const [, , revisionNow] = unwrap(await fpc.methods.get_scheduled_settings().simulate({ from: deps.from })) as [
-      RawBundle,
-      bigint,
-      bigint,
-    ];
+    const [[, , revisionNow], latestNow, infoNow] = await Promise.all([
+      fpc.methods
+        .get_scheduled_settings()
+        .simulate({ from: deps.from })
+        .then((raw) => unwrap(raw) as [RawBundle, bigint, bigint]),
+      deps.node.getBlockData('latest'),
+      deps.node.getNodeInfo(),
+    ]);
     if (BigInt(revisionNow) !== expectedRevision) {
       return `revision moved ${expectedRevision} -> ${revisionNow} (another operator scheduled)`;
+    }
+    if (infoNow.l1ChainId !== info.l1ChainId || infoNow.rollupVersion !== info.rollupVersion) {
+      return 'chain identity changed between reads';
+    }
+    // Activation race (post-impl audit finding #4): activating a pending
+    // bundle does NOT bump the revision, so the CAS above cannot see it. If
+    // the bundle we observed as pending has since crossed its activation
+    // time, any omitted fields were filled from the PRE-activation live
+    // policy — sending would schedule a 12h rollback to values the operator
+    // never chose. Abort; the caller re-reads and rebuilds.
+    const timeNow = BigInt(latestNow?.header?.globalVariables?.timestamp ?? 0);
+    if (state.scheduled.pending && timeNow >= state.scheduled.activatesAt) {
+      return 'the pending policy change activated mid-operation; re-read state and rebuild the change';
     }
     return revalidateAlso ? await revalidateAlso() : undefined;
   });

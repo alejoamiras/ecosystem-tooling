@@ -76,6 +76,19 @@ export async function resolveFeeSource(inputs: FeeSourceInputs): Promise<FeeSour
   const fallback = (reason: QuotaUnavailableReason): FeeSource =>
     canSelfPay ? { kind: 'self' } : { kind: 'blocked', reason };
 
+  // Inconclusive evidence is judged FIRST — before staleness or any other
+  // fallback path. Every other branch may auto-charge a funded user, and
+  // under `onSyncing: 'wait'` a syncing state must NEVER do that, not even
+  // when its generation is also stale (a midnight crossing while the wallet
+  // syncs hit exactly this: the stale-generation fallback self-paid despite
+  // the explicit 'wait'; post-impl audit finding #3).
+  if (state.syncing) {
+    if (inputs.onSyncing === 'self-pay' && canSelfPay) {
+      return { kind: 'self' };
+    }
+    return { kind: 'blocked', reason: 'sync-pending' };
+  }
+
   // A generation chosen before midnight is no longer accepted after it; the
   // caller must re-read chain time rather than prove something doomed to fail.
   if (isGenerationStale(state.generation, chainTimestampSeconds)) {
@@ -84,16 +97,6 @@ export async function resolveFeeSource(inputs: FeeSourceInputs): Promise<FeeSour
 
   if (inputs.paymasterBalance < inputs.minPaymasterBalance) {
     return fallback('paymaster-empty');
-  }
-
-  // Inconclusive evidence is never exhaustion. Whether it may spend the user's
-  // own balance is the caller's explicit policy — there is no safe silent
-  // default (the source project's code and comment disagreed on exactly this).
-  if (state.syncing) {
-    if (inputs.onSyncing === 'self-pay' && canSelfPay) {
-      return { kind: 'self' };
-    }
-    return { kind: 'blocked', reason: 'sync-pending' };
   }
 
   if (state.subscribed) {
@@ -135,13 +138,19 @@ export async function awaitAllowanceTransition(options: {
 
   const startedAt = now();
   let last = { subscribed: false, remaining: 0 };
+  let absentStreak = 0;
 
   while (now() - startedAt < timeoutMs) {
     last = await options.readState();
+    // Exhaustion needs the note gone on TWO consecutive reads: a single
+    // absent read is also what a not-yet-synced wallet returns, and
+    // concluding from it could send the caller into a doomed re-subscribe
+    // (post-impl audit finding #3b).
+    absentStreak = last.subscribed ? 0 : absentStreak + 1;
     const reached =
       options.expectedRemaining > 0
         ? last.subscribed && last.remaining === options.expectedRemaining
-        : !last.subscribed; // exhausted: the note is gone, and that IS the signal
+        : absentStreak >= 2; // exhausted: the note is CONSISTENTLY gone
     if (reached) {
       return {
         generation: options.generation,

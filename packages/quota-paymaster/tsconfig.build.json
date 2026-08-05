@@ -3,7 +3,9 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "composite": false
+    "composite": false,
+    "declarationMap": false,
+    "inlineSourceMap": false
   },
   "include": [
     "src/ts/index.ts",

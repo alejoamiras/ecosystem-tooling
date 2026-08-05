@@ -115,22 +115,38 @@ export async function deployQuotaFpc(
   config: ParsedQuotaFpcConfig,
   opts: DeployQuotaFpcOptions = {},
 ): Promise<QuotaFpcContract> {
+  // Snapshot every execution input BEFORE verifying or confirming — including
+  // COPIES of the arrays. `config` is caller-owned; a confirmation callback
+  // mutating it after the digest was shown would deploy something other than
+  // what was verified and approved (post-impl audit finding #1). Everything
+  // below uses only this snapshot.
+  const snapshot = {
+    name: config.name,
+    adminAddress: config.adminAddress,
+    policy: { ...config.policy },
+    targets: config.resolvedTargets.map((t) => ({ ...t })),
+    accountClasses: config.resolvedAccountClasses.map((c) => ({ ...c })),
+    requireUnpublishedAccounts: config.requireUnpublishedAccounts,
+    maxLossWei: config.maxLossWei,
+    from: deps.from,
+  };
+
   const classId = await assertArtifactIsChainVerifiedClass();
-  await verifyAccountClassIds(config.resolvedAccountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
+  await verifyAccountClassIds(snapshot.accountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
 
   const plan = createActionPlan('deploy-quota-fpc', {
     contractClassId: classId,
-    deploymentName: config.name,
-    admin: config.adminAddress,
-    maxFeeWei: config.policy.maxFeeWei,
-    maxUsesPerDay: config.policy.maxUsesPerDay,
-    maxUsersPerDay: config.policy.maxUsersPerDay,
-    targets: config.resolvedTargets.map((t) => t.address).join(','),
-    accountClasses: config.resolvedAccountClasses.map((c) => c.classId).join(','),
-    requireUnpublishedAccounts: config.requireUnpublishedAccounts,
-    worstCasePerDayWei: worstCasePerDayWei(config.policy).toString(),
-    maxLossWei: config.maxLossWei,
-    from: deps.from.toString(),
+    deploymentName: snapshot.name,
+    admin: snapshot.adminAddress,
+    maxFeeWei: snapshot.policy.maxFeeWei,
+    maxUsesPerDay: snapshot.policy.maxUsesPerDay,
+    maxUsersPerDay: snapshot.policy.maxUsersPerDay,
+    targets: snapshot.targets.map((t) => t.address).join(','),
+    accountClasses: snapshot.accountClasses.map((c) => c.classId).join(','),
+    requireUnpublishedAccounts: snapshot.requireUnpublishedAccounts,
+    worstCasePerDayWei: worstCasePerDayWei(snapshot.policy).toString(),
+    maxLossWei: snapshot.maxLossWei,
+    from: snapshot.from.toString(),
   });
   // Deployment has no CAS to recheck; revalidation re-asserts the artifact so
   // a rebuild between confirm and send cannot swap the class underneath.
@@ -139,21 +155,23 @@ export async function deployQuotaFpc(
     return now.id.toString() === classId ? undefined : 'compiled artifact changed';
   });
 
-  const allowed = padAllowedTargets(config.resolvedTargets.map((t) => t.address)).map((a) =>
+  const allowed = padAllowedTargets(snapshot.targets.map((t) => t.address)).map((a) =>
     AztecAddress.fromStringUnsafe(a),
   );
-  const allowedClasses = padAllowedAccountClasses(config.resolvedAccountClasses.map((c) => BigInt(c.classId)));
+  const allowedClasses = padAllowedAccountClasses(snapshot.accountClasses.map((c) => BigInt(c.classId)));
 
   const deployment = QuotaFpcContract.deploy(
     deps.wallet,
-    AztecAddress.fromStringUnsafe(config.adminAddress),
-    BigInt(config.policy.maxFeeWei),
-    config.policy.maxUsesPerDay,
-    config.policy.maxUsersPerDay,
+    AztecAddress.fromStringUnsafe(snapshot.adminAddress),
+    BigInt(snapshot.policy.maxFeeWei),
+    snapshot.policy.maxUsesPerDay,
+    snapshot.policy.maxUsersPerDay,
     allowed,
     allowedClasses,
-    config.requireUnpublishedAccounts,
+    snapshot.requireUnpublishedAccounts,
   );
-  await deployment.send({ from: deps.from, ...opts.sendOptions });
+  // sendOptions spreads FIRST: the confirmed sender is bound and cannot be
+  // overridden by an unconfirmed option (finding #1).
+  await deployment.send({ ...opts.sendOptions, from: snapshot.from });
   return await deployment.register();
 }

@@ -102,11 +102,18 @@ export function closeJournalDir(handle: JournalHandle): void {
  *  - Lock-file creation failures close the fd and remove the partial file; a
  *    persistently failing steal sleeps and re-checks the timeout instead of
  *    spinning forever.
- * A residual TOCTOU narrower than a filesystem operation remains between the
- * content check and unlink on the STEAL path (Node has no flock in core);
- * with the heartbeat making false staleness effectively impossible, entering
- * it requires a genuinely crashed holder plus two concurrent stealers, and
- * the loser of the O_EXCL race still queues correctly.
+ * A residual TOCTOU remains on the STEAL and RELEASE paths (Node core has no
+ * flock): both are read-check-unlink, so two stealers observing the same
+ * crashed lock can interleave such that one unlinks the OTHER's freshly
+ * created successor, letting both proceed (post-impl audit finding #6). Two
+ * mitigations bound it: the heartbeat makes false staleness effectively
+ * impossible (entering the window requires a genuinely crashed holder PLUS
+ * two stealers racing within milliseconds), and every acquirer re-verifies
+ * its own token is still in the lock file after a short settle delay,
+ * catching the interleaving before any journal write happens. Not a proof —
+ * an unlucky third stealer during the settle window is still unguarded — but
+ * the journal's appends are the guarded operations and they are idempotent
+ * at the record level (append-only, readers dedup by state).
  */
 export async function withJournalLock<T>(
   handle: JournalHandle,
@@ -143,6 +150,17 @@ export async function withJournalLock<T>(
         throw err;
       }
       closeSync(fd);
+      // Post-acquire re-verify: let concurrent stealers' unlink window pass,
+      // then confirm the lock still carries OUR token. If a racing stealer
+      // unlinked our fresh lock and created its own, we lose and re-queue
+      // instead of entering the critical section concurrently (finding #6).
+      await new Promise((r) => setTimeout(r, 25));
+      if (readLockToken() !== token) {
+        if (Date.now() - started > timeoutMs) {
+          throw new Error(`journal lock ${lockPath} lost to a concurrent stealer; timed out`);
+        }
+        continue;
+      }
       break;
     } catch (err) {
       if ((err as { code?: string }).code !== 'EEXIST') throw err;
@@ -205,10 +223,29 @@ export async function withJournalLock<T>(
 }
 
 /**
+ * Node has no true openat: file opens resolve BY PATH. Before every such open,
+ * assert the path still resolves to the SAME directory inode the handle holds —
+ * a parent-symlink rotation after openJournalDir would otherwise send secrets
+ * to a replacement directory while the old FD gets the fsync (post-impl audit
+ * finding #5). dev+ino equality binds path resolution to the held descriptor.
+ */
+function assertDirUnmoved(handle: JournalHandle): void {
+  const held = fstatSync(handle.dirFd);
+  const atPath = statSync(handle.dirPath);
+  if (held.dev !== atPath.dev || held.ino !== atPath.ino) {
+    throw new Error(
+      `journal directory ${handle.dirPath} no longer resolves to the directory this handle ` +
+        `opened (rotated or replaced); refusing to touch secrets through it`,
+    );
+  }
+}
+
+/**
  * Appends one record and does not return until the bytes AND the directory
  * entry are durably on disk. All checks act on descriptors, never paths.
  */
 export function appendJournalRecord(handle: JournalHandle, file: string, record: JournalRecord): void {
+  assertDirUnmoved(handle);
   const buf = Buffer.from(`${JSON.stringify(record)}\n`, 'utf8');
   const fd = openSync(
     join(handle.dirPath, file),
@@ -249,6 +286,7 @@ export function readJournalRecords(
 ): { records: JournalRecord[]; tornLines: number } {
   let fd: number;
   try {
+    assertDirUnmoved(handle);
     fd = openSync(join(handle.dirPath, file), constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (err) {
     if ((err as { code?: string }).code === 'ENOENT') return { records: [], tornLines: 0 };

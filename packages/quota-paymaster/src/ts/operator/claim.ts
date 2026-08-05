@@ -11,6 +11,7 @@
  * bridgeFeeJuice — NEVER via argv, which leaks through shell history and
  * process listings.
  */
+import { createHash } from 'node:crypto';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
@@ -63,6 +64,15 @@ export function findClaimInJournal(
   // redeemed deposits are excluded here (review finding #10 — without this,
   // "claim the other deposit" re-targeted the newest, already-claimed one).
   const claimed = new Set(records.filter((r) => r.state === 'CLAIMED').map((r) => String(r.messageHash).toLowerCase()));
+  // An EXPLICIT message hash must not bypass the claimed-set either: retrying
+  // a claim that already succeeded burns gas on a doomed transaction and can
+  // mask which deposit the operator actually meant (post-impl audit finding #8).
+  if (query.messageHash !== undefined && claimed.has(query.messageHash.toLowerCase())) {
+    throw new Error(
+      `deposit ${query.messageHash} is already recorded as CLAIMED in the journal; ` +
+        `refusing to build a claim for it. Inspect the journal if you believe this is wrong.`,
+    );
+  }
   const matches = records.filter(
     (r) =>
       r.state === 'DEPOSIT_CONFIRMED' &&
@@ -94,39 +104,65 @@ export async function claimFeeJuice(
   claim: ClaimDetails,
   sendOptions: Record<string, unknown> = {},
 ): Promise<{ balanceBeforeWei: bigint; balanceAfterWei: bigint }> {
-  const recipient = AztecAddress.fromStringUnsafe(claim.recipient);
+  // Snapshot the caller-owned claim BEFORE confirming; a confirmation callback
+  // mutating it after the digest was shown would redirect the claim relative
+  // to what the human approved (post-impl audit finding #1).
+  const recipientStr = claim.recipient;
+  const amountWei = claim.amountWei;
+  const claimSecret = claim.claimSecret;
+  const messageLeafIndex = claim.messageLeafIndex;
+  const messageHash = claim.messageHash;
+  const from = deps.from;
+
+  const recipient = AztecAddress.fromStringUnsafe(recipientStr);
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  const before = BigInt((await getFeeJuiceBalance(recipient, deps.node)) ?? 0n);
+  const [before, info] = await Promise.all([
+    getFeeJuiceBalance(recipient, deps.node).then((b) => BigInt(b ?? 0n)),
+    deps.node.getNodeInfo(),
+  ]);
 
   const plan = createActionPlan('claim-fee-juice', {
-    recipient: claim.recipient,
-    amountWei: claim.amountWei.toString(),
-    messageLeafIndex: claim.messageLeafIndex.toString(),
-    paidForBy: deps.from.toString(),
-    // The digest covers the secret WITHOUT exposing it in the plan a UI shows.
-    claimSecretPresent: claim.claimSecret.length > 0,
+    l1ChainId: info.l1ChainId,
+    rollupVersion: info.rollupVersion,
+    recipient: recipientStr,
+    amountWei: amountWei.toString(),
+    messageLeafIndex: messageLeafIndex.toString(),
+    paidForBy: from.toString(),
+    // The digest COVERS the secret without exposing it in the plan a UI shows:
+    // a hash commits to the exact preimage, so a swapped secret changes the
+    // digest, where a bare "present" boolean would not (finding #1).
+    claimSecretSha256: createHash('sha256').update(claimSecret).digest('hex'),
   });
-  await confirmAndRevalidate(plan, deps.confirm, async () => undefined);
+  await confirmAndRevalidate(plan, deps.confirm, async () => {
+    const again = await deps.node.getNodeInfo();
+    return again.l1ChainId === info.l1ChainId && again.rollupVersion === info.rollupVersion
+      ? undefined
+      : 'chain identity changed between reads';
+  });
 
   const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
   const { Fr } = await import('@aztec/aztec.js/fields');
   await FeeJuiceContract.at(deps.wallet)
-    .methods.claim(recipient, claim.amountWei, Fr.fromString(claim.claimSecret), claim.messageLeafIndex)
-    .send({ from: deps.from, ...sendOptions });
+    .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
+    // sendOptions spreads FIRST: the confirmed payer is bound and cannot be
+    // overridden by an unconfirmed option (finding #1).
+    .send({ ...sendOptions, from });
 
-  const after = BigInt((await getFeeJuiceBalance(recipient, deps.node)) ?? 0n);
-
-  if (deps.journal && claim.messageHash) {
+  // Journal CLAIMED immediately after the send succeeds — BEFORE the
+  // balance-after read. A transient RPC failure on that read must not leave a
+  // redeemed deposit recorded as unclaimed (finding #8).
+  if (deps.journal && messageHash) {
     await withJournalLock(deps.journal, () => {
       appendJournalRecord(deps.journal as JournalHandle, BRIDGE_JOURNAL_FILE, {
         state: 'CLAIMED',
         at: new Date().toISOString(),
-        to: claim.recipient,
-        amountWei: claim.amountWei.toString(),
-        messageHash: claim.messageHash as string,
+        to: recipientStr,
+        amountWei: amountWei.toString(),
+        messageHash,
       });
     });
   }
 
+  const after = BigInt((await getFeeJuiceBalance(recipient, deps.node)) ?? 0n);
   return { balanceBeforeWei: before, balanceAfterWei: after };
 }

@@ -316,6 +316,15 @@ jobs:
           (cd packages/private-fee-juice && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
           (cd packages/quota-paymaster && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
 
+      - name: Verify quota-paymaster lineage on the RELEASE build
+        # NOT redundant with quota-paymaster-checks: that job compiled its own
+        # job-local artifacts. THIS job compiles separately, inside the
+        # acknowledged reverify→compile TOCTOU window — a Nargo tag moving in
+        # between could make the RELEASE artifact a different class, which
+        # verify-tarball would happily import and publish. Assert lineage on
+        # the exact artifacts being packed. (Post-impl audit finding #7.)
+        run: bun run --cwd packages/quota-paymaster verify:lineage
+
       - name: Verify tarball surfaces (pre-publish gate)
         run: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/private-fee-juice packages/quota-paymaster
 

@@ -9,16 +9,23 @@
  * that nothing was broadcast, and acting on it (say, self-paying a fallback)
  * can replay the user's action.
  *
- * The classifiers are therefore CAPABILITY-BOUND: they are only reachable
- * through {@link createSendOnceContext}, whose node client provably does not
- * retry. There is no standalone export to misapply to a retrying transport.
+ * The classifiers are therefore CAPABILITY-BOUND twice over (post-impl audit
+ * finding #2): they are only reachable through {@link createSendOnceContext},
+ * whose node client provably does not retry — AND they refuse to classify by
+ * message string unless the error came out of THIS context's
+ * {@link SendOnceContext.attemptSend}, which brands every error it rethrows.
+ * An error minted anywhere else (a retrying client, a different context, a
+ * hand-built Error with a matching message) classifies as NOT provably
+ * pre-broadcast, which is the safe answer.
  */
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { makeFetch } from '@aztec/foundation/json-rpc/client';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 
 /**
- * True only for failures that cannot have left a transaction in flight.
+ * Message-level allow-list of failures that cannot have left a transaction in
+ * flight. Only meaningful for BRANDED errors — the caller-facing classifier
+ * checks the brand first.
  *
  * The dangerous case is a send that reached the sequencer while the response
  * was lost: rebuilding then replays the user's action under a new nonce. So
@@ -26,12 +33,7 @@ import type { AztecNode } from '@aztec/stdlib/interfaces/client';
  * refusing to sponsor, and the allowance still syncing — rather than trying to
  * enumerate everything unsafe.
  */
-function isProvablyPreBroadcast(err: unknown): boolean {
-  if ((err as { name?: string })?.name === 'QuotaUnavailableError') {
-    // Raised by the SDK's own pre-flight, before anything is built or sent.
-    return true;
-  }
-  const message = String((err as { message?: string })?.message ?? err ?? '');
+function messageIsPreBroadcast(message: string): boolean {
   // `Invalid tx: …` is the node's own rejection, raised by `isValidTx` BEFORE
   // the transaction reaches the pool — so it proves the transaction was never
   // admitted. Only sound because this context's client does not retry.
@@ -58,26 +60,23 @@ function isProvablyPreBroadcast(err: unknown): boolean {
   );
 }
 
-/**
- * Whether re-attempting is both SAFE and USEFUL.
- *
- * Safety is `isProvablyPreBroadcast` — anything else may already be in flight,
- * and rebuilding would replay the user's action. Usefulness is narrower still:
- * only a wallet that was mid-sync (or a stale expiration) has any prospect of
- * succeeding the second time.
- */
-function isRetryableBeforeBroadcast(err: unknown): boolean {
-  if (!isProvablyPreBroadcast(err)) return false;
-  if ((err as { name?: string })?.name === 'QuotaUnavailableError') {
-    return Boolean((err as { retryable?: boolean }).retryable);
-  }
-  return /Invalid expiration timestamp/i.test(String((err as { message?: string })?.message ?? err ?? ''));
-}
+const isQuotaUnavailable = (err: unknown): boolean => (err as { name?: string })?.name === 'QuotaUnavailableError';
 
 export interface SendOnceContext {
   /** A node client whose transport NEVER retries. Use it for sends. */
   node: AztecNode;
-  /** See module doc. Only valid for errors raised through this context's node. */
+  /**
+   * Runs one whole send attempt (simulate + prove + broadcast, built on THIS
+   * context's node) and brands any error it throws. The classifiers only
+   * answer by message string for errors branded here — everything else is
+   * "not provably pre-broadcast".
+   */
+  attemptSend<T>(attempt: () => Promise<T>): Promise<T>;
+  /**
+   * True only for failures that cannot have left a transaction in flight.
+   * Only valid for errors from this context's `attemptSend` (or the SDK's own
+   * QuotaUnavailableError, raised by pre-flight before anything is built).
+   */
   isProvablyPreBroadcast(err: unknown): boolean;
   /** Safe AND useful to retry. Same validity caveat. */
   isRetryableBeforeBroadcast(err: unknown): boolean;
@@ -85,9 +84,48 @@ export interface SendOnceContext {
 
 /**
  * Builds the non-retrying send path plus its classifiers. Sponsored sends MUST
- * go through this node client for the classifiers' answers to mean anything.
+ * run inside `attemptSend`, over this context's node client, for the
+ * classifiers' answers to mean anything.
  */
 export function createSendOnceContext(nodeUrl: string): SendOnceContext {
   const node = createAztecNodeClient(nodeUrl, {}, makeFetch([], false));
-  return { node, isProvablyPreBroadcast, isRetryableBeforeBroadcast };
+  /** Errors this context's own send path threw — the classifiers' evidence. */
+  const branded = new WeakSet<object>();
+
+  const isProvablyPreBroadcast = (err: unknown): boolean => {
+    if (isQuotaUnavailable(err)) {
+      // Raised by the SDK's own pre-flight, before anything is built or sent —
+      // pre-broadcast by construction, no brand needed.
+      return true;
+    }
+    // Message strings are only evidence when the error came from THIS
+    // context's non-retrying send path. A foreign error with the same message
+    // may belong to attempt two of a retrying transport (finding #2).
+    if (typeof err !== 'object' || err === null || !branded.has(err)) {
+      return false;
+    }
+    return messageIsPreBroadcast(String((err as { message?: string }).message ?? err));
+  };
+
+  const isRetryableBeforeBroadcast = (err: unknown): boolean => {
+    if (!isProvablyPreBroadcast(err)) return false;
+    if (isQuotaUnavailable(err)) {
+      return Boolean((err as { retryable?: boolean }).retryable);
+    }
+    return /Invalid expiration timestamp/i.test(String((err as { message?: string })?.message ?? err ?? ''));
+  };
+
+  return {
+    node,
+    async attemptSend<T>(attempt: () => Promise<T>): Promise<T> {
+      try {
+        return await attempt();
+      } catch (err) {
+        if (typeof err === 'object' && err !== null) branded.add(err);
+        throw err;
+      }
+    },
+    isProvablyPreBroadcast,
+    isRetryableBeforeBroadcast,
+  };
 }

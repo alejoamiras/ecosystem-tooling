@@ -58,12 +58,21 @@ export interface BridgeResult {
 }
 
 export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): Promise<BridgeResult> {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(request.to)) {
-    throw new Error(`recipient is not a 32-byte Aztec address: ${request.to}`);
+  // Snapshot every execution input BEFORE validating or confirming. `request`
+  // is caller-owned and mutable; a confirmation callback that mutates it after
+  // validation would otherwise redirect or resize the deposit relative to what
+  // the human approved (post-impl audit finding #1). Only the snapshot is used
+  // from here on.
+  const to = request.to;
+  const amountWei = request.amountWei;
+  const gasLimitBufferPercent = request.gasLimitBufferPercent;
+
+  if (!/^0x[0-9a-fA-F]{64}$/.test(to)) {
+    throw new Error(`recipient is not a 32-byte Aztec address: ${to}`);
   }
   // A zero recipient would burn the deposit outright: the claim would be
   // payable to nobody, and there is no refund path.
-  if (/^0x0+$/.test(request.to)) {
+  if (/^0x0+$/.test(to)) {
     throw new Error('recipient is the zero address; the deposit would be lost');
   }
   // An Aztec address is a BN254 field element. The L1 portal accepts any
@@ -72,12 +81,16 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
   // like the zero-address case. (Same guard the config layer applies to
   // adminAddress; review finding #1.)
   const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
-  if (BigInt(request.to) >= FIELD_MODULUS) {
+  if (BigInt(to) >= FIELD_MODULUS) {
     throw new Error(
-      `recipient ${request.to} is not a valid field element — no Aztec address can ever claim it; the deposit would be lost`,
+      `recipient ${to} is not a valid field element — no Aztec address can ever claim it; the deposit would be lost`,
     );
   }
-  if (request.amountWei <= 0n) throw new Error('amountWei must be positive');
+  if (amountWei <= 0n) throw new Error('amountWei must be positive');
+
+  // (Snapshotted after validation — the validators above must run before any
+  // dep is touched — but before the confirm callback can observe or race it.)
+  const from = deps.l1Client.account.address;
 
   const info = await deps.node.getNodeInfo();
   const portalAddress = info.l1ContractAddresses.feeJuicePortalAddress;
@@ -89,9 +102,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
   const plan = createActionPlan('bridge-fee-juice', {
     l1ChainId: info.l1ChainId,
-    from: deps.l1Client.account.address,
-    to: request.to,
-    amountWei: request.amountWei.toString(),
+    from: from,
+    to: to,
+    amountWei: amountWei.toString(),
     portal: portalHex,
     irreversible: true,
   });
@@ -122,9 +135,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       at: new Date().toISOString(),
       planDigest: plan.digest,
       l1Chain: info.l1ChainId,
-      from: deps.l1Client.account.address,
-      to: request.to,
-      amountWei: request.amountWei.toString(),
+      from: from,
+      to: to,
+      amountWei: amountWei.toString(),
       claimSecret: claimSecret.toString(),
       claimSecretHash: claimSecretHash.toString(),
       note: 'If no DEPOSIT_CONFIRMED line follows, check L1 for a DepositToAztecPublic log carrying this secretHash — the key and index are recoverable from it, and this secret is what redeems it.',
@@ -134,9 +147,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     // Approval is a separate, reversible L1 write; the SDK's token manager
     // already knows the ERC20 quirks.
     const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client as never, logger);
-    await portal.getTokenManager().approve(request.amountWei, portalHex, 'FeeJuice Portal');
+    await portal.getTokenManager().approve(amountWei, portalHex, 'FeeJuice Portal');
 
-    const args = [request.to, request.amountWei, claimSecretHash.toString()] as const;
+    const args = [to, amountWei, claimSecretHash.toString()] as const;
     // Simulate first: a revert here costs nothing, whereas a reverted deposit
     // costs gas and tells us less.
     await deps.l1Client.simulateContract({
@@ -149,7 +162,7 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     // Pad the estimate, rounding the buffer UP in basis points — flooring a
     // fractional percentage hands back a SMALLER buffer than asked, surfacing
     // as exactly the out-of-gas revert the buffer exists to prevent.
-    const percent = Math.max(request.gasLimitBufferPercent ?? 100, 100);
+    const percent = Math.max(gasLimitBufferPercent ?? 100, 100);
     const bufferBps = BigInt(Math.ceil(percent * 100));
     const gasEstimate = await deps.l1Client.estimateContractGas({
       address: portalHex,
@@ -183,8 +196,8 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       'DepositToAztecPublic',
       (l: DepositLog) =>
         l.args.secretHash.toLowerCase() === claimSecretHash.toString().toLowerCase() &&
-        l.args.amount === request.amountWei &&
-        l.args.to.toLowerCase() === request.to.toLowerCase(),
+        l.args.amount === amountWei &&
+        l.args.to.toLowerCase() === to.toLowerCase(),
       logger,
     ) as DepositLog;
 
@@ -193,8 +206,8 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       at: new Date().toISOString(),
       planDigest: plan.digest,
       l1TxHash: hash,
-      to: request.to,
-      amountWei: request.amountWei.toString(),
+      to: to,
+      amountWei: amountWei.toString(),
       claimSecret: claimSecret.toString(),
       claimSecretHash: claimSecretHash.toString(),
       messageHash: log.args.key,
@@ -205,7 +218,7 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       l1TxHash: hash,
       messageHash: log.args.key,
       messageLeafIndex: log.args.index,
-      amountWei: request.amountWei,
+      amountWei: amountWei,
       claimSecret: claimSecret.toString(),
     };
   });

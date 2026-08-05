@@ -15,6 +15,7 @@ import { basename, join, resolve } from 'node:path';
 
 type Check =
   | { kind: 'import' | 'require' | 'file' | 'json' | 'absent-dir'; spec: string }
+  | { kind: 'absent-match'; spec: string; pattern: RegExp }
   | { kind: 'exec'; spec: string; script: string };
 
 const CHECKS: Record<string, Check[]> = {
@@ -53,9 +54,42 @@ const CHECKS: Record<string, Check[]> = {
         if (result !== false) throw new Error('unexpected result ' + result);
       `,
     },
+    {
+      // Same rationale for the OPERATOR entry's lazy paths (post-impl audit
+      // finding #10: only probing the stdlib path leaves the other lazy peers
+      // unexercised). verifyAccountClassIds dynamically imports
+      // @aztec/accounts/schnorr and hashes its artifacts — CPU-only.
+      kind: 'exec',
+      spec: 'lazy path: verifyAccountClassIds → dynamic @aztec/accounts/schnorr',
+      script: `
+        import { verifyAccountClassIds } from '@alejoamiras/quota-paymaster/operator';
+        const r = await verifyAccountClassIds([]);
+        if (r.verified !== 0 || r.unverified !== 0) throw new Error('unexpected ' + JSON.stringify(r));
+      `,
+    },
+    {
+      // The bridge/claim paths lazily import these exact specifiers only after
+      // a confirmed plan — too late to discover a missing peer. Prove they
+      // resolve in the clean-room consumer install.
+      kind: 'exec',
+      spec: 'lazy deps resolvable: @aztec/ethereum, @aztec/l1-artifacts, @aztec/aztec.js/ethereum',
+      script: `
+        await import('@aztec/ethereum/utils');
+        await import('@aztec/l1-artifacts/FeeJuicePortalAbi');
+        await import('@aztec/aztec.js/ethereum');
+      `,
+    },
     { kind: 'absent-dir', spec: 'dist/src/ts/test' },
     { kind: 'absent-dir', spec: 'scripts' },
     { kind: 'absent-dir', spec: 'examples' },
+    {
+      // Declaration maps point at ../src paths the tarball does not ship —
+      // dead references at best, layout leakage at worst (post-impl audit
+      // finding #10). The build config disables them; this stops a regression.
+      kind: 'absent-match',
+      spec: 'no source/declaration maps in the tarball',
+      pattern: /\.(?:d\.ts|js)\.map$/,
+    },
   ],
 };
 
@@ -116,6 +150,13 @@ for (const pkgDirArg of process.argv.slice(2)) {
           if (present.length > 0) {
             throw new Error(
               `${present.length} tarball entries under ${check.spec} (expected none), e.g. ${present[0]}`,
+            );
+          }
+        } else if (check.kind === 'absent-match') {
+          const present = tarEntries.filter((f) => check.pattern.test(f));
+          if (present.length > 0) {
+            throw new Error(
+              `${present.length} tarball entries match ${check.pattern} (expected none), e.g. ${present[0]}`,
             );
           }
         } else if (check.kind === 'import') {

@@ -59,21 +59,27 @@ test('every release-ready package has its full build/check wiring', () => {
   }
 });
 
-test('actively-published ⊆ release-ready, ordered, and named in the notes template', () => {
+test('actively-published EQUALS release-ready, ordered, and named in the notes template', () => {
   const active = activelyPublished();
+  // Under the approved A1(a) posture every release-ready package is actively
+  // published — EQUALITY, not subset (post-impl audit finding #10: a subset
+  // check would silently bless deleting quota-paymaster from the env list).
+  // Publish order is the string order and is load-bearing:
+  // benchmark → fee-juice → quota-paymaster.
+  assert.deepEqual(active, RELEASE_READY, 'RELEASE_PACKAGES must list every release-ready package, in canonical order');
   for (const pkg of active) {
-    assert.ok(RELEASE_READY.includes(pkg), `${pkg} is in RELEASE_PACKAGES but not release-ready`);
     assert.ok(
       releaseYml.includes(`@alejoamiras/${pkg}`),
       `${pkg}: not named in the release-notes template (the in-run grep guard would fail the dispatch)`,
     );
+    // The install line is its own hand-maintained locus — the name grep above
+    // passes even when the `bun add` line is missing (finding #10).
+    assert.match(
+      releaseYml,
+      new RegExp(`bun add (?:-D )?@alejoamiras/${pkg}@`),
+      `${pkg}: missing an install (\`bun add\`) line in the release-notes template`,
+    );
   }
-  // Publish order is the string order and is load-bearing.
-  assert.deepEqual(
-    active,
-    RELEASE_READY.filter((p) => active.includes(p)),
-    'RELEASE_PACKAGES order deviates from the canonical benchmark → fee-juice → quota-paymaster order',
-  );
 
   // The notes template holds THREE hand-maintained per-package sublists (table
   // row, install line, docs-link line). The in-run grep guard only proves the
