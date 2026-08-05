@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "src/nr/quota_fpc",
+    "src/nr/fpc_test_target",
+]

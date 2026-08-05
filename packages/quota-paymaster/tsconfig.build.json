@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "composite": false
+  },
+  "include": [
+    "src/ts/index.ts",
+    "src/ts/config/**/*",
+    "src/ts/client/**/*",
+    "src/ts/operator/**/*",
+    "src/artifacts/QuotaFpc.ts",
+    "target/quota_fpc-QuotaFpc.json"
+  ],
+  "exclude": ["node_modules", "src/ts/test"]
+}
