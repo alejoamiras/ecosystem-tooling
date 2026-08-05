@@ -20,18 +20,17 @@ export default defineConfig({
     testTimeout: 600000,
     fileParallelism: false,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        isolate: false,
-        execArgv: ['--experimental-vm-modules'],
-      },
-    },
+    // vitest 4 removed poolOptions; the equivalent single-fork/no-isolation
+    // shape is expressed top-level (sibling package still carries the old
+    // form and logs a deprecation — do not copy that back).
+    maxWorkers: 1,
+    isolate: false,
+    execArgv: ['--experimental-vm-modules'],
     // Mechanical warp quarantine (plan D5.3): time-travel suites live under
     // src/ts/test/warp/ and are UNDISCOVERABLE by this config — they run only via
     // `bun run test:warp` (vitest.warp.config.ts), which provisions its own
     // disposable network. Do not widen this include.
-    include: ['src/ts/test/unit/**/*.test.ts', 'src/ts/test/integration/**/*.test.ts'],
+    include: ['src/ts/test/unit/**/*.test.ts', 'src/ts/test/integration/**/*.test.ts', 'examples/**/*.test.ts'],
     server: {
       deps: {
         inline: [/@aztec/, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],

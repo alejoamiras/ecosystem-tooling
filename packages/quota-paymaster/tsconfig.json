@@ -21,6 +21,6 @@
     "composite": true,
     "jsx": "react-jsx"
   },
-  "include": ["src/artifacts/**/*", "src/ts/**/*", "scripts/**/*.ts", "target/**/*"],
+  "include": ["src/artifacts/**/*", "src/ts/**/*", "scripts/**/*.ts", "examples/**/*.ts", "target/**/*"],
   "exclude": ["node_modules", "src/ts/dist"]
 }

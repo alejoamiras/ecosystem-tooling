@@ -43,7 +43,7 @@
     "test": "bun run test:nr && bun run test:js",
     "test:js": "vitest run",
     "test:nr": "aztec test",
-    "test:unit": "vitest run src/ts/test/unit",
+    "test:unit": "vitest run src/ts/test/unit examples",
     "test:warp": "vitest run --config vitest.warp.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "verify:lineage": "bun scripts/verify-lineage.ts"
