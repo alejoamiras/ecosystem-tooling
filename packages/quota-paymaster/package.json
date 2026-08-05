@@ -46,7 +46,8 @@
     "test:unit": "vitest run src/ts/test/unit examples",
     "test:warp": "vitest run --config vitest.warp.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "verify:lineage": "bun scripts/verify-lineage.ts"
+    "verify:lineage": "bun scripts/verify-lineage.ts",
+    "verify:package": "bun run verify:lineage && bun ../../scripts/verify-tarball.ts ."
   },
   "devDependencies": {
     "@aztec/accounts": "5.0.1",
@@ -63,6 +64,15 @@
     "@types/node": "25.6.0",
     "typescript": "5.9.3",
     "vitest": "4.1.4"
+  },
+  "peerDependencies": {
+    "@aztec/accounts": "5.0.1",
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/entrypoints": "5.0.1",
+    "@aztec/ethereum": "5.0.1",
+    "@aztec/foundation": "5.0.1",
+    "@aztec/l1-artifacts": "5.0.1",
+    "@aztec/stdlib": "5.0.1"
   },
   "engines": {
     "node": ">=22.0.0"

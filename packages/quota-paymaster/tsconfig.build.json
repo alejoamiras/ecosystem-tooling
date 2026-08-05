@@ -11,7 +11,8 @@
     "src/ts/client/**/*",
     "src/ts/operator/**/*",
     "src/artifacts/QuotaFpc.ts",
-    "target/quota_fpc-QuotaFpc.json"
+    "target/quota_fpc-QuotaFpc.json",
+    "known-deployments.json"
   ],
   "exclude": ["node_modules", "src/ts/test"]
 }

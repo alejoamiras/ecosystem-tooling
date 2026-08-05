@@ -93,6 +93,15 @@
         "typescript": "5.9.3",
         "vitest": "4.1.4",
       },
+      "peerDependencies": {
+        "@aztec/accounts": "5.0.1",
+        "@aztec/aztec.js": "5.0.1",
+        "@aztec/entrypoints": "5.0.1",
+        "@aztec/ethereum": "5.0.1",
+        "@aztec/foundation": "5.0.1",
+        "@aztec/l1-artifacts": "5.0.1",
+        "@aztec/stdlib": "5.0.1",
+      },
     },
   },
   "overrides": {

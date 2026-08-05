@@ -1,6 +1,6 @@
 # Quota Paymaster — Product Requirements
 
-**Target Aztec Version: 5.0.1**
+**Target Aztec Version**: 5.0.1
 
 ## Problem Statement
 

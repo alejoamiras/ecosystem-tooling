@@ -13,7 +13,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
-type Check = { kind: 'import' | 'require' | 'file' | 'json' | 'absent-dir'; spec: string };
+type Check =
+  | { kind: 'import' | 'require' | 'file' | 'json' | 'absent-dir'; spec: string }
+  | { kind: 'exec'; spec: string; script: string };
 
 const CHECKS: Record<string, Check[]> = {
   'aztec-benchmark': [
@@ -29,6 +31,31 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'import', spec: '@alejoamiras/private-fee-juice/artifacts/private' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/private-fee-juice/target/private_contract-PrivateFPC.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/private-fee-juice/canonical-deployment.json' },
+  ],
+  'quota-paymaster': [
+    { kind: 'import', spec: '@alejoamiras/quota-paymaster' },
+    { kind: 'import', spec: '@alejoamiras/quota-paymaster/operator' },
+    { kind: 'import', spec: '@alejoamiras/quota-paymaster/artifacts/quota-fpc' },
+    { kind: 'json', spec: 'node_modules/@alejoamiras/quota-paymaster/target/quota_fpc-QuotaFpc.json' },
+    { kind: 'json', spec: 'node_modules/@alejoamiras/quota-paymaster/known-deployments.json' },
+    {
+      // The SDK loads its cryptography LAZILY (dynamic import of @aztec/stdlib/hash inside
+      // seat-picker) — a tarball missing that runtime dep passes a plain root-import check
+      // green and explodes at first real use. EXECUTE a lazy path in the clean room.
+      kind: 'exec',
+      spec: 'lazy path: hasSubscribed → dynamic @aztec/stdlib/hash',
+      script: `
+        import { hasSubscribed } from '@alejoamiras/quota-paymaster';
+        import { AztecAddress } from '@aztec/stdlib/aztec-address';
+        const addr = AztecAddress.fromStringUnsafe('0x' + '1'.repeat(64));
+        const node = { findLeavesIndexes: async () => [undefined] };
+        const result = await hasSubscribed({ node, fpcAddress: addr, generation: 1, player: addr });
+        if (result !== false) throw new Error('unexpected result ' + result);
+      `,
+    },
+    { kind: 'absent-dir', spec: 'dist/src/ts/test' },
+    { kind: 'absent-dir', spec: 'scripts' },
+    { kind: 'absent-dir', spec: 'examples' },
   ],
 };
 
@@ -93,6 +120,11 @@ for (const pkgDirArg of process.argv.slice(2)) {
           }
         } else if (check.kind === 'import') {
           execFileSync('node', ['--input-type=module', '-e', `await import(${JSON.stringify(check.spec)});`], {
+            cwd: tmp,
+            stdio: ['ignore', 'ignore', 'pipe'],
+          });
+        } else if (check.kind === 'exec') {
+          execFileSync('node', ['--input-type=module', '-e', check.script], {
             cwd: tmp,
             stdio: ['ignore', 'ignore', 'pipe'],
           });

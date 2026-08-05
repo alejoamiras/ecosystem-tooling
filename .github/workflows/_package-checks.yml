@@ -102,6 +102,9 @@ jobs:
           if [ "${{ inputs.package-dir }}" = "packages/private-fee-juice" ]; then
             bun run build
             bun run verify:package
+          elif [ "${{ inputs.package-dir }}" = "packages/quota-paymaster" ]; then
+            bun run build
+            bun run verify:package
           else
             echo "no package-verification gate defined for ${{ inputs.package-dir }} — skipping"
           fi

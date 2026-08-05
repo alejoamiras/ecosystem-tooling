@@ -198,18 +198,26 @@ for (const tomlPath of walkNargoTomls(join(ROOT, 'packages'))) {
   }
 }
 
-// 4. Fee-payment PRD header
+// 4. PRD headers — every package's product-requirements doc, discovered by glob
+// (a hardcoded single path silently skipped new packages' PRDs on every bump).
 {
-  const prd = join(ROOT, 'packages/private-fee-juice/docs/private-product-requirements.md');
-  try {
-    const before = readFileSync(prd, 'utf8');
-    const after = before.replace(/(\*\*Target Aztec Version\*\*:\s*)\S+/, `$1${target}`);
-    if (after !== before) {
-      writeFileSync(prd, after);
-      edits.push('fee-payment PRD Target Aztec Version updated');
+  for (const pkg of PACKAGES) {
+    const docsDir = join(ROOT, 'packages', pkg, 'docs');
+    let docs: string[] = [];
+    try {
+      docs = readdirSync(docsDir).filter((f) => f.endsWith('product-requirements.md'));
+    } catch {
+      continue; // no docs dir — nothing to sweep
     }
-  } catch {
-    /* PRD moved — surface via missing edit line */
+    for (const doc of docs) {
+      const prd = join(docsDir, doc);
+      const before = readFileSync(prd, 'utf8');
+      const after = before.replace(/(\*\*Target Aztec Version\*\*:\s*)\S+/, `$1${target}`);
+      if (after !== before) {
+        writeFileSync(prd, after);
+        edits.push(`${pkg} PRD Target Aztec Version updated`);
+      }
+    }
   }
 }
 
