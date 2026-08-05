@@ -2,19 +2,14 @@
 // live Aztec mainnet deployment (plan D2.1, fail-closed). No keys, no transactions —
 // a single node_getContract query. Result is recorded in known-deployments.json.
 // Usage: bun scripts/chain-verify.ts [nodeUrl]
-import { readFileSync } from 'node:fs';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { loadContractArtifact } from '@aztec/stdlib/abi';
+import { classIdOfArtifactJson } from './artifact-class-id.js';
 
 const MAINNET_INSTANCE = '0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4';
 const nodeUrl = process.argv[2] ?? process.env.MAINNET_NODE_URL ?? 'https://aztec-mainnet.drpc.org';
 
-const artifact = loadContractArtifact(
-  JSON.parse(readFileSync(new URL('../target/quota_fpc-QuotaFpc.json', import.meta.url), 'utf8')),
-);
-const localClassId = (await getContractClassFromArtifact(artifact)).id.toString();
+const localClassId = await classIdOfArtifactJson(new URL('../target/quota_fpc-QuotaFpc.json', import.meta.url));
 console.log(`local  classId: ${localClassId}`);
 
 const node = createAztecNodeClient(nodeUrl);

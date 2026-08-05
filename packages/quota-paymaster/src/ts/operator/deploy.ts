@@ -38,14 +38,16 @@ export async function verifyAccountClassIds(
     '@aztec/accounts/schnorr'
   );
 
-  const known = new Map<string, bigint>();
-  for (const [name, artifact] of [
-    ['SchnorrAccount', SchnorrAccountContractArtifact],
-    ['SchnorrInitializerlessAccount', SchnorrInitializerlessAccountContractArtifact],
-  ] as const) {
-    const { id } = await getContractClassFromArtifact(artifact);
-    known.set(name, id.toBigInt());
-  }
+  // Two unrelated artifact hashes — non-trivial CPU work, computed in parallel.
+  const entries = await Promise.all(
+    (
+      [
+        ['SchnorrAccount', SchnorrAccountContractArtifact],
+        ['SchnorrInitializerlessAccount', SchnorrInitializerlessAccountContractArtifact],
+      ] as const
+    ).map(async ([name, artifact]) => [name, (await getContractClassFromArtifact(artifact)).id.toBigInt()] as const),
+  );
+  const known = new Map<string, bigint>(entries);
 
   let verified = 0;
   let unverified = 0;

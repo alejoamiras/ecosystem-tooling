@@ -6,7 +6,7 @@
  * missing.
  */
 import { describe, expect, test } from 'vitest';
-import { parseQuotaFpcConfig, QuotaFpcConfigError } from '../../config/schema.js';
+import { assertValidTargetList, parseQuotaFpcConfig, QuotaFpcConfigError } from '../../config/schema.js';
 
 const TARGET = `0x${'1'.repeat(64)}`;
 const CLASS_ID = `0x${'2'.repeat(64)}`;
@@ -125,6 +125,18 @@ describe('config validation', () => {
     expect(() =>
       parseQuotaFpcConfig(base({ allowedAccountClasses: [{ name: 'C', classId: 'env:MISSING' }] }), {}),
     ).toThrow(/set MISSING/);
+  });
+
+  test('assertValidTargetList enforces the deploy rules on the UPDATE path too (review #4)', () => {
+    // The policy-update path uses this; without it a typo'd target would be
+    // silently truncated by the address parser into a DIFFERENT address.
+    expect(() => assertValidTargetList([TARGET])).not.toThrow();
+    expect(() => assertValidTargetList([])).toThrow(/at least one/);
+    expect(() => assertValidTargetList([`0x${'1'.repeat(63)}`])).toThrow(/32-byte/);
+    expect(() => assertValidTargetList([`0x${'0'.repeat(64)}`])).toThrow(/zero address/);
+    expect(() => assertValidTargetList([`0x${'f'.repeat(64)}`])).toThrow(/field element/);
+    expect(() => assertValidTargetList([TARGET, TARGET])).toThrow(/twice/);
+    expect(() => assertValidTargetList(Array(13).fill(TARGET))).toThrow(/allows 12/);
   });
 
   test('errors are QuotaFpcConfigError, so callers can distinguish them', () => {

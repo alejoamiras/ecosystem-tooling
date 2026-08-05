@@ -12,8 +12,7 @@
 // A source edit without recompile fails (a); a stale artifact fails (c).
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
-import { loadContractArtifact } from '@aztec/stdlib/abi';
+import { classIdOfArtifact, classIdOfArtifactJson } from './artifact-class-id.js';
 
 const pkgRoot = new URL('..', import.meta.url);
 const repoRoot = new URL('../../..', import.meta.url);
@@ -70,8 +69,7 @@ const targetPath = new URL('target/quota_fpc-QuotaFpc.json', pkgRoot);
 if (!existsSync(targetPath)) {
   failures.push('target/quota_fpc-QuotaFpc.json missing — run compile before verify:lineage');
 } else {
-  const artifact = loadContractArtifact(JSON.parse(readFileSync(targetPath, 'utf8')));
-  const id = (await getContractClassFromArtifact(artifact)).id.toString();
+  const id = await classIdOfArtifactJson(targetPath);
   if (id !== expectedClassId) failures.push(`target artifact class id ${id} != chain-verified ${expectedClassId}`);
 }
 const consumerPath = new URL('src/artifacts/QuotaFpc.ts', pkgRoot);
@@ -83,7 +81,7 @@ if (!existsSync(consumerPath)) {
   if (!artifact) {
     failures.push('src/artifacts/QuotaFpc.ts does not export QuotaFpcContractArtifact');
   } else {
-    const id = (await getContractClassFromArtifact(artifact)).id.toString();
+    const id = await classIdOfArtifact(artifact);
     if (id !== expectedClassId) failures.push(`consumer artifact class id ${id} != chain-verified ${expectedClassId}`);
   }
 }

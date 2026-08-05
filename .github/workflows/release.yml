@@ -225,7 +225,7 @@ jobs:
 
           ## 📚 Docs & migration
 
-          - Per-package usage: [private-fee-juice](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/private-fee-juice#readme) · [aztec-benchmark](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-benchmark#readme)
+          - Per-package usage: [private-fee-juice](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/private-fee-juice#readme) · [aztec-benchmark](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/aztec-benchmark#readme) · [quota-paymaster](https://github.com/alejoamiras/ecosystem-tooling/tree/main/packages/quota-paymaster#readme)
           - Migrating from `@defi-wonderland/*`: scope swap — [migration table](https://github.com/alejoamiras/ecosystem-tooling#migrating-from-defi-wonderland)
           TEMPLATE
           sed -i "s/__VERSION__/$INPUT_VERSION/g; s/__AZTEC_VERSION__/$AZTEC_VERSION/g; s/__DIST_TAG__/$DIST_TAG/g" release-notes.md
@@ -315,9 +315,6 @@ jobs:
           bun run --cwd packages/aztec-benchmark build
           (cd packages/private-fee-juice && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
           (cd packages/quota-paymaster && aztec compile && aztec codegen target --outdir src/artifacts -f && bunx tsc --project tsconfig.build.json)
-
-      - name: Verify quota-paymaster lineage (source-hash + dep-lock + chain-verified class id)
-        run: bun run --cwd packages/quota-paymaster verify:lineage
 
       - name: Verify tarball surfaces (pre-publish gate)
         run: bun scripts/verify-tarball.ts packages/aztec-benchmark packages/private-fee-juice packages/quota-paymaster

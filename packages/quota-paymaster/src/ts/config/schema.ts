@@ -103,6 +103,56 @@ export interface QuotaFpcConfig {
 
 export class QuotaFpcConfigError extends Error {}
 
+/** Resolves `env:VAR` indirection; throws (naming the field) when unset. */
+function resolveEnvIndirection(raw: string, field: string, env: Record<string, string | undefined>): string {
+  const resolved = raw.startsWith('env:') ? env[raw.slice(4)]?.trim() : raw;
+  if (!resolved) {
+    throw new QuotaFpcConfigError(`${field} resolves to nothing: set ${raw.slice(4)}`);
+  }
+  return resolved;
+}
+
+/**
+ * Shape / zero / field-modulus checks for one target address. Exported so the
+ * policy-UPDATE path enforces the SAME rules as deploys — without this, a
+ * typo'd target handed to schedulePolicyChange would be silently truncated by
+ * the address parser into a DIFFERENT address, live 12h later.
+ */
+export function assertValidTargetAddress(address: string, label: string): void {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(address)) {
+    throw new QuotaFpcConfigError(`${label} is not a 32-byte address: ${address}`);
+  }
+  // The zero address is the contract's "empty slot" marker; a named target
+  // resolving to it would be silently dropped from the allowlist.
+  if (/^0x0+$/.test(address)) {
+    throw new QuotaFpcConfigError(`${label} is the zero address, which the contract treats as an empty slot`);
+  }
+  if (BigInt(address) >= FIELD_MODULUS) {
+    throw new QuotaFpcConfigError(`${label} is not a valid field element: ${address}`);
+  }
+}
+
+/** Count + dedup + per-address validation for a full target list. */
+export function assertValidTargetList(addresses: string[], label = 'allowedTargets'): void {
+  if (addresses.length === 0) {
+    throw new QuotaFpcConfigError(`${label} must list at least one contract`);
+  }
+  if (addresses.length > MAX_ALLOWED_TARGETS) {
+    throw new QuotaFpcConfigError(
+      `${label} holds ${addresses.length} entries, but the contract allows ${MAX_ALLOWED_TARGETS}`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const [index, address] of addresses.entries()) {
+    assertValidTargetAddress(address, `${label}[${index}]`);
+    const key = address.toLowerCase();
+    if (seen.has(key)) {
+      throw new QuotaFpcConfigError(`${label} lists ${address} twice`);
+    }
+    seen.add(key);
+  }
+}
+
 /**
  * Worst case a single UTC day can cost, in fee-juice wei.
  *
@@ -211,22 +261,9 @@ export function parseQuotaFpcConfig(
     if (!rawAddress) {
       throw new QuotaFpcConfigError(`allowedTargets[${index}] (${target.name}) needs an address`);
     }
-    const address = rawAddress.startsWith('env:') ? env[rawAddress.slice(4)]?.trim() : rawAddress;
-    if (!address) {
-      throw new QuotaFpcConfigError(
-        `allowedTargets[${index}] (${target.name}) resolves to nothing: set ${rawAddress.slice(4)}`,
-      );
-    }
-    if (!/^0x[0-9a-fA-F]{64}$/.test(address)) {
-      throw new QuotaFpcConfigError(`allowedTargets[${index}] (${target.name}) is not a 32-byte address: ${address}`);
-    }
-    // The zero address is the contract's "empty slot" marker; a named target
-    // that resolves to it would be silently dropped from the allowlist.
-    if (/^0x0+$/.test(address)) {
-      throw new QuotaFpcConfigError(
-        `allowedTargets[${index}] (${target.name}) is the zero address, which the contract treats as an empty slot`,
-      );
-    }
+    const label = `allowedTargets[${index}] (${target.name})`;
+    const address = resolveEnvIndirection(rawAddress, label, env);
+    assertValidTargetAddress(address, label);
     return { name: target.name, address };
   });
 
@@ -259,12 +296,9 @@ export function parseQuotaFpcConfig(
     // Same env: indirection targets and adminAddress support — class ids are
     // version-pinned values an example config cannot sensibly hardcode.
     const rawClassId = accountClass.classId?.trim();
-    const classId = rawClassId?.startsWith('env:') ? env[rawClassId.slice(4)]?.trim() : rawClassId;
-    if (rawClassId?.startsWith('env:') && !classId) {
-      throw new QuotaFpcConfigError(
-        `allowedAccountClasses[${index}] (${accountClass.name}) resolves to nothing: set ${rawClassId.slice(4)}`,
-      );
-    }
+    const classId = rawClassId
+      ? resolveEnvIndirection(rawClassId, `allowedAccountClasses[${index}] (${accountClass.name})`, env)
+      : rawClassId;
     if (!classId || !/^0x[0-9a-fA-F]{1,64}$/.test(classId)) {
       throw new QuotaFpcConfigError(
         `allowedAccountClasses[${index}] (${accountClass.name}) needs a 0x-hex classId, got ${JSON.stringify(accountClass.classId)}`,
@@ -314,10 +348,7 @@ export function parseQuotaFpcConfig(
   // operator must set the variable deliberately, and a dry-run prints the
   // resolved value without loading any signer. What it is NOT is a fallback:
   // an unset variable is an error, never "use the deployer".
-  const adminAddress = rawAdmin.startsWith('env:') ? env[rawAdmin.slice(4)]?.trim() : rawAdmin;
-  if (!adminAddress) {
-    throw new QuotaFpcConfigError(`adminAddress resolves to nothing: set ${rawAdmin.slice(4)}`);
-  }
+  const adminAddress = resolveEnvIndirection(rawAdmin, 'adminAddress', env);
   if (!/^0x[0-9a-fA-F]{64}$/.test(adminAddress)) {
     throw new QuotaFpcConfigError(`adminAddress is not a 32-byte address: ${adminAddress}`);
   }

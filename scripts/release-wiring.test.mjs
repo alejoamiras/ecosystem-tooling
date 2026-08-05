@@ -49,11 +49,13 @@ test('every release-ready package has its full build/check wiring', () => {
       `${pkg}: no CHECKS entry in scripts/verify-tarball.ts (the gate fails loudly, but add it deliberately)`,
     );
   }
-  // The per-package checks jobs gate the build (benchmark's build job doubles as its check).
-  const needsLine = releaseYml.match(/needs:\s*\[([^\]]*)\]\s*\n\s*runs-on: ubuntu-latest\s*\n\s*timeout-minutes: 45/);
-  assert.ok(needsLine, "the build job's needs array was not found");
+  // The per-package checks jobs gate the build (benchmark's build job doubles
+  // as its check). Anchored on the `build:` job KEY, not on a job shape — a
+  // future job with the same runs-on/timeout shape must not retarget this.
+  const buildJob = releaseYml.match(/^ {2}build:\n(?:.*\n)*?\s*needs:\s*\[([^\]]*)\]/m);
+  assert.ok(buildJob, "the build job's needs array was not found");
   for (const job of ['private-fee-juice-checks', 'quota-paymaster-checks', 'benchmark-build']) {
-    assert.ok(needsLine[1].includes(job), `build job does not wait on ${job}`);
+    assert.ok(buildJob[1].includes(job), `build job does not wait on ${job}`);
   }
 });
 
@@ -72,6 +74,19 @@ test('actively-published ⊆ release-ready, ordered, and named in the notes temp
     RELEASE_READY.filter((p) => active.includes(p)),
     'RELEASE_PACKAGES order deviates from the canonical benchmark → fee-juice → quota-paymaster order',
   );
+
+  // The notes template holds THREE hand-maintained per-package sublists (table
+  // row, install line, docs-link line). The in-run grep guard only proves the
+  // name appears SOMEWHERE — the docs-link line slipped exactly that way once
+  // (review finding), so assert it separately.
+  const docsLine = releaseYml.match(/Per-package usage: ([^\n]+)/);
+  assert.ok(docsLine, 'release-notes docs-link line not found');
+  for (const pkg of active) {
+    assert.ok(
+      docsLine[1].includes(`packages/${pkg}#readme`),
+      `${pkg}: missing from the release-notes "Per-package usage" docs-link line`,
+    );
+  }
 });
 
 test('the first-publish trap is documented where the operator will hit it', () => {

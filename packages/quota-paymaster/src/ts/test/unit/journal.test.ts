@@ -3,7 +3,7 @@
  * for. These tests use real files in a temp dir — the hardening IS filesystem
  * behavior, so mocking fs would test nothing.
  */
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -74,7 +74,6 @@ describe('append + read roundtrip', () => {
     expect(tornLines).toBe(0);
     expect(records.map((r) => r.state)).toEqual(['SECRET_GENERATED', 'DEPOSIT_CONFIRMED']);
     // Verify the mode was re-asserted on the file.
-    const { statSync } = require('node:fs') as typeof import('node:fs');
     expect(statSync(join(dir, BRIDGE_JOURNAL_FILE)).mode & 0o777).toBe(0o600);
   });
 
@@ -94,7 +93,6 @@ describe('append + read roundtrip', () => {
     writeFileSync(file, '');
     chmodSync(file, 0o644);
     appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
-    const { statSync } = require('node:fs') as typeof import('node:fs');
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });

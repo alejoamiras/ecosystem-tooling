@@ -69,4 +69,18 @@ describe('fee-floor arithmetic', () => {
     const profile = { ...DARK_FOREST_REFERENCE_GAS_PROFILE, daGasLimit: 0 };
     expect(() => sponsoredFeeFloorWei(profile, 1n, 1n)).toThrow(RangeError);
   });
+
+  test('fractional headroom multipliers work and round the floor UP (review #6)', () => {
+    // BigInt(1.5) throws — the floor uses scaled integer math instead.
+    const profile = {
+      ...DARK_FOREST_REFERENCE_GAS_PROFILE,
+      daGasLimit: 1,
+      l2GasLimit: 1,
+      feeHeadroomMultiplier: 1.5,
+    };
+    // perTx = 1 wei (l2 fee zero); 1.5x rounds UP to 2 — never less protection
+    // than the profile declares.
+    expect(sponsoredFeeFloorWei(profile, 1n, 0n)).toBe(2n);
+    expect(sponsoredFeeFloorWei({ ...profile, daGasLimit: 100 }, 1n, 0n)).toBe(150n);
+  });
 });

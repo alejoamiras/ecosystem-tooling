@@ -99,12 +99,12 @@ jobs:
         # script instead of silently skipping both checks with CI still green. Other
         # packages have no such gate and skip explicitly.
         run: |
-          if [ "${{ inputs.package-dir }}" = "packages/private-fee-juice" ]; then
-            bun run build
-            bun run verify:package
-          elif [ "${{ inputs.package-dir }}" = "packages/quota-paymaster" ]; then
-            bun run build
-            bun run verify:package
-          else
-            echo "no package-verification gate defined for ${{ inputs.package-dir }} — skipping"
-          fi
+          case "${{ inputs.package-dir }}" in
+            packages/private-fee-juice|packages/quota-paymaster)
+              bun run build
+              bun run verify:package
+              ;;
+            *)
+              echo "no package-verification gate defined for ${{ inputs.package-dir }} — skipping"
+              ;;
+          esac

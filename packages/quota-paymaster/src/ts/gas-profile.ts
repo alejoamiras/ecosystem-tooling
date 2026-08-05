@@ -72,5 +72,9 @@ export const DARK_FOREST_REFERENCE_GAS_PROFILE: GasProfile = {
 export function sponsoredFeeFloorWei(profile: GasProfile, feePerDaGas: bigint, feePerL2Gas: bigint): bigint {
   assertValidGasProfile(profile);
   const perTx = BigInt(profile.daGasLimit) * feePerDaGas + BigInt(profile.l2GasLimit) * feePerL2Gas;
-  return perTx * BigInt(profile.feeHeadroomMultiplier);
+  // Fractional multipliers (1.5x is a natural headroom) via scaled integer
+  // math, rounding UP — flooring a headroom hands back less protection than
+  // the profile declares. BigInt(1.5) would throw.
+  const scaled = BigInt(Math.ceil(profile.feeHeadroomMultiplier * 1000));
+  return (perTx * scaled + 999n) / 1000n;
 }

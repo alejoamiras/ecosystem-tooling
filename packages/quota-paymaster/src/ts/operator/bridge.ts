@@ -66,6 +66,17 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
   if (/^0x0+$/.test(request.to)) {
     throw new Error('recipient is the zero address; the deposit would be lost');
   }
+  // An Aztec address is a BN254 field element. The L1 portal accepts any
+  // bytes32, but a value at/above the modulus can never equal a real address,
+  // so the claim preimage can never match — the deposit is destroyed exactly
+  // like the zero-address case. (Same guard the config layer applies to
+  // adminAddress; review finding #1.)
+  const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+  if (BigInt(request.to) >= FIELD_MODULUS) {
+    throw new Error(
+      `recipient ${request.to} is not a valid field element — no Aztec address can ever claim it; the deposit would be lost`,
+    );
+  }
   if (request.amountWei <= 0n) throw new Error('amountWei must be positive');
 
   const info = await deps.node.getNodeInfo();
@@ -94,10 +105,13 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       : 'portal address or chain id changed between reads';
   });
 
-  const { L1FeeJuicePortalManager, generateClaimSecret } = await import('@aztec/aztec.js/ethereum');
-  const { FeeJuicePortalAbi } = await import('@aztec/l1-artifacts/FeeJuicePortalAbi');
-  const { extractEvent } = await import('@aztec/ethereum/utils');
-  const { createLogger } = await import('@aztec/foundation/log');
+  const [{ L1FeeJuicePortalManager, generateClaimSecret }, { FeeJuicePortalAbi }, { extractEvent }, { createLogger }] =
+    await Promise.all([
+      import('@aztec/aztec.js/ethereum'),
+      import('@aztec/l1-artifacts/FeeJuicePortalAbi'),
+      import('@aztec/ethereum/utils'),
+      import('@aztec/foundation/log'),
+    ]);
   const logger = createLogger('quota-paymaster:bridge');
 
   return await withJournalLock(deps.journal, async () => {

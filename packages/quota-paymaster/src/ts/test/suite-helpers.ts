@@ -36,8 +36,12 @@ export async function bundleFrom(
   overrides: { maxFeeWei?: bigint; maxUses?: number; maxUsers?: number; targets?: AztecAddress[] },
 ) {
   const from = fpc.address;
-  const policy = unwrap(await fpc.methods.get_policy().simulate({ from }));
-  const targets = unwrap(await fpc.methods.get_allowed_targets().simulate({ from }));
+  const [policy, targets] = (
+    await Promise.all([
+      fpc.methods.get_policy().simulate({ from }),
+      fpc.methods.get_allowed_targets().simulate({ from }),
+    ])
+  ).map(unwrap);
   const pad = (list: AztecAddress[]) => [...list, ...Array(12 - list.length).fill(ZERO)];
   return {
     max_fee: overrides.maxFeeWei ?? BigInt(policy.max_fee ?? policy[0]),

@@ -22,6 +22,7 @@
  *  - Secrets never travel via argv or stdout; they live in records here and in
  *    process memory only.
  */
+import { randomBytes } from 'node:crypto';
 import {
   closeSync,
   constants,
@@ -87,8 +88,25 @@ export function closeJournalDir(handle: JournalHandle): void {
 }
 
 /**
- * Runs `fn` holding the journal's exclusive lock. The lock is a file created
- * with O_EXCL; a holder that crashed is detected by age and stolen loudly.
+ * Runs `fn` holding the journal's exclusive lock.
+ *
+ * The lock is a file created with O_EXCL carrying an OWNER TOKEN (pid + a
+ * random nonce). Review hardening (post-impl correctness pass):
+ *  - The holder HEARTBEATS the lock's mtime while inside `fn`, so a
+ *    legitimately slow critical section (a bridge waits on two mined L1
+ *    transactions) never goes "stale" — staleness now really means crashed.
+ *  - Steal and release are IDENTITY-CHECKED: a lock is only unlinked when its
+ *    content matches the token the remover observed/wrote, so A finishing late
+ *    cannot release B's lock, and two stealers cannot both proceed (one loses
+ *    the O_EXCL re-create and re-queues).
+ *  - Lock-file creation failures close the fd and remove the partial file; a
+ *    persistently failing steal sleeps and re-checks the timeout instead of
+ *    spinning forever.
+ * A residual TOCTOU narrower than a filesystem operation remains between the
+ * content check and unlink on the STEAL path (Node has no flock in core);
+ * with the heartbeat making false staleness effectively impossible, entering
+ * it requires a genuinely crashed holder plus two concurrent stealers, and
+ * the loser of the O_EXCL race still queues correctly.
  */
 export async function withJournalLock<T>(
   handle: JournalHandle,
@@ -98,32 +116,55 @@ export async function withJournalLock<T>(
   const lockPath = join(handle.dirPath, LOCK_FILE);
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const started = Date.now();
-  for (;;) {
+  const token = `${process.pid}:${randomBytes(8).toString('hex')}`;
+
+  const readLockToken = (): string | undefined => {
     try {
-      const fd = openSync(
-        lockPath,
-        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-        0o600,
-      );
-      writeSync(fd, Buffer.from(String(process.pid)));
+      return readFileSync(lockPath, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+
+  for (;;) {
+    let fd: number | undefined;
+    try {
+      fd = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+      try {
+        writeSync(fd, Buffer.from(token));
+      } catch (err) {
+        // ENOSPC etc.: never leave a zero-byte lock blocking everyone.
+        closeSync(fd);
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          /* best effort */
+        }
+        throw err;
+      }
       closeSync(fd);
       break;
     } catch (err) {
       if ((err as { code?: string }).code !== 'EEXIST') throw err;
       let stale = false;
+      const observed = readLockToken();
       try {
         stale = Date.now() - statSync(lockPath).mtimeMs > STALE_LOCK_MS;
       } catch {
         continue; // lock vanished between EEXIST and stat — retry immediately
       }
-      if (stale) {
+      if (stale && observed !== undefined) {
         opts.onWarn?.(`stealing stale journal lock ${lockPath} (holder presumed crashed)`);
         try {
-          unlinkSync(lockPath);
+          // Identity-checked steal: only remove the exact lock we observed as
+          // stale — if the content changed, a fresh holder took it; re-queue.
+          if (readLockToken() === observed) unlinkSync(lockPath);
         } catch {
-          // Someone else stole it first; loop and race for the fresh lock.
+          // Removal failed (already gone, or persistent fs error): fall
+          // through to the timeout-checked sleep rather than spinning.
         }
-        continue;
+        // Fall through: re-attempt via O_EXCL; a losing concurrent stealer
+        // simply sees EEXIST again.
       }
       if (Date.now() - started > timeoutMs) {
         throw new Error(`journal lock ${lockPath} held by another operator process; timed out`);
@@ -131,13 +172,34 @@ export async function withJournalLock<T>(
       await new Promise((r) => setTimeout(r, 100));
     }
   }
+
+  // Heartbeat: a live holder is never stale, no matter how slow L1 is.
+  const heartbeat = setInterval(() => {
+    try {
+      if (readLockToken() === token) {
+        const now = Date.now() / 1000;
+        const hfd = openSync(lockPath, constants.O_WRONLY | constants.O_NOFOLLOW);
+        try {
+          futimesSync(hfd, now, now);
+        } finally {
+          closeSync(hfd);
+        }
+      }
+    } catch {
+      /* heartbeat is best-effort; the identity checks are the safety net */
+    }
+  }, STALE_LOCK_MS / 4);
+  heartbeat.unref?.();
+
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     try {
-      unlinkSync(lockPath);
+      // Identity-checked release: never unlink a lock that is no longer ours.
+      if (readLockToken() === token) unlinkSync(lockPath);
     } catch {
-      // Already removed (stolen after a long pause) — nothing to release.
+      // Already removed — nothing to release.
     }
   }
 }

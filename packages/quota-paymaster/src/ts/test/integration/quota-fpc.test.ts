@@ -30,6 +30,7 @@ import {
   bundleFrom,
   callsOf,
   currentRevision,
+  deployOwnFpc,
   initializerlessClassId,
   MAX_FEE,
   MAX_USERS,
@@ -290,20 +291,10 @@ describe('QuotaFpc integration', () => {
       toward: hostileClass.id.toString(),
     });
 
-    const publishedFpcDeploy = QuotaFpcContract.deploy(
-      ctx.wallet,
-      player,
-      MAX_FEE,
-      MAX_USES,
-      MAX_USERS,
-      [target.address, ...Array(11).fill(ZERO)],
-      // Its class IS the blessed one, so only the unpublished requirement can
-      // reject it — exactly the property under test.
-      [classId, 0n, 0n, 0n],
-      true,
-    );
-    await publishedFpcDeploy.send({ from: player });
-    const publishedFpc = await awaitPolicyReadable(await publishedFpcDeploy.register(), player);
+    // Standard test paymaster (allowlists the blessed initializerless class),
+    // so only the unpublished requirement can reject the victim — exactly the
+    // property under test.
+    const publishedFpc = await deployOwnFpc(ctx, target, player);
 
     // Fund it. An unfunded paymaster is rejected by the NODE for fee-payer
     // balance — which would mask whether the private assert fired at all.
@@ -335,18 +326,7 @@ describe('QuotaFpc integration', () => {
    * point, so the test goes underneath it).
    */
   test('the fee ceiling makes an over-budget transaction unprovable', async () => {
-    const lowCeilingDeploy = QuotaFpcContract.deploy(
-      ctx.wallet,
-      player,
-      1n, // one wei
-      MAX_USES,
-      MAX_USERS,
-      [target.address, ...Array(11).fill(ZERO)],
-      [await initializerlessClassId(), 0n, 0n, 0n],
-      true,
-    );
-    await lowCeilingDeploy.send({ from: player });
-    const lowCeiling = await awaitPolicyReadable(await lowCeilingDeploy.register(), player);
+    const lowCeiling = await deployOwnFpc(ctx, target, player, { maxFeeWei: 1n }); // one-wei ceiling
     // No funding needed: the ceiling assert fires in private setup, before any
     // balance is consulted.
     const payload = await buildSandwichPayload(

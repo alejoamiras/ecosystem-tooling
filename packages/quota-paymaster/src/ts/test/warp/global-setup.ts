@@ -66,8 +66,31 @@ function spawnOwned(cmd: string, args: string[], env: Record<string, string>): C
     stdio: 'ignore',
     env: { ...process.env, ...env },
   });
+  // spawn() reports a missing binary as an ASYNC 'error' event, not a throw —
+  // uncaught, it would crash the setup outside its try/catch and orphan the
+  // already-started sibling process. Record it; assertOwnedAlive surfaces it.
+  child.on('error', (err) => {
+    (child as ChildProcess & { spawnError?: Error }).spawnError = err;
+  });
   child.unref();
   return child;
+}
+
+/**
+ * A readiness probe answering on OUR port proves nothing if OUR child died —
+ * another agent's server could have grabbed the freed port in the window, and
+ * warping a network we do not own is exactly the poisoning this suite exists
+ * to prevent. Only proceed while the owned child is demonstrably alive.
+ */
+function assertOwnedAlive(child: ChildProcess, what: string): void {
+  const spawnError = (child as ChildProcess & { spawnError?: Error }).spawnError;
+  if (spawnError) throw new Error(`${what} failed to spawn: ${spawnError.message}`);
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new Error(
+      `${what} exited (code ${child.exitCode}, signal ${child.signalCode}) — whatever answers ` +
+        `on its port is NOT ours; refusing to warp a foreign network`,
+    );
+  }
 }
 
 function killGroup(child: ChildProcess | undefined) {
@@ -108,6 +131,7 @@ export default async function setup(): Promise<() => Promise<void>> {
 
   try {
     await waitAnvil(`http://127.0.0.1:${anvilPort}`, 40, 250);
+    assertOwnedAlive(anvil, 'anvil');
     node = spawnOwned(
       aztecBin,
       [
@@ -130,6 +154,7 @@ export default async function setup(): Promise<() => Promise<void>> {
       },
     );
     await waitHttp(`http://127.0.0.1:${nodePort}/status`, 120, 5_000);
+    assertOwnedAlive(node, 'aztec local network');
   } catch (err) {
     await teardown();
     throw err;

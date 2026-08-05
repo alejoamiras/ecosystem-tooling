@@ -264,7 +264,7 @@ async function cmdClaim(flags: Flags): Promise<void> {
           messageHash: flags.has('message-hash') ? String(flags.get('message-hash')) : undefined,
         });
     const { balanceBeforeWei, balanceAfterWei } = await claimFeeJuice(
-      { node, wallet: wallet as never, from, confirm: makeConfirm(flags) },
+      { node, wallet: wallet as never, from, confirm: makeConfirm(flags), journal },
       claim,
     );
     console.log(`\nClaimed. Balance ${formatFeeJuiceWei(balanceBeforeWei)} -> ${formatFeeJuiceWei(balanceAfterWei)}`);

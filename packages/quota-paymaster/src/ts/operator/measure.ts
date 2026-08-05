@@ -42,11 +42,11 @@ export async function measureSponsoredFee(
   opts: { count: number; interSendPollMs?: number; interSendTimeoutMs?: number } = { count: 2 },
 ): Promise<MeasureResult> {
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  const before = BigInt((await getFeeJuiceBalance(deps.fpcAddress, deps.node)) ?? 0n);
-
   // Preflight so re-running does not try to over-subscribe; clamp to what the
-  // allowance actually permits rather than failing partway.
-  const quota = await deps.readQuotaInfo();
+  // allowance actually permits rather than failing partway. Independent of the
+  // balance read, so both go out together.
+  const [beforeRaw, quota] = await Promise.all([getFeeJuiceBalance(deps.fpcAddress, deps.node), deps.readQuotaInfo()]);
+  const before = BigInt(beforeRaw ?? 0n);
   const budget = quota.hasAllowance ? quota.remaining : 0;
   const count = Math.min(opts.count, Math.max(budget, opts.count === 0 ? 0 : budget));
   if (count < opts.count) {

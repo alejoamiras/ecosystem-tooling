@@ -12,7 +12,7 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
-import { padAllowedTargets, worstCasePerDayWei } from '../config/schema.js';
+import { assertValidTargetList, padAllowedTargets, worstCasePerDayWei } from '../config/schema.js';
 import { type GasProfile, sponsoredFeeFloorWei } from '../gas-profile.js';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
 
@@ -62,6 +62,10 @@ interface RawBundle {
   allowed_targets: { toString(): string }[];
 }
 
+// simulate() may wrap its value in { result } depending on the call shape.
+// biome-ignore lint/suspicious/noExplicitAny: version-loose simulation results
+const unwrap = (raw: any) => raw?.result ?? raw;
+
 function bundleValues(bundle: RawBundle): PolicyValues & { allowedTargets: string[] } {
   return {
     maxFeeWei: BigInt(bundle.max_fee),
@@ -95,38 +99,37 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
   const fpc = await QuotaFpcContract.at(deps.fpcAddress, deps.wallet);
   const from = deps.from;
 
-  // Read order is deliberate (clock before schedule before live): an
-  // activation landing mid-read must not produce a "pending" verdict about a
-  // bundle the live read already reflects. CHAIN time, never wall clock — a
-  // chain can sit hours off the local clock.
+  // CHAIN time, never wall clock — a chain can sit hours off the local clock.
+  // Ordering honesty (review finding #9): the clock is read FIRST, so an
+  // activation landing between the clock read and the later reads can yield
+  // `pending: true` for a bundle the live read already reflects — a spurious
+  // "pending", never a missed one. The cancel path re-validates pending-ness
+  // immediately before sending, which is where the verdict actually matters.
   const latest = await deps.node.getBlockData('latest');
   const chainTimestamp = BigInt(latest?.header?.globalVariables?.timestamp ?? 0);
   if (chainTimestamp === 0n) {
     throw new Error('Could not read the chain timestamp from the latest block');
   }
-  // simulate() may wrap its value in { result } depending on the call shape.
-  // biome-ignore lint/suspicious/noExplicitAny: version-loose simulation results
-  const unwrap = (raw: any) => raw?.result ?? raw;
-  const [scheduledBundle, activatesAt, revision] = unwrap(
-    await fpc.methods.get_scheduled_settings().simulate({ from }),
-  ) as [RawBundle, bigint, bigint];
-  const admin = unwrap(await fpc.methods.get_admin().simulate({ from })) as {
-    toString(): string;
-  };
-  const livePolicy = unwrap(await fpc.methods.get_policy().simulate({ from })) as {
+  const [scheduledRaw, adminRaw, livePolicyRaw, liveTargetsRaw, balanceRaw, fees] = await Promise.all([
+    fpc.methods.get_scheduled_settings().simulate({ from }),
+    fpc.methods.get_admin().simulate({ from }),
+    fpc.methods.get_policy().simulate({ from }),
+    fpc.methods.get_allowed_targets().simulate({ from }),
+    import('@aztec/aztec.js/utils').then(({ getFeeJuiceBalance }) => getFeeJuiceBalance(deps.fpcAddress, deps.node)),
+    deps.node.getCurrentMinFees(),
+  ]);
+  const [scheduledBundle, activatesAt, revision] = unwrap(scheduledRaw) as [RawBundle, bigint, bigint];
+  const admin = unwrap(adminRaw) as { toString(): string };
+  const livePolicy = unwrap(livePolicyRaw) as {
     max_fee: bigint;
     max_uses: number | bigint;
     max_users: number | bigint;
   };
-  const liveTargets = unwrap(await fpc.methods.get_allowed_targets().simulate({ from })) as {
-    toString(): string;
-  }[];
-
-  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  const balanceWei = BigInt((await getFeeJuiceBalance(deps.fpcAddress, deps.node)) ?? 0n);
-  const fees = await deps.node.getCurrentMinFees();
+  const liveTargets = unwrap(liveTargetsRaw) as { toString(): string }[];
+  const balanceWei = BigInt(balanceRaw ?? 0n);
   const feePerDaGas = BigInt(fees.feePerDaGas);
   const feePerL2Gas = BigInt(fees.feePerL2Gas);
+  const scheduledValues = bundleValues(scheduledBundle);
 
   return {
     admin: admin.toString(),
@@ -137,7 +140,12 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
       allowedTargets: liveTargets.map((a) => a.toString()).filter((a) => !/^0x0+$/.test(a)),
     },
     scheduled: {
-      ...(({ allowedTargets, ...values }) => ({ values, allowedTargets }))(bundleValues(scheduledBundle)),
+      values: {
+        maxFeeWei: scheduledValues.maxFeeWei,
+        maxUses: scheduledValues.maxUses,
+        maxUsers: scheduledValues.maxUsers,
+      },
+      allowedTargets: scheduledValues.allowedTargets,
       activatesAt: BigInt(activatesAt),
       revision: BigInt(revision),
       pending: BigInt(activatesAt) > chainTimestamp,
@@ -175,7 +183,16 @@ export async function schedulePolicyChange(
   deps: PolicyDeps & { confirm: ConfirmAction },
   change: ScheduleChange,
   guards: ScheduleGuards,
+  /** Extra abort condition checked with the CAS immediately before sending. */
+  revalidateAlso?: () => Promise<string | undefined>,
 ): Promise<{ scheduledRevision: bigint }> {
+  // The UPDATE path enforces the SAME target rules as deploys (review finding
+  // #4): without this, a typo'd address is silently TRUNCATED by the parser
+  // into a different address than the plan showed, live 12h later.
+  if (change.allowedTargets) {
+    assertValidTargetList(change.allowedTargets);
+  }
+
   const state = await readPolicyState(deps, guards.gasProfile);
 
   const next: PolicyValues & { allowedTargets: string[] } = {
@@ -227,12 +244,15 @@ export async function schedulePolicyChange(
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     // The CAS the contract enforces, pre-checked with fresh eyes so a race
     // surfaces as a clean abort instead of a reverted transaction.
-    // biome-ignore lint/suspicious/noExplicitAny: version-loose simulation results
-    const rawNow: any = await fpc.methods.get_scheduled_settings().simulate({ from: deps.from });
-    const [, , revisionNow] = (rawNow?.result ?? rawNow) as [RawBundle, bigint, bigint];
-    return BigInt(revisionNow) === expectedRevision
-      ? undefined
-      : `revision moved ${expectedRevision} -> ${revisionNow} (another operator scheduled)`;
+    const [, , revisionNow] = unwrap(await fpc.methods.get_scheduled_settings().simulate({ from: deps.from })) as [
+      RawBundle,
+      bigint,
+      bigint,
+    ];
+    if (BigInt(revisionNow) !== expectedRevision) {
+      return `revision moved ${expectedRevision} -> ${revisionNow} (another operator scheduled)`;
+    }
+    return revalidateAlso ? await revalidateAlso() : undefined;
   });
 
   const { AztecAddress: Addr } = await import('@aztec/aztec.js/addresses');
@@ -277,5 +297,18 @@ export async function cancelPendingPolicyChange(
     // guards still run — live values must satisfy them or the operator should
     // know their standing policy no longer does.
     guards,
+    // TOCTOU guard (review finding #5): if the pending change ACTIVATES
+    // between the read above and the send, the CAS still passes (activation
+    // does not bump the revision) and this call would schedule a 12h ROLLBACK
+    // of the now-live policy while reporting a successful cancel. Abort
+    // instead: re-read chain time and the activation timestamp just before
+    // broadcasting.
+    async () => {
+      const stillPending = await readPolicyState(deps, guards.gasProfile);
+      if (!stillPending.scheduled.pending) {
+        return 'too late to cancel — the pending change already activated; scheduling now would ROLL BACK the live policy for 12h';
+      }
+      return undefined;
+    },
   );
 }

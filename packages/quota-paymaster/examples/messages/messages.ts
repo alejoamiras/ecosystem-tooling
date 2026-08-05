@@ -45,12 +45,16 @@ function addGasAction(bridgeUrl?: string): QuotaAction {
   return { label: 'Add gas to your account', href: bridgeUrl };
 }
 
+/** "they reset daily (about 3 hours from now)" — shared by both describers. */
+function whenBackPhrase(millisUntilReset?: number): string {
+  return millisUntilReset === undefined ? 'they reset daily' : `they reset daily (${inAbout(millisUntilReset)})`;
+}
+
 /** Copy for a user who cannot currently be sponsored. */
 export function describeQuotaUnavailable(reason: QuotaUnavailableReason, context: QuotaCopyContext = {}): QuotaMessage {
   const { millisUntilReset, bridgeUrl } = context;
   // "they reset daily" carries the useful fact even when we cannot say when.
-  const whenBack =
-    millisUntilReset === undefined ? 'they reset daily' : `they reset daily (${inAbout(millisUntilReset)})`;
+  const whenBack = whenBackPhrase(millisUntilReset);
 
   switch (reason) {
     case 'sync-pending':
@@ -113,8 +117,7 @@ export function describeQuotaUnavailable(reason: QuotaUnavailableReason, context
 /** Copy for a user who IS being sponsored. `appName` names the sponsor. */
 export function describeSponsored(appName: string, remaining: number, context: QuotaCopyContext = {}): QuotaMessage {
   const { millisUntilReset } = context;
-  const whenBack =
-    millisUntilReset === undefined ? 'they reset daily' : `they reset daily (${inAbout(millisUntilReset)})`;
+  const whenBack = whenBackPhrase(millisUntilReset);
 
   if (remaining <= 0) {
     return {

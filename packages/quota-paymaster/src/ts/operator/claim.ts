@@ -15,7 +15,13 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
-import { BRIDGE_JOURNAL_FILE, type JournalHandle, readJournalRecords } from './internal/journal.js';
+import {
+  appendJournalRecord,
+  BRIDGE_JOURNAL_FILE,
+  type JournalHandle,
+  readJournalRecords,
+  withJournalLock,
+} from './internal/journal.js';
 
 export interface ClaimDeps {
   node: AztecNode;
@@ -23,6 +29,9 @@ export interface ClaimDeps {
   /** The account that pays gas for the claim. */
   from: AztecAddress;
   confirm: ConfirmAction;
+  /** When given, a CLAIMED record is appended after success so
+   * findClaimInJournal's "latest unclaimed" stays truthful. */
+  journal?: JournalHandle;
 }
 
 export interface ClaimDetails {
@@ -30,6 +39,8 @@ export interface ClaimDetails {
   amountWei: bigint;
   claimSecret: string;
   messageLeafIndex: bigint;
+  /** Identifies the deposit for CLAIMED bookkeeping (set by findClaimInJournal). */
+  messageHash?: string;
 }
 
 /**
@@ -48,16 +59,22 @@ export function findClaimInJournal(
         `claiming; a truncated record may hide the deposit you are looking for.`,
     );
   }
+  // "Latest UNCLAIMED": claimFeeJuice appends a CLAIMED record, so already-
+  // redeemed deposits are excluded here (review finding #10 — without this,
+  // "claim the other deposit" re-targeted the newest, already-claimed one).
+  const claimed = new Set(records.filter((r) => r.state === 'CLAIMED').map((r) => String(r.messageHash).toLowerCase()));
   const matches = records.filter(
     (r) =>
       r.state === 'DEPOSIT_CONFIRMED' &&
       String(r.to).toLowerCase() === query.recipient.toLowerCase() &&
-      (query.messageHash === undefined || String(r.messageHash).toLowerCase() === query.messageHash.toLowerCase()),
+      (query.messageHash === undefined
+        ? !claimed.has(String(r.messageHash).toLowerCase())
+        : String(r.messageHash).toLowerCase() === query.messageHash.toLowerCase()),
   );
   const record = matches.at(-1);
   if (!record) {
     throw new Error(
-      `no DEPOSIT_CONFIRMED journal record for ${query.recipient}` +
+      `no unclaimed DEPOSIT_CONFIRMED journal record for ${query.recipient}` +
         (query.messageHash ? ` with message ${query.messageHash}` : '') +
         `. If the deposit exists on L1, recover key/index from its DepositToAztecPublic log ` +
         `and look for the matching SECRET_GENERATED record.`,
@@ -68,6 +85,7 @@ export function findClaimInJournal(
     amountWei: BigInt(String(record.amountWei)),
     claimSecret: String(record.claimSecret),
     messageLeafIndex: BigInt(String(record.messageLeafIndex)),
+    messageHash: String(record.messageHash),
   };
 }
 
@@ -97,5 +115,18 @@ export async function claimFeeJuice(
     .send({ from: deps.from, ...sendOptions });
 
   const after = BigInt((await getFeeJuiceBalance(recipient, deps.node)) ?? 0n);
+
+  if (deps.journal && claim.messageHash) {
+    await withJournalLock(deps.journal, () => {
+      appendJournalRecord(deps.journal as JournalHandle, BRIDGE_JOURNAL_FILE, {
+        state: 'CLAIMED',
+        at: new Date().toISOString(),
+        to: claim.recipient,
+        amountWei: claim.amountWei.toString(),
+        messageHash: claim.messageHash as string,
+      });
+    });
+  }
+
   return { balanceBeforeWei: before, balanceAfterWei: after };
 }
