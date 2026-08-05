@@ -116,6 +116,17 @@ describe('config validation', () => {
     expect(parseQuotaFpcConfig(base({ adminAddress: 'env:MY_ADMIN' }), { MY_ADMIN: ADMIN }).adminAddress).toBe(ADMIN);
   });
 
+  test('classId env: indirection resolves like addresses, and unset is an error', () => {
+    // Class ids are version-pinned values an example config cannot hardcode.
+    const parsed = parseQuotaFpcConfig(base({ allowedAccountClasses: [{ name: 'C', classId: 'env:MY_CLASS' }] }), {
+      MY_CLASS: CLASS_ID,
+    });
+    expect(parsed.resolvedAccountClasses).toEqual([{ name: 'C', classId: CLASS_ID }]);
+    expect(() =>
+      parseQuotaFpcConfig(base({ allowedAccountClasses: [{ name: 'C', classId: 'env:MISSING' }] }), {}),
+    ).toThrow(/set MISSING/);
+  });
+
   test('errors are QuotaFpcConfigError, so callers can distinguish them', () => {
     try {
       parseQuotaFpcConfig(base({ maxLossWei: '1' }));

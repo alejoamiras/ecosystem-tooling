@@ -45,7 +45,8 @@ export interface QuotaFpcAccountClass {
   name: string;
   /**
    * The account contract's class id — a hash of its artifact, so it is pinned
-   * to an `@aztec/accounts` VERSION, not to a network. The deploy tooling
+   * to an `@aztec/accounts` VERSION, not to a network — or the name of an env
+   * var holding it (prefix `env:`), like target addresses. The deploy tooling
    * recomputes ids from the installed artifacts and refuses to deploy on a
    * mismatch, so config drift from a dependency bump is caught before the
    * immutable allowlist ships with a stale id.
@@ -173,6 +174,8 @@ export function parseQuotaFpcConfig(
   adminAddress: string;
   requireUnpublishedAccounts: boolean;
   resolvedTargets: { name: string; address: string }[];
+  /** Like resolvedTargets: env: indirection resolved, ready for BigInt(). */
+  resolvedAccountClasses: { name: string; classId: string }[];
 } {
   if (typeof raw !== 'object' || raw === null) {
     throw new QuotaFpcConfigError('Config must be a JSON object');
@@ -248,11 +251,20 @@ export function parseQuotaFpcConfig(
     );
   }
   const seenClasses = new Map<string, string>();
+  const resolvedAccountClasses: { name: string; classId: string }[] = [];
   for (const [index, accountClass] of config.allowedAccountClasses.entries()) {
     if (!accountClass?.name?.trim()) {
       throw new QuotaFpcConfigError(`allowedAccountClasses[${index}].name is required`);
     }
-    const classId = accountClass.classId?.trim();
+    // Same env: indirection targets and adminAddress support — class ids are
+    // version-pinned values an example config cannot sensibly hardcode.
+    const rawClassId = accountClass.classId?.trim();
+    const classId = rawClassId?.startsWith('env:') ? env[rawClassId.slice(4)]?.trim() : rawClassId;
+    if (rawClassId?.startsWith('env:') && !classId) {
+      throw new QuotaFpcConfigError(
+        `allowedAccountClasses[${index}] (${accountClass.name}) resolves to nothing: set ${rawClassId.slice(4)}`,
+      );
+    }
     if (!classId || !/^0x[0-9a-fA-F]{1,64}$/.test(classId)) {
       throw new QuotaFpcConfigError(
         `allowedAccountClasses[${index}] (${accountClass.name}) needs a 0x-hex classId, got ${JSON.stringify(accountClass.classId)}`,
@@ -280,6 +292,7 @@ export function parseQuotaFpcConfig(
       );
     }
     seenClasses.set(key, accountClass.name);
+    resolvedAccountClasses.push({ name: accountClass.name, classId });
   }
 
   if (config.requireUnpublishedAccounts !== undefined && typeof config.requireUnpublishedAccounts !== 'boolean') {
@@ -347,7 +360,7 @@ export function parseQuotaFpcConfig(
     );
   }
 
-  return { ...config, adminAddress, requireUnpublishedAccounts, resolvedTargets };
+  return { ...config, adminAddress, requireUnpublishedAccounts, resolvedTargets, resolvedAccountClasses };
 }
 
 /** Pads the allowlist to the contract's fixed-size array with zero addresses. */

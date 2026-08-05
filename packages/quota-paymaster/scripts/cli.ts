@@ -306,6 +306,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  if (process.env.QUOTA_CLI_DEBUG) console.error(err);
+  else console.error(err instanceof Error ? err.message : err);
   process.exit(1);
 });

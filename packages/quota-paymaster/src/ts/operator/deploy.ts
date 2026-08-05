@@ -114,7 +114,7 @@ export async function deployQuotaFpc(
   opts: DeployQuotaFpcOptions = {},
 ): Promise<QuotaFpcContract> {
   const classId = await assertArtifactIsChainVerifiedClass();
-  await verifyAccountClassIds(config.allowedAccountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
+  await verifyAccountClassIds(config.resolvedAccountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
 
   const plan = createActionPlan('deploy-quota-fpc', {
     contractClassId: classId,
@@ -124,7 +124,7 @@ export async function deployQuotaFpc(
     maxUsesPerDay: config.policy.maxUsesPerDay,
     maxUsersPerDay: config.policy.maxUsersPerDay,
     targets: config.resolvedTargets.map((t) => t.address).join(','),
-    accountClasses: config.allowedAccountClasses.map((c) => c.classId).join(','),
+    accountClasses: config.resolvedAccountClasses.map((c) => c.classId).join(','),
     requireUnpublishedAccounts: config.requireUnpublishedAccounts,
     worstCasePerDayWei: worstCasePerDayWei(config.policy).toString(),
     maxLossWei: config.maxLossWei,
@@ -140,7 +140,7 @@ export async function deployQuotaFpc(
   const allowed = padAllowedTargets(config.resolvedTargets.map((t) => t.address)).map((a) =>
     AztecAddress.fromStringUnsafe(a),
   );
-  const allowedClasses = padAllowedAccountClasses(config.allowedAccountClasses.map((c) => BigInt(c.classId)));
+  const allowedClasses = padAllowedAccountClasses(config.resolvedAccountClasses.map((c) => BigInt(c.classId)));
 
   const deployment = QuotaFpcContract.deploy(
     deps.wallet,

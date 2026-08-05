@@ -72,7 +72,26 @@ function bundleValues(bundle: RawBundle): PolicyValues & { allowedTargets: strin
 }
 
 /** One consistent read pass: clock, then schedule, then live policy, then money. */
+/**
+ * Registers the deployed instance + THIS package's artifact in the wallet.
+ * `.at()` alone does not put the artifact in a fresh PXE — reads then fail
+ * with "No artifact registered for contract class …" (the class-id/artifact
+ * split the source project lost days to).
+ */
+export async function registerQuotaFpcInWallet(deps: PolicyDeps): Promise<void> {
+  const instance = await deps.node.getContract(deps.fpcAddress);
+  if (!instance) {
+    throw new Error(`No contract deployed at ${deps.fpcAddress.toString()} on this node`);
+  }
+  const { QuotaFpcContractArtifact } = await import('../../artifacts/QuotaFpc.js');
+  await (deps.wallet as unknown as { registerContract(i: unknown, a: unknown): Promise<void> }).registerContract(
+    instance,
+    QuotaFpcContractArtifact,
+  );
+}
+
 export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile): Promise<PolicyState> {
+  await registerQuotaFpcInWallet(deps);
   const fpc = await QuotaFpcContract.at(deps.fpcAddress, deps.wallet);
   const from = deps.from;
 
@@ -85,18 +104,21 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
   if (chainTimestamp === 0n) {
     throw new Error('Could not read the chain timestamp from the latest block');
   }
-  const [scheduledBundle, activatesAt, revision] = (await fpc.methods
-    .get_scheduled_settings()
-    .simulate({ from })) as unknown as [RawBundle, bigint, bigint];
-  const admin = (await fpc.methods.get_admin().simulate({ from })) as unknown as {
+  // simulate() may wrap its value in { result } depending on the call shape.
+  // biome-ignore lint/suspicious/noExplicitAny: version-loose simulation results
+  const unwrap = (raw: any) => raw?.result ?? raw;
+  const [scheduledBundle, activatesAt, revision] = unwrap(
+    await fpc.methods.get_scheduled_settings().simulate({ from }),
+  ) as [RawBundle, bigint, bigint];
+  const admin = unwrap(await fpc.methods.get_admin().simulate({ from })) as {
     toString(): string;
   };
-  const livePolicy = (await fpc.methods.get_policy().simulate({ from })) as unknown as {
+  const livePolicy = unwrap(await fpc.methods.get_policy().simulate({ from })) as {
     max_fee: bigint;
     max_uses: number | bigint;
     max_users: number | bigint;
   };
-  const liveTargets = (await fpc.methods.get_allowed_targets().simulate({ from })) as unknown as {
+  const liveTargets = unwrap(await fpc.methods.get_allowed_targets().simulate({ from })) as {
     toString(): string;
   }[];
 
@@ -205,11 +227,9 @@ export async function schedulePolicyChange(
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     // The CAS the contract enforces, pre-checked with fresh eyes so a race
     // surfaces as a clean abort instead of a reverted transaction.
-    const [, , revisionNow] = (await fpc.methods.get_scheduled_settings().simulate({ from: deps.from })) as unknown as [
-      RawBundle,
-      bigint,
-      bigint,
-    ];
+    // biome-ignore lint/suspicious/noExplicitAny: version-loose simulation results
+    const rawNow: any = await fpc.methods.get_scheduled_settings().simulate({ from: deps.from });
+    const [, , revisionNow] = (rawNow?.result ?? rawNow) as [RawBundle, bigint, bigint];
     return BigInt(revisionNow) === expectedRevision
       ? undefined
       : `revision moved ${expectedRevision} -> ${revisionNow} (another operator scheduled)`;
