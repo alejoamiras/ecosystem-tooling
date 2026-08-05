@@ -67,9 +67,22 @@ describe('journal directory', () => {
     cleanups.push(() => rmSync(moved, { recursive: true, force: true }));
     mkdirSync(dir, { mode: 0o700 }); // impostor at the original path
     expect(() => appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('DEPOSIT_CONFIRMED'))).toThrow(
-      /no longer resolves/,
+      /DIFFERENT directory/,
     );
-    expect(() => readJournalRecords(handle, BRIDGE_JOURNAL_FILE)).toThrow(/no longer resolves/);
+    expect(() => readJournalRecords(handle, BRIDGE_JOURNAL_FILE)).toThrow(/DIFFERENT directory/);
+  });
+
+  test('a directory moved away WITHOUT an impostor throws, never reads as an empty journal', () => {
+    // Round-2 finding 4: the identity failure must not be swallowed by the
+    // "journal file absent" ENOENT path — an empty answer would make existing
+    // deposits look like nothing was ever bridged.
+    const { dir, handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
+    const moved = `${dir}-moved`;
+    renameSync(dir, moved);
+    cleanups.push(() => rmSync(moved, { recursive: true, force: true }));
+    expect(() => readJournalRecords(handle, BRIDGE_JOURNAL_FILE)).toThrow(/no longer exists at its path/);
+    expect(() => appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('X'))).toThrow(/no longer exists at its path/);
   });
 
   test('a symlinked journal file is refused (O_NOFOLLOW), not silently followed', () => {

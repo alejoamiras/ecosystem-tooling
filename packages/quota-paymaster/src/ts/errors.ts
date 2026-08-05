@@ -27,6 +27,15 @@ export type QuotaUnavailableReason =
   /** Sponsorship was narrowed and this user's seat fell outside the new cap. */
   | 'seat-revoked';
 
+/**
+ * Instances constructed by THIS module — populated in the constructor, so a
+ * hand-built `{ name: 'QuotaUnavailableError' }` (or an Error renamed to
+ * match) never passes {@link isQuotaUnavailableError}. A WeakSet rather than
+ * `instanceof` because bundlers can duplicate the module, and rather than a
+ * name check because names are forgeable (post-impl audit round 2, finding 1).
+ */
+const constructedHere = new WeakSet<object>();
+
 export class QuotaUnavailableError extends Error {
   constructor(
     readonly reason: QuotaUnavailableReason,
@@ -35,7 +44,13 @@ export class QuotaUnavailableError extends Error {
   ) {
     super(message);
     this.name = 'QuotaUnavailableError';
+    constructedHere.add(this);
   }
+}
+
+/** True only for errors actually constructed via {@link QuotaUnavailableError}. */
+export function isQuotaUnavailableError(err: unknown): err is QuotaUnavailableError {
+  return typeof err === 'object' && err !== null && constructedHere.has(err);
 }
 
 /** Maps a contract revert message to a reason, or undefined if unrecognised. */

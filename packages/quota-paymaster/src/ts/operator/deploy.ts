@@ -129,6 +129,9 @@ export async function deployQuotaFpc(
     requireUnpublishedAccounts: config.requireUnpublishedAccounts,
     maxLossWei: config.maxLossWei,
     from: deps.from,
+    // Options affect fee/wait behavior — snapshot them too, so a confirm
+    // callback cannot swap them after approval (round-2 finding 6).
+    sendOptions: { ...opts.sendOptions },
   };
 
   const classId = await assertArtifactIsChainVerifiedClass();
@@ -170,8 +173,8 @@ export async function deployQuotaFpc(
     allowedClasses,
     snapshot.requireUnpublishedAccounts,
   );
-  // sendOptions spreads FIRST: the confirmed sender is bound and cannot be
-  // overridden by an unconfirmed option (finding #1).
-  await deployment.send({ ...opts.sendOptions, from: snapshot.from });
+  // The SNAPSHOTTED options spread FIRST: the confirmed sender is bound and
+  // cannot be overridden by an unconfirmed option (finding #1).
+  await deployment.send({ ...snapshot.sendOptions, from: snapshot.from });
   return await deployment.register();
 }

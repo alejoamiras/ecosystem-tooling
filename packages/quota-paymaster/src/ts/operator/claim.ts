@@ -113,6 +113,12 @@ export async function claimFeeJuice(
   const messageLeafIndex = claim.messageLeafIndex;
   const messageHash = claim.messageHash;
   const from = deps.from;
+  // Snapshot the options too, and strip any caller-supplied `wait`: CLAIMED
+  // bookkeeping below requires a MINED SUCCESS receipt, so `wait: NO_WAIT`
+  // (resolves at submission) or `wait: {dontThrowOnRevert}` (resolves on a
+  // reverted receipt) would let a dropped/reverted claim be journaled as
+  // redeemed (post-impl audit round 2, finding 3).
+  const { wait: _callerWait, ...sendOpts } = { ...sendOptions };
 
   const recipient = AztecAddress.fromStringUnsafe(recipientStr);
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
@@ -142,13 +148,20 @@ export async function claimFeeJuice(
 
   const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
   const { Fr } = await import('@aztec/aztec.js/fields');
-  await FeeJuiceContract.at(deps.wallet)
+  // sendOpts spreads FIRST: the confirmed payer is bound and cannot be
+  // overridden by an unconfirmed option (finding #1); default wait semantics
+  // (mine + throw on revert) are enforced by the wait-stripping above.
+  const { receipt } = await FeeJuiceContract.at(deps.wallet)
     .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
-    // sendOptions spreads FIRST: the confirmed payer is bound and cannot be
-    // overridden by an unconfirmed option (finding #1).
-    .send({ ...sendOptions, from });
+    .send({ ...sendOpts, from });
+  if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
+    throw new Error(
+      `claim transaction ${receipt.txHash} did not execute successfully ` +
+        `(status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}); nothing journaled`,
+    );
+  }
 
-  // Journal CLAIMED immediately after the send succeeds — BEFORE the
+  // Journal CLAIMED immediately after the MINED SUCCESS — BEFORE the
   // balance-after read. A transient RPC failure on that read must not leave a
   // redeemed deposit recorded as unclaimed (finding #8).
   if (deps.journal && messageHash) {

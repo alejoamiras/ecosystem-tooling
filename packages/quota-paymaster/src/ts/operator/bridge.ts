@@ -87,6 +87,11 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     );
   }
   if (amountWei <= 0n) throw new Error('amountWei must be positive');
+  // The buffer controls the L1 gas limit — an execution-affecting input, so
+  // it is validated AND appears in the confirmed plan (round-2 finding 6).
+  if (gasLimitBufferPercent !== undefined && !Number.isFinite(gasLimitBufferPercent)) {
+    throw new Error(`gasLimitBufferPercent must be a finite number, got ${gasLimitBufferPercent}`);
+  }
 
   // (Snapshotted after validation — the validators above must run before any
   // dep is touched — but before the confirm callback can observe or race it.)
@@ -106,6 +111,7 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     to: to,
     amountWei: amountWei.toString(),
     portal: portalHex,
+    gasLimitBufferPercent: Math.max(gasLimitBufferPercent ?? 100, 100),
     irreversible: true,
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {

@@ -176,7 +176,7 @@ describe('awaitAllowanceTransition', () => {
     expect(result.generation).toBe(GENERATION);
   });
 
-  test('treats the note disappearing as the expected end of the allowance', async () => {
+  test('treats the note disappearing as the expected end of the allowance (with prior evidence)', async () => {
     let reads = 0;
     const result = await awaitAllowanceTransition({
       generation: GENERATION,
@@ -185,14 +185,39 @@ describe('awaitAllowanceTransition', () => {
         return { subscribed: false, remaining: 0 };
       },
       expectedRemaining: 0,
+      // The caller SAW the note (the send that spent the last use was built
+      // from it) — that positive evidence is what licenses the conclusion.
+      observedSubscribedBefore: true,
       sleep: async () => {},
     });
     // Absence is the signal here, not a timeout — but it takes TWO consecutive
     // absent reads: a single one is also what a not-yet-synced wallet returns
     // (post-impl audit finding #3b).
     expect(result.syncing).toBe(false);
-    expect(result.subscribed).toBe(false);
     expect(reads).toBe(2);
+    // Exhausted-by-consumption keeps subscribed: the seat is still held this
+    // generation; reporting false would trigger a doomed second seat claim
+    // (round-2 finding 2).
+    expect(result.subscribed).toBe(true);
+    expect(result.remaining).toBe(0);
+  });
+
+  test('absence WITHOUT prior positive evidence can only time out as syncing, never conclude', async () => {
+    // A lagging wallet returns "absent" forever — indistinguishable from
+    // exhaustion by absence alone (round-2 finding 2).
+    let clock = 0;
+    const result = await awaitAllowanceTransition({
+      generation: GENERATION,
+      readState: async () => ({ subscribed: false, remaining: 0 }),
+      expectedRemaining: 0,
+      timeoutMs: 1_000,
+      now: () => {
+        clock += 200;
+        return clock;
+      },
+      sleep: async () => {},
+    });
+    expect(result.syncing).toBe(true);
   });
 
   test('a single absent read does NOT conclude exhaustion when the note reappears', async () => {
@@ -201,6 +226,7 @@ describe('awaitAllowanceTransition', () => {
       generation: GENERATION,
       // absent → present → absent → absent: the early lone absence (a wallet
       // mid-sync) must not end the wait; only the later consecutive pair does.
+      // The in-wait presence read supplies the positive evidence.
       readState: async () => {
         calls += 1;
         return calls === 2 ? { subscribed: true, remaining: 1 } : { subscribed: false, remaining: 0 };
@@ -209,6 +235,7 @@ describe('awaitAllowanceTransition', () => {
       sleep: async () => {},
     });
     expect(result.syncing).toBe(false);
+    expect(result.subscribed).toBe(true);
     expect(calls).toBe(4); // absent(1) + present(reset) + absent(1) + absent(2)
   });
 

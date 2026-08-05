@@ -66,6 +66,14 @@ interface RawBundle {
 // biome-ignore lint/suspicious/noExplicitAny: version-loose simulation results
 const unwrap = (raw: any) => raw?.result ?? raw;
 
+/**
+ * How close (in chain seconds) a pending bundle's activation may be before
+ * scheduling refuses to proceed. Covers worst-case proving + broadcast +
+ * inclusion latency between the revalidation read and the transaction
+ * landing; 10 minutes is far above observed mainnet proving times.
+ */
+const ACTIVATION_SAFETY_HORIZON_SECONDS = 600n;
+
 function bundleValues(bundle: RawBundle): PolicyValues & { allowedTargets: string[] } {
   return {
     maxFeeWei: BigInt(bundle.max_fee),
@@ -276,10 +284,19 @@ export async function schedulePolicyChange(
     // the bundle we observed as pending has since crossed its activation
     // time, any omitted fields were filled from the PRE-activation live
     // policy — sending would schedule a 12h rollback to values the operator
-    // never chose. Abort; the caller re-reads and rebuilds.
+    // never chose. Checked with a SAFETY HORIZON, not equality (round-2
+    // finding 5): this callback runs before proving and broadcast, which
+    // take real time — a bundle activating during proving would slip past a
+    // point-in-time check. The horizon must exceed worst-case proving +
+    // inclusion latency; activation timing is known 12h ahead, so aborting
+    // a few minutes early costs the operator nothing.
     const timeNow = BigInt(latestNow?.header?.globalVariables?.timestamp ?? 0);
-    if (state.scheduled.pending && timeNow >= state.scheduled.activatesAt) {
-      return 'the pending policy change activated mid-operation; re-read state and rebuild the change';
+    if (state.scheduled.pending && timeNow + ACTIVATION_SAFETY_HORIZON_SECONDS >= state.scheduled.activatesAt) {
+      return (
+        'the pending policy change activated mid-operation or activates within the ' +
+        `${ACTIVATION_SAFETY_HORIZON_SECONDS}s safety horizon (proving/broadcast could straddle it); ` +
+        'wait for activation, then re-read state and rebuild the change'
+      );
     }
     return revalidateAlso ? await revalidateAlso() : undefined;
   });

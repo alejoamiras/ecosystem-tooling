@@ -72,11 +72,12 @@ const CHECKS: Record<string, Check[]> = {
       // a confirmed plan — too late to discover a missing peer. Prove they
       // resolve in the clean-room consumer install.
       kind: 'exec',
-      spec: 'lazy deps resolvable: @aztec/ethereum, @aztec/l1-artifacts, @aztec/aztec.js/ethereum',
+      spec: 'lazy deps resolvable: @aztec/ethereum, @aztec/l1-artifacts, @aztec/aztec.js/ethereum, @aztec/entrypoints',
       script: `
         await import('@aztec/ethereum/utils');
         await import('@aztec/l1-artifacts/FeeJuicePortalAbi');
         await import('@aztec/aztec.js/ethereum');
+        await import('@aztec/entrypoints/encoding');
       `,
     },
     { kind: 'absent-dir', spec: 'dist/src/ts/test' },

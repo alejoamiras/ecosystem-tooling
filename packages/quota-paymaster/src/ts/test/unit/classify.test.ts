@@ -28,6 +28,17 @@ describe('isProvablyPreBroadcast', () => {
     expect(ctx.isProvablyPreBroadcast(err)).toBe(true);
   });
 
+  test('a FORGED QuotaUnavailableError (name only) is refused', () => {
+    // Round-2 finding 1: the exemption is instance-bound (constructor-populated
+    // WeakSet), not name-bound — a renamed Error or object literal never passes.
+    const forgedLiteral = { name: 'QuotaUnavailableError', retryable: true, message: 'x' };
+    expect(ctx.isProvablyPreBroadcast(forgedLiteral)).toBe(false);
+    const renamed = new Error('out');
+    renamed.name = 'QuotaUnavailableError';
+    expect(ctx.isProvablyPreBroadcast(renamed)).toBe(false);
+    expect(ctx.isRetryableBeforeBroadcast(forgedLiteral)).toBe(false);
+  });
+
   test("the node's own admission rejection is pre-broadcast…", async () => {
     expect(ctx.isProvablyPreBroadcast(await branded(new Error('Invalid tx: insufficient fee payer balance')))).toBe(
       true,

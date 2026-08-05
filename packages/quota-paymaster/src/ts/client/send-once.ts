@@ -17,10 +17,22 @@
  * An error minted anywhere else (a retrying client, a different context, a
  * hand-built Error with a matching message) classifies as NOT provably
  * pre-broadcast, which is the safe answer.
+ *
+ * HONEST LIMIT of the brand: attemptSend brands whatever its callback throws;
+ * it cannot verify which transport the callback actually used, because a
+ * wallet's transport is not observable from outside (JS offers no in-process
+ * way to police it). A caller who routes a RETRYING client's send through
+ * attemptSend defeats the classification for themselves — same as a caller
+ * who ignores the classifiers entirely. The threat model here is preventing
+ * ACCIDENTAL misuse (classifying a foreign error, the default-client retry
+ * trap); it is not a defense against the process lying to itself. The send
+ * pipeline must be built on {@link SendOnceContext.node} — that is the
+ * documented contract, mechanically checkable only by the caller.
  */
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { makeFetch } from '@aztec/foundation/json-rpc/client';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import { isQuotaUnavailableError } from '../errors.js';
 
 /**
  * Message-level allow-list of failures that cannot have left a transaction in
@@ -60,8 +72,6 @@ function messageIsPreBroadcast(message: string): boolean {
   );
 }
 
-const isQuotaUnavailable = (err: unknown): boolean => (err as { name?: string })?.name === 'QuotaUnavailableError';
-
 export interface SendOnceContext {
   /** A node client whose transport NEVER retries. Use it for sends. */
   node: AztecNode;
@@ -93,7 +103,7 @@ export function createSendOnceContext(nodeUrl: string): SendOnceContext {
   const branded = new WeakSet<object>();
 
   const isProvablyPreBroadcast = (err: unknown): boolean => {
-    if (isQuotaUnavailable(err)) {
+    if (isQuotaUnavailableError(err)) {
       // Raised by the SDK's own pre-flight, before anything is built or sent —
       // pre-broadcast by construction, no brand needed.
       return true;
@@ -109,7 +119,7 @@ export function createSendOnceContext(nodeUrl: string): SendOnceContext {
 
   const isRetryableBeforeBroadcast = (err: unknown): boolean => {
     if (!isProvablyPreBroadcast(err)) return false;
-    if (isQuotaUnavailable(err)) {
+    if (isQuotaUnavailableError(err)) {
       return Boolean((err as { retryable?: boolean }).retryable);
     }
     return /Invalid expiration timestamp/i.test(String((err as { message?: string })?.message ?? err ?? ''));

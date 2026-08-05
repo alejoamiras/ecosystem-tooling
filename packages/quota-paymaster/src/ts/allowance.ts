@@ -126,6 +126,15 @@ export async function awaitAllowanceTransition(options: {
   readState: () => Promise<{ subscribed: boolean; remaining: number }>;
   /** Expected remaining count, or 0 meaning "the allowance should be used up". */
   expectedRemaining: number;
+  /**
+   * Positive evidence that THIS wallet already observed the subscription note
+   * this generation (e.g. the send that just consumed the last use was built
+   * from it). Required for expectedRemaining === 0: absence alone — however
+   * many times re-read — is also what a lagging wallet returns forever, so
+   * without prior positive evidence the wait can only time out as `syncing`,
+   * never conclude exhaustion (post-impl audit round 2, finding 2).
+   */
+  observedSubscribedBefore?: boolean;
   timeoutMs?: number;
   pollIntervalMs?: number;
   now?: () => number;
@@ -139,23 +148,33 @@ export async function awaitAllowanceTransition(options: {
   const startedAt = now();
   let last = { subscribed: false, remaining: 0 };
   let absentStreak = 0;
+  // Prior evidence can also arrive DURING the wait (a read that shows the
+  // note before it vanishes).
+  let sawSubscribed = options.observedSubscribedBefore === true;
 
   while (now() - startedAt < timeoutMs) {
     last = await options.readState();
-    // Exhaustion needs the note gone on TWO consecutive reads: a single
-    // absent read is also what a not-yet-synced wallet returns, and
-    // concluding from it could send the caller into a doomed re-subscribe
-    // (post-impl audit finding #3b).
+    sawSubscribed ||= last.subscribed;
+    // Exhaustion needs positive evidence (the note was SEEN this generation)
+    // plus the note gone on TWO consecutive reads — a single absent read, or
+    // any number of absent reads without prior presence, is exactly what a
+    // not-yet-synced wallet returns, and concluding from those would send the
+    // caller into a doomed re-subscribe (findings 3b and round-2 #2).
     absentStreak = last.subscribed ? 0 : absentStreak + 1;
     const reached =
       options.expectedRemaining > 0
         ? last.subscribed && last.remaining === options.expectedRemaining
-        : absentStreak >= 2; // exhausted: the note is CONSISTENTLY gone
+        : sawSubscribed && absentStreak >= 2;
     if (reached) {
       return {
         generation: options.generation,
-        subscribed: last.subscribed,
-        remaining: last.remaining,
+        // Exhausted-by-consumption keeps `subscribed: true`: the seat WAS
+        // claimed this generation; only the uses are gone. Reporting
+        // `subscribed: false` here would make resolveFeeSource try to claim
+        // a SECOND seat — the contract's subscription nullifier already
+        // exists, so that transaction can only fail (round-2 finding 2).
+        subscribed: options.expectedRemaining > 0 ? last.subscribed : true,
+        remaining: options.expectedRemaining > 0 ? last.remaining : 0,
         syncing: false,
         observedAfterMs: now() - startedAt,
       };

@@ -111,9 +111,12 @@ export function closeJournalDir(handle: JournalHandle): void {
  * two stealers racing within milliseconds), and every acquirer re-verifies
  * its own token is still in the lock file after a short settle delay,
  * catching the interleaving before any journal write happens. Not a proof —
- * an unlucky third stealer during the settle window is still unguarded — but
- * the journal's appends are the guarded operations and they are idempotent
- * at the record level (append-only, readers dedup by state).
+ * an unlucky third stealer during the settle window is still unguarded, and
+ * two critical sections running concurrently is NOT harmless: appends could
+ * interleave and a torn line could result (the reader reports torn lines
+ * rather than hiding them, which is the detection layer, not prevention).
+ * Reaching this requires a crashed holder plus 2-3 stealers racing within
+ * the same few milliseconds; Node core has no flock to close it outright.
  */
 export async function withJournalLock<T>(
   handle: JournalHandle,
@@ -222,21 +225,46 @@ export async function withJournalLock<T>(
   }
 }
 
+/** Identity failures must never be mistaken for a merely-absent journal file. */
+export class JournalDirMovedError extends Error {
+  constructor(dirPath: string, detail: string) {
+    super(
+      `journal directory ${dirPath} ${detail}; refusing to touch secrets through it. ` +
+        `The path no longer leads to the directory this handle opened.`,
+    );
+    this.name = 'JournalDirMovedError';
+  }
+}
+
 /**
- * Node has no true openat: file opens resolve BY PATH. Before every such open,
- * assert the path still resolves to the SAME directory inode the handle holds —
- * a parent-symlink rotation after openJournalDir would otherwise send secrets
- * to a replacement directory while the old FD gets the fsync (post-impl audit
- * finding #5). dev+ino equality binds path resolution to the held descriptor.
+ * Node has no true openat: file opens resolve BY PATH. Before AND after every
+ * such open, assert the path still resolves to the SAME directory inode the
+ * handle holds — a parent-symlink rotation after openJournalDir would
+ * otherwise send secrets to a replacement directory while the old FD gets the
+ * fsync (post-impl audit finding #5). dev+ino equality binds path resolution
+ * to the held descriptor. A vanished path throws JournalDirMovedError, never
+ * a bare ENOENT a caller might treat as "no journal yet" (round-2 finding 4).
+ *
+ * Check-open-CHECK: the pre-check alone leaves a gap (rotation between check
+ * and open); re-checking after the open closes single-rotation attacks — if
+ * the identity held at both checks, either the open preceded the rotation
+ * (the fd is bound to the genuine inode forever) or no rotation happened.
+ * The residual is a rotate-away-and-back ABA landing entirely between the
+ * two checks — which requires the attacker to control the journal's PARENT
+ * path. The default journal home under $HOME is not attacker-writable;
+ * callers choosing a path under a hostile parent are outside this design's
+ * threat model (Node core has no openat to close that fully).
  */
 function assertDirUnmoved(handle: JournalHandle): void {
   const held = fstatSync(handle.dirFd);
-  const atPath = statSync(handle.dirPath);
+  let atPath: ReturnType<typeof statSync>;
+  try {
+    atPath = statSync(handle.dirPath);
+  } catch {
+    throw new JournalDirMovedError(handle.dirPath, 'no longer exists at its path (moved or deleted)');
+  }
   if (held.dev !== atPath.dev || held.ino !== atPath.ino) {
-    throw new Error(
-      `journal directory ${handle.dirPath} no longer resolves to the directory this handle ` +
-        `opened (rotated or replaced); refusing to touch secrets through it`,
-    );
+    throw new JournalDirMovedError(handle.dirPath, 'resolves to a DIFFERENT directory (rotated or replaced)');
   }
 }
 
@@ -253,6 +281,10 @@ export function appendJournalRecord(handle: JournalHandle, file: string, record:
     0o600,
   );
   try {
+    // Post-open re-check: a rotation BETWEEN the pre-check and the open would
+    // have resolved the file into the replacement directory (see
+    // assertDirUnmoved's check-open-check note). Nothing has been written yet.
+    assertDirUnmoved(handle);
     const st = fstatSync(fd);
     if (!st.isFile()) {
       throw new Error(`journal ${file} is not a regular file; refusing to write a secret to it`);
@@ -284,15 +316,22 @@ export function readJournalRecords(
   handle: JournalHandle,
   file: string,
 ): { records: JournalRecord[]; tornLines: number } {
+  // OUTSIDE the try: a moved directory must throw JournalDirMovedError, never
+  // read as "empty journal" — an empty answer here would make the bridge
+  // treat existing deposits as claimable-nothing (round-2 finding 4:
+  // the identity check's failure was previously swallowed by the ENOENT
+  // file-absence path).
+  assertDirUnmoved(handle);
   let fd: number;
   try {
-    assertDirUnmoved(handle);
     fd = openSync(join(handle.dirPath, file), constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (err) {
     if ((err as { code?: string }).code === 'ENOENT') return { records: [], tornLines: 0 };
     throw err;
   }
   try {
+    // Post-open re-check, same reasoning as appendJournalRecord.
+    assertDirUnmoved(handle);
     if (!fstatSync(fd).isFile()) throw new Error(`journal ${file} is not a regular file`);
     const lines = readFileSync(fd, 'utf8').split('\n').filter(Boolean);
     const records: JournalRecord[] = [];
