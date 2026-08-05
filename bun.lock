@@ -84,6 +84,7 @@
         "@aztec/entrypoints": "5.0.1",
         "@aztec/ethereum": "5.0.1",
         "@aztec/foundation": "5.0.1",
+        "@aztec/l1-artifacts": "5.0.1",
         "@aztec/protocol-contracts": "5.0.1",
         "@aztec/stdlib": "5.0.1",
         "@aztec/wallets": "5.0.1",
