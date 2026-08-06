@@ -16,7 +16,13 @@ import {
   type parseQuotaFpcConfig,
   worstCasePerDayWei,
 } from '../config/schema.js';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan, snapshotOptions } from './action-plan.js';
+import {
+  type ConfirmAction,
+  confirmAndRevalidate,
+  createActionPlan,
+  digestOptions,
+  snapshotOptions,
+} from './action-plan.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
@@ -151,10 +157,10 @@ export async function deployQuotaFpc(
     worstCasePerDayWei: worstCasePerDayWei(snapshot.policy).toString(),
     maxLossWei: snapshot.maxLossWei,
     from: snapshot.from.toString(),
-    // Options cannot be digested generically (class instances), but the KEY
-    // SET is shown, so an option appearing post-confirmation is visible in
-    // the digest mismatch (round-3 finding 4).
-    sendOptionKeys: Object.keys(snapshot.sendOptions).sort().join(','),
+    // Binds option VALUES, not just names: plain parts by canonical value,
+    // class instances by constructor name (round-3 finding 4; round-4
+    // finding 2 — same-class internal state is the documented residual).
+    sendOptionsDigest: digestOptions(snapshot.sendOptions),
   });
   // Deployment has no CAS to recheck; revalidation re-asserts the artifact so
   // a rebuild between confirm and send cannot swap the class underneath.

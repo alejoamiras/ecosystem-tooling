@@ -186,6 +186,23 @@ export interface ScheduleGuards {
 /**
  * Schedules a policy change (CAS-protected, effective 12h later). There is ONE
  * pending slot: scheduling REPLACES any not-yet-active change.
+ *
+ * SEMANTICS WHILE A BUNDLE IS PENDING — best-effort on timing, exact on
+ * values (post-impl audit round 4, finding 1). The VALUES that land are
+ * always byte-for-byte the confirmed digest (partial changes are refused
+ * while pending, so nothing is filled from a live policy the activation
+ * could swap). What CANNOT be guaranteed is the replace-in-time intent: if
+ * this operation stalls past the revalidation's safety horizon (sleeping
+ * machine, stalled prover) and the pending bundle activates before the
+ * transaction lands, the pending bundle will have gone LIVE and this change
+ * replaces it only ~12h after landing. There is no protocol-level
+ * transaction expiry or contract predicate to close that (the contract is
+ * frozen); instead the race is DETECTED deterministically after landing and
+ * reported via `pendingActivatedFirst`, so the operator can react
+ * immediately rather than discover it 12h later. Refusing all scheduling
+ * while pending was considered and rejected: it would make a fat-fingered
+ * pending policy un-cancelable — guaranteed 12h of exposure to trade
+ * against a narrow stall race.
  */
 export async function schedulePolicyChange(
   deps: PolicyDeps & { confirm: ConfirmAction },
@@ -193,7 +210,18 @@ export async function schedulePolicyChange(
   guards: ScheduleGuards,
   /** Extra abort condition checked with the CAS immediately before sending. */
   revalidateAlso?: () => Promise<string | undefined>,
-): Promise<{ scheduledRevision: bigint }> {
+): Promise<{
+  scheduledRevision: bigint;
+  /**
+   * True when the previously-pending bundle is detected to have gone LIVE
+   * (it activated before this schedule landed) — the confirmed
+   * `replacesPending` intent was raced; this change now activates ~12h from
+   * landing. False when nothing was pending, the replacement landed in time,
+   * or the pending values were observationally identical to the live ones
+   * (in which case the race has no effect).
+   */
+  pendingActivatedFirst: boolean;
+}> {
   // Snapshot the caller-owned change BEFORE validating or confirming — with a
   // COPY of the target array, which would otherwise stay aliased to caller
   // memory: a confirmation callback mutating it after the digest was shown
@@ -277,6 +305,15 @@ export async function schedulePolicyChange(
     maxUsers: next.maxUsers,
     allowedTargets: next.allowedTargets.join(','),
     replacesPending: state.scheduled.pending,
+    // The best-effort disclosure travels IN the confirmed plan: the human
+    // approving a replacement approves this outcome too (round-4 finding 1).
+    ...(state.scheduled.pending
+      ? {
+          ifPendingActivatesFirst:
+            'if the operation stalls and the pending bundle activates before this lands, that bundle ' +
+            'goes live and THESE EXACT values replace it ~12h after landing (reported via pendingActivatedFirst)',
+        }
+      : {}),
     worstCasePerDayWei: worstCase.toString(),
     maxLossWei: guards.maxLossWei.toString(),
     activationDelayHours: 12,
@@ -341,18 +378,57 @@ export async function schedulePolicyChange(
     )
     .send({ from: deps.from });
 
-  return { scheduledRevision: expectedRevision + 1n };
+  // Post-send race DETECTION (round-4 finding 1): if a bundle was pending,
+  // determine whether it went live before our schedule landed by comparing
+  // the now-live policy to the observed pending values. Exact up to
+  // observational equivalence — when the pending values equal the old live
+  // ones, the crossing is undetectable AND consequence-free, so `false` is
+  // the honest answer. Detection failing (RPC hiccup) must not mask a
+  // successfully landed schedule; it degrades to a thrown-in error message.
+  let pendingActivatedFirst = false;
+  if (state.scheduled.pending) {
+    const after = await readPolicyState(deps, guards.gasProfile);
+    const p = state.scheduled;
+    const sameTargets =
+      after.live.allowedTargets.length === p.allowedTargets.length &&
+      after.live.allowedTargets.every((t, i) => t.toLowerCase() === p.allowedTargets[i].toLowerCase());
+    const wasOldLive =
+      p.values.maxFeeWei === state.live.maxFeeWei &&
+      p.values.maxUses === state.live.maxUses &&
+      p.values.maxUsers === state.live.maxUsers &&
+      p.allowedTargets.length === state.live.allowedTargets.length &&
+      p.allowedTargets.every((t, i) => t.toLowerCase() === state.live.allowedTargets[i].toLowerCase());
+    pendingActivatedFirst =
+      !wasOldLive &&
+      after.live.maxFeeWei === p.values.maxFeeWei &&
+      after.live.maxUses === p.values.maxUses &&
+      after.live.maxUsers === p.values.maxUsers &&
+      sameTargets;
+  }
+
+  return { scheduledRevision: expectedRevision + 1n, pendingActivatedFirst };
 }
 
 /**
  * "Cancels" a pending change by scheduling the CURRENT live values — there is
  * no unschedule primitive on a delayed mutable. The live values still take a
  * fresh 12h trip.
+ *
+ * BEST-EFFORT, like all scheduling against a pending bundle (round-4 finding
+ * 1): the pre-send revalidation aborts when the pending change already
+ * activated or activates within the safety horizon, which NARROWS but cannot
+ * CLOSE the race — a stall between revalidation and landing can still let
+ * the pending bundle activate first. When that happens the outcome is: the
+ * unwanted bundle runs until this schedule's own 12h delay elapses, then the
+ * captured live values take effect (a delayed restore, not a clean cancel).
+ * `pendingActivatedFirst: true` in the result is the deterministic post-send
+ * signal that this occurred — decide then whether to keep the restore or
+ * schedule something else.
  */
 export async function cancelPendingPolicyChange(
   deps: PolicyDeps & { confirm: ConfirmAction },
   guards: ScheduleGuards,
-): Promise<{ scheduledRevision: bigint }> {
+): Promise<{ scheduledRevision: bigint; pendingActivatedFirst: boolean }> {
   const state = await readPolicyState(deps, guards.gasProfile);
   if (!state.scheduled.pending) {
     throw new Error('nothing is pending — the last scheduled bundle is already in force');
@@ -369,12 +445,11 @@ export async function cancelPendingPolicyChange(
     // guards still run — live values must satisfy them or the operator should
     // know their standing policy no longer does.
     guards,
-    // TOCTOU guard (review finding #5): if the pending change ACTIVATES
-    // between the read above and the send, the CAS still passes (activation
-    // does not bump the revision) and this call would schedule a 12h ROLLBACK
-    // of the now-live policy while reporting a successful cancel. Abort
-    // instead: re-read chain time and the activation timestamp just before
-    // broadcasting.
+    // Race-narrowing guard (review finding #5): if the pending change
+    // ACTIVATES between the read above and this revalidation, the CAS still
+    // passes (activation does not bump the revision) — abort cleanly here.
+    // Beyond this point the residual stall race is detected post-send, not
+    // prevented (see the docstring).
     async () => {
       const stillPending = await readPolicyState(deps, guards.gasProfile);
       if (!stillPending.scheduled.pending) {

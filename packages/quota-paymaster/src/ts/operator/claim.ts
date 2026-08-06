@@ -51,7 +51,17 @@ export interface ClaimDetails {
  */
 export function findClaimInJournal(
   journal: JournalHandle,
-  query: { recipient: string; messageHash?: string },
+  query: {
+    recipient: string;
+    messageHash?: string;
+    /**
+     * Proceed even though a prior attempt for the selected deposit ended with
+     * an UNKNOWN outcome (its wait timed out after broadcast — it may still
+     * checkpoint). Verify on-chain first (recipient balance / tx receipt); a
+     * retry against an already-redeemed deposit fails and burns gas.
+     */
+    allowRetryAfterUnknownOutcome?: boolean;
+  },
 ): ClaimDetails {
   const { records, tornLines } = readJournalRecords(journal, BRIDGE_JOURNAL_FILE);
   if (tornLines > 0) {
@@ -82,6 +92,29 @@ export function findClaimInJournal(
         : String(r.messageHash).toLowerCase() === query.messageHash.toLowerCase()),
   );
   const record = matches.at(-1);
+  // Attempt-limbo guard (round-4 finding 3): a CLAIM_OUTCOME_UNKNOWN without
+  // a later CLAIMED means a prior attempt's wait timed out AFTER broadcast —
+  // the claim may still land. Building a retry blindly would target an
+  // already-redeemed deposit.
+  if (record && !query.allowRetryAfterUnknownOutcome) {
+    const hash = String(record.messageHash).toLowerCase();
+    const lastMarker = records
+      .filter(
+        (r) =>
+          (r.state === 'CLAIM_SUBMITTING' || r.state === 'CLAIM_OUTCOME_UNKNOWN' || r.state === 'CLAIMED') &&
+          String(r.messageHash).toLowerCase() === hash,
+      )
+      .at(-1);
+    // A dangling CLAIM_SUBMITTING (crash mid-send) is the same ambiguity as
+    // an explicit UNKNOWN outcome: the transaction may have broadcast.
+    if (lastMarker && lastMarker.state !== 'CLAIMED') {
+      throw new Error(
+        `a prior claim attempt for deposit ${record.messageHash} has no recorded outcome ` +
+          `(${String(lastMarker.error ?? 'crashed or timed out mid-send')}) — it may still land. Verify on-chain ` +
+          `(recipient balance / tx receipt), then pass allowRetryAfterUnknownOutcome to proceed deliberately.`,
+      );
+    }
+  }
   if (!record) {
     throw new Error(
       `no unclaimed DEPOSIT_CONFIRMED journal record for ${query.recipient}` +
@@ -162,11 +195,52 @@ export async function claimFeeJuice(
     FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
       ? requestedStatus
       : TxStatus.CHECKPOINTED;
+  // Durable attempt marker BEFORE the send (round-4 finding 3): if the wait
+  // times out AFTER broadcast, the claim may still checkpoint later with
+  // nothing journaled — a retry would then burn gas on an already-redeemed
+  // deposit. CLAIM_SUBMITTING (resolved by a later CLAIMED, or left dangling
+  // by a crash/timeout) is what lets findClaimInJournal warn instead.
+  if (deps.journal && messageHash) {
+    await withJournalLock(deps.journal, () => {
+      appendJournalRecord(deps.journal as JournalHandle, BRIDGE_JOURNAL_FILE, {
+        state: 'CLAIM_SUBMITTING',
+        at: new Date().toISOString(),
+        to: recipientStr,
+        amountWei: amountWei.toString(),
+        messageHash,
+      });
+    });
+  }
+
   // sendOpts spreads FIRST: the confirmed payer is bound and cannot be
   // overridden by an unconfirmed option (finding #1).
-  const { receipt } = await FeeJuiceContract.at(deps.wallet)
-    .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
-    .send({ ...sendOpts, from, wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false } });
+  let receipt: {
+    isMined(): boolean;
+    hasExecutionSucceeded(): boolean;
+    txHash: { toString(): string };
+    status: string;
+    error?: string;
+  };
+  try {
+    ({ receipt } = await FeeJuiceContract.at(deps.wallet)
+      .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
+      .send({ ...sendOpts, from, wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false } }));
+  } catch (err) {
+    // The failure may be POST-broadcast (a wait timeout): record the unknown
+    // outcome durably so the ambiguity survives a process exit.
+    if (deps.journal && messageHash) {
+      await withJournalLock(deps.journal, () => {
+        appendJournalRecord(deps.journal as JournalHandle, BRIDGE_JOURNAL_FILE, {
+          state: 'CLAIM_OUTCOME_UNKNOWN',
+          at: new Date().toISOString(),
+          to: recipientStr,
+          messageHash,
+          error: String((err as { message?: string })?.message ?? err),
+        });
+      });
+    }
+    throw err;
+  }
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     throw new Error(
       `claim transaction ${receipt.txHash} did not execute successfully ` +

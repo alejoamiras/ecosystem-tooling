@@ -185,6 +185,33 @@ describe('findClaimInJournal', () => {
     expect(findClaimInJournal(handle, { recipient: RECIPIENT }).messageHash).toBe('0xaa');
   });
 
+  test('an unresolved prior attempt (limbo) is refused unless explicitly overridden', () => {
+    // Round-4 finding 3: a wait can time out AFTER broadcast — the claim may
+    // still land with nothing journaled. The CLAIM_SUBMITTING /
+    // CLAIM_OUTCOME_UNKNOWN markers make that ambiguity durable.
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_SUBMITTING', { to: RECIPIENT, messageHash: '0xaa' }),
+    );
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_OUTCOME_UNKNOWN', { to: RECIPIENT, messageHash: '0xaa', error: 'wait timeout' }),
+    );
+    expect(() => findClaimInJournal(handle, { recipient: RECIPIENT })).toThrow(/no recorded outcome/);
+    // Deliberate override, after on-chain verification, proceeds.
+    expect(findClaimInJournal(handle, { recipient: RECIPIENT, allowRetryAfterUnknownOutcome: true }).messageHash).toBe(
+      '0xaa',
+    );
+    // A resolved attempt (CLAIMED landed) is not limbo — and the claimed-set
+    // filter takes over from there.
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('CLAIMED', { to: RECIPIENT, messageHash: '0xaa' }));
+    expect(() => findClaimInJournal(handle, { recipient: RECIPIENT })).toThrow(/no unclaimed DEPOSIT_CONFIRMED/);
+  });
+
   test('an EXPLICIT message hash that is already CLAIMED is refused, not rebuilt', () => {
     // The explicit-hash path must not bypass the claimed-set (post-impl audit
     // finding #8) — retrying a redeemed claim burns gas on a doomed tx.

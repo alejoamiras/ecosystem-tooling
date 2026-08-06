@@ -190,7 +190,14 @@ async function cmdPolicy(flags: Flags): Promise<void> {
   };
   const confirm = makeConfirm(flags);
   if (flags.has('cancel')) {
-    const { scheduledRevision } = await cancelPendingPolicyChange({ ...deps, confirm }, guards);
+    const { scheduledRevision, pendingActivatedFirst } = await cancelPendingPolicyChange({ ...deps, confirm }, guards);
+    if (pendingActivatedFirst) {
+      console.error(
+        '\nWARNING: the pending change ACTIVATED before the cancel landed — it is LIVE NOW, and the ' +
+          'captured previous values are scheduled to replace it in ~12h (a delayed restore, not a clean cancel). ' +
+          'Review `policy --show` and decide whether to keep that restore.',
+      );
+    }
     console.log(`\nPending change replaced with the live values (revision ${scheduledRevision}).`);
     return;
   }
@@ -199,7 +206,13 @@ async function cmdPolicy(flags: Flags): Promise<void> {
     maxUses: flags.has('max-uses') ? Number(flags.get('max-uses')) : undefined,
     maxUsers: flags.has('max-users') ? Number(flags.get('max-users')) : undefined,
   };
-  const { scheduledRevision } = await schedulePolicyChange({ ...deps, confirm }, change, guards);
+  const { scheduledRevision, pendingActivatedFirst } = await schedulePolicyChange({ ...deps, confirm }, change, guards);
+  if (pendingActivatedFirst) {
+    console.error(
+      '\nWARNING: the previously-pending change ACTIVATED before this schedule landed — it is LIVE NOW; ' +
+        'your confirmed values replace it in ~12h. Review `policy --show`.',
+    );
+  }
   console.log(`\nScheduled (revision ${scheduledRevision}). Takes effect in 12h; one pending slot.`);
 }
 

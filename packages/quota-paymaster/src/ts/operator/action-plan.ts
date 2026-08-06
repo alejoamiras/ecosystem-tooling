@@ -64,6 +64,35 @@ export function snapshotOptions<T extends Record<string, unknown>>(options: T): 
   return copy({ ...options }) as T;
 }
 
+/**
+ * Digests an option bag for inclusion in an ActionPlan: plain objects/arrays
+ * and primitives are canonically serialized by VALUE (sorted keys, bigints as
+ * strings); class instances — payment methods and the like, which cannot be
+ * serialized generically — contribute their constructor name, so SWAPPING one
+ * for another class still changes the digest, while same-class internal state
+ * remains the documented residual (post-impl audit round 4, finding 2).
+ */
+export function digestOptions(options: Record<string, unknown>): string {
+  const canonical = (v: unknown): unknown => {
+    if (typeof v === 'bigint') return `${v}n`;
+    if (typeof v === 'function') return `[function:${v.name || 'anonymous'}]`;
+    if (Array.isArray(v)) return v.map(canonical);
+    if (v !== null && typeof v === 'object') {
+      const proto = Object.getPrototypeOf(v);
+      if (proto === Object.prototype || proto === null) {
+        return Object.keys(v as Record<string, unknown>)
+          .sort()
+          .map((k) => [k, canonical((v as Record<string, unknown>)[k])]);
+      }
+      return `[instance:${(v as object).constructor?.name ?? 'unknown'}]`;
+    }
+    return v;
+  };
+  return createHash('sha256')
+    .update(JSON.stringify(canonical(options)))
+    .digest('hex');
+}
+
 export class ActionAborted extends Error {
   constructor(readonly plan: ActionPlan) {
     super(`aborted by operator: ${plan.kind} (${plan.digest.slice(0, 12)})`);
