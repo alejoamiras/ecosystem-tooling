@@ -1,6 +1,6 @@
 # ecosystem-tooling
 
-Bun monorepo consolidating Wonderland's Aztec packages under the `@alejoamiras` npm scope: `private-fee-juice` (the FPC + SDK, renamed from `aztec-fee-payment` — plan fee-payment-revisions-rename) and `aztec-benchmark`. Versions are LOCKSTEP with the Aztec version they target. `aztec-standards` lived here through 5.0.0 and was handed over to the Aztec Foundation (July 2026) — it is now [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards); the `@alejoamiras/aztec-standards` npm package is deprecated (all versions) and its trusted-publisher entry was removed.
+Bun monorepo consolidating Aztec packages under the `@alejoamiras` npm scope: `private-fee-juice` (the FPC + SDK, renamed from `aztec-fee-payment` — plan fee-payment-revisions-rename), `aztec-benchmark`, and `quota-paymaster` (the QuotaFpc quota paymaster extracted from dark-forest-aztec — plan quota-fpc-extraction; contract vendored byte-verbatim with a chain-verified class-id lineage, see its `known-deployments.json` + `verify:lineage`). Versions are LOCKSTEP with the Aztec version they target. `aztec-standards` lived here through 5.0.0 and was handed over to the Aztec Foundation (July 2026) — it is now [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards); the `@alejoamiras/aztec-standards` npm package is deprecated (all versions) and its trusted-publisher entry was removed.
 
 ## Current state
 
@@ -12,16 +12,18 @@ Bun monorepo consolidating Wonderland's Aztec packages under the `@alejoamiras` 
 - `bun run lint` / `lint:fix` — biome + sort-package-json
 - `bun run lint:actions` — actionlint (run before pushing workflow changes)
 - `bun run typecheck` — full-surface tsc (src + tests + benchmarks + scripts, all packages)
-- `bun run test:nr` — Noir TXE tests per package (`aztec test`); count floor: fee-payment 11
+- `bun run test:nr` — Noir TXE tests per package (`aztec test`); count floors: fee-payment 11, quota-paymaster 20. NEVER run concurrently with a live local network (LMDB flakes)
 - `bun run test:js` — vitest integration tests; need `aztec start --local-network` (node :8080, L1 :8545; override via `NODE_URL` / `L1_RPC_URL`)
+- `bun run test:warp` — quota-paymaster's time-travel suite; self-provisions its OWN disposable network (ephemeral ports + own anvil), safe alongside a shared one. Never widen the main vitest include to discover warp tests
 - `bun run bench` — aztec-benchmark suites (local network required)
+- `bun run --cwd packages/quota-paymaster verify:lineage` — binds quota-paymaster's vendored sources + dep lock + artifacts to the chain-verified class id; run after ANY contract-side change
 
 ## Hard conventions (from the approved plan)
 
 - **Aztec version single source of truth**: root `package.json` `config.aztecVersion`. Bumps ONLY via `bun scripts/bump-aztec.ts <version>` (sweeps package.json pins, Nargo.toml tags, PRD header; regenerates bunfig exclusions; emits an alias-aware supply-chain report) + `scripts/verify-nargo-refs.sh --write` (commit-locks every Nargo git tag; verified on every release build).
 - **Internal cross-package deps: exact lockstep pins, NEVER `workspace:*`** (npm CLI publishes the protocol string verbatim — breaks consumers).
 - **Published manifests are curated**: no lifecycle scripts, `@aztec/*` as exact peerDependencies, `repository` must point at THIS repo (provenance validates it).
-- **Publish order: benchmark → fee-payment.** rc versions get the `rc` dist-tag, never `latest`; repo-side improvements to a published lockstep version (security fixes, doc-visible corrections — the version is locked to Aztec so it can't be bumped) ship as `<version>-revision.N` via `mode=revision` (dist-tag `revision`; pass `set-latest=true` to publish the revision under `latest` at publish time, else `latest` is moved manually with OTP). `-revision.N` sorts below its base and `^`-ranges won't match it — adopting consumers must pin exactly, so deprecate the superseded base version. Policy lives in `scripts/release-policy.mjs` (tested by `node --test`).
+- **Publish order: benchmark → fee-payment → quota-paymaster** (quota-paymaster has no internal runtime deps; appended LAST). NOTE: quota-paymaster is fully wired into release.yml but has never been published — the NEXT release/rehearsal dispatch of ANY kind requires its one-time npm first-publish bootstrap first (see docs/ci-pipeline.md), or it will fail at quota-paymaster's publish step by design. rc versions get the `rc` dist-tag, never `latest`; repo-side improvements to a published lockstep version (security fixes, doc-visible corrections — the version is locked to Aztec so it can't be bumped) ship as `<version>-revision.N` via `mode=revision` (dist-tag `revision`; pass `set-latest=true` to publish the revision under `latest` at publish time, else `latest` is moved manually with OTP). `-revision.N` sorts below its base and `^`-ranges won't match it — adopting consumers must pin exactly, so deprecate the superseded base version. Policy lives in `scripts/release-policy.mjs` (tested by `node --test`).
 - **Releases go through the rehearse-then-release choreography** (docs/ci-pipeline.md runbook): rehearsal publishes `0.0.0-canary.g<sha>` through the REAL release.yml; the release then binds to that commit (`expected-head-sha`) and byte-compares against the rehearsed tarballs (`compare-against`). Never relax the fail-closed tarball assertions.
 - **Keep vitest** for migrated suites (forks pool + inline @aztec deps are load-bearing); bun replaces yarn as PM/script-runner only.
 - Noir formatting via `aztec-nargo fmt` (pre-commit hook); TS/JSON via biome.

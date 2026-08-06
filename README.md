@@ -12,6 +12,7 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 |---|---|---|
 | [`@alejoamiras/private-fee-juice`](https://www.npmjs.com/package/@alejoamiras/private-fee-juice) | [![npm](https://img.shields.io/npm/v/@alejoamiras/private-fee-juice.svg)](https://www.npmjs.com/package/@alejoamiras/private-fee-juice) | Private Fee Payment Contract (FPC) + TypeScript SDK |
 | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI machinery for Aztec contracts (gates, DA/L2 gas, proving) |
+| [`@alejoamiras/quota-paymaster`](https://www.npmjs.com/package/@alejoamiras/quota-paymaster) | [![npm](https://img.shields.io/npm/v/@alejoamiras/quota-paymaster.svg)](https://www.npmjs.com/package/@alejoamiras/quota-paymaster) | Quota paymaster (QuotaFpc): allowlist-scoped, per-day-quota fee sponsorship — contract + SDK + operator library (unreleased: first publish pending the npm bootstrap) |
 
 Package versions track the Aztec version they support — e.g. install `@alejoamiras/private-fee-juice@5.0.1` when targeting Aztec `5.0.1`. Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`.
 

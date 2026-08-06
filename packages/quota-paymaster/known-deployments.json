@@ -1,0 +1,39 @@
+{
+  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. The classId below is the lineage anchor: verify:lineage asserts the compiled artifact still matches it at every phase gate.",
+  "mainnet": {
+    "name": "Dark Forest quota paymaster (reference deployment — NOT this package's to operate)",
+    "address": "0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4",
+    "admin": "0x157e64ac5ca521894cff836599ea449c8e25ae81bc7e1f2e7a8cf933b7442ba7",
+    "aztecVersion": "5.0.1",
+    "classId": "0x115cfdfdc4e440c11f040af7e9c980c0e61858b86daeacfe9765a9be613a62fc",
+    "verifiedAgainstChain": true,
+    "verification": {
+      "method": "read-only node_getContract via https://aztec-mainnet.drpc.org (scripts/chain-verify.ts); currentContractClassId AND originalContractClassId both matched the locally compiled artifact",
+      "date": "2026-08-05"
+    },
+    "warning": "Fee juice is protocol-non-transferable: funding this instance is an IRREVERSIBLE donation to Dark Forest. Deploy your own paymaster instead."
+  },
+  "provenance": {
+    "sourceRepo": "alejoamiras/dark-forest-aztec",
+    "sourceBranch": "worktree-quota-fpc",
+    "sourceCommit": "f1943d8519199ea584d498e7ca62b9f3fcfa51c9",
+    "toolchain": "aztec CLI 5.0.1 (aztec compile; bb 5.0.0-nightly.20260710 vk cache)",
+    "authorship": "All vendored files are Alejo Amiras' own contributions in the source fork (relicensed MIT here at the 2026-08-05 plan approval). Third-party code from that fork (contracts/scripts/utils/) is deliberately NOT vendored.",
+    "upstreamSha256": {
+      "contracts/fpc/quota_fpc/src/main.nr": "8d0be050bfc731fc92d64ea5144d61c3ea73059440898b3ad3a363a2c52c9c3a",
+      "contracts/fpc/fpc_test_target/src/main.nr": "c4cbf5fe6d6e8417a24321936ed3de19bee7d5a2c8e2b490cf027f178cedf52b"
+    },
+    "vendoredSha256": {
+      "src/nr/quota_fpc/src/main.nr": "6657549cb37288a2a79f377d1c1d75483c4b2bf6993bb24f55183d895ccd71f0",
+      "src/nr/fpc_test_target/src/main.nr": "c4cbf5fe6d6e8417a24321936ed3de19bee7d5a2c8e2b490cf027f178cedf52b",
+      "src/nr/quota_fpc/Nargo.toml": "e34c7aba9a171416c803ce88016095ba55ebdd0f7343ce3e80f395eba3b336af",
+      "src/nr/fpc_test_target/Nargo.toml": "347df44ed2872fb6ae44f799b416e89d7bfcded2e68013b6e669c29b93741dea"
+    },
+    "allowedDeviations": [
+      "src/nr/quota_fpc/src/main.nr: exactly one added `pub mod test;` registration line (proven class-id-neutral by the Phase-1 spike; re-proven by every verify:lineage run)",
+      "src/nr/quota_fpc/src/main.nr: `pub` visibility markers on exactly two contract-library methods (assert_fee_within_max, assert_generation_fresh) so the TXE suite can exercise them directly — proven class-id-neutral (Phase 2; compiled class id identical with and without them)",
+      "Nargo.toml files: dependency URL normalized from AztecProtocol/aztec-nr to the AztecProtocol/aztec-packages monorepo form this repo's bump-aztec.ts sweeps (same tag v5.0.1)",
+      "test module files under src/nr/quota_fpc/src/test/ (not hash-pinned; they carry no contract code — class id equality is the guard)"
+    ]
+  }
+}

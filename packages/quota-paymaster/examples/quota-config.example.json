@@ -1,0 +1,27 @@
+{
+  "$comment": "Example QuotaFpc deployment config. Copy, rename, and fill for YOUR app. Addresses support env: indirection so configs never hardcode secrets or per-network addresses. See the README's threat-model section before choosing values — especially: allowlist ONLY contracts whose ENTIRE callable surface you are willing to pay for (never a token), and size maxFeeWei from MEASURED action costs times headroom, not from the do-nothing harness floor.",
+  "name": "example-local",
+  "description": "Example: sponsors one test contract on a local network.",
+  "policy": {
+    "$comment": "maxFeeWei: per-transaction ceiling. Measure your real actions first (measureSponsoredFee); a ceiling below the client fee floor silently stops ALL sponsorship.",
+    "maxFeeWei": "100000000000000000000",
+    "maxUsesPerDay": 5,
+    "maxUsersPerDay": 20
+  },
+  "allowedTargets": [
+    {
+      "name": "ExampleTarget",
+      "address": "env:QUOTA_EXAMPLE_TARGET_ADDRESS"
+    }
+  ],
+  "allowedAccountClasses": [
+    {
+      "$comment": "Compute from YOUR installed @aztec/accounts (the deploy tooling recomputes and refuses a mismatch). Only initializerless account classes are compatible with requireUnpublishedAccounts.",
+      "name": "SchnorrInitializerlessAccount",
+      "classId": "env:QUOTA_EXAMPLE_ACCOUNT_CLASS_ID"
+    }
+  ],
+  "requireUnpublishedAccounts": true,
+  "adminAddress": "env:QUOTA_EXAMPLE_ADMIN_ADDRESS",
+  "maxLossWei": "30000000000000000000000"
+}

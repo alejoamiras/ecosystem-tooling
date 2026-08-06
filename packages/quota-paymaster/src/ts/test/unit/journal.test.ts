@@ -1,0 +1,244 @@
+/**
+ * The hardened bridge journal: every failure mode the audits demanded a test
+ * for. These tests use real files in a temp dir — the hardening IS filesystem
+ * behavior, so mocking fs would test nothing.
+ */
+import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+import { findClaimInJournal } from '../../operator/claim.js';
+import {
+  appendJournalRecord,
+  BRIDGE_JOURNAL_FILE,
+  backdateLockForTests,
+  closeJournalDir,
+  type JournalHandle,
+  openJournalDir,
+  readJournalRecords,
+  withJournalLock,
+} from '../../operator/internal/journal.js';
+
+const cleanups: (() => void)[] = [];
+afterEach(() => {
+  while (cleanups.length) cleanups.pop()?.();
+});
+
+function tempDir(): string {
+  const dir = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), 'quota-journal-test-'));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+function openTemp(): { dir: string; handle: JournalHandle } {
+  const dir = join(tempDir(), 'journal');
+  const handle = openJournalDir(dir);
+  cleanups.push(() => closeJournalDir(handle));
+  return { dir, handle };
+}
+
+const record = (state: string, extra: Record<string, unknown> = {}) => ({
+  state,
+  at: new Date().toISOString(),
+  ...extra,
+});
+
+describe('journal directory', () => {
+  test('is created 0700 and accepted', () => {
+    const { handle } = openTemp();
+    expect(handle.dirFd).toBeGreaterThan(0);
+  });
+
+  test('a group/world-readable directory is refused — it holds claim secrets', () => {
+    const dir = join(tempDir(), 'loose');
+    mkdirSync(dir, { mode: 0o755 });
+    expect(() => openJournalDir(dir)).toThrow(/group\/world accessible/);
+  });
+
+  test('a rotated/replaced directory is refused — path resolution must land in the held dir', () => {
+    // Node has no true openat: appends re-resolve the PATH. If the directory
+    // is swapped after opening (parent-symlink rotation), a path-based open
+    // would write the secret into the REPLACEMENT while the held FD gets the
+    // fsync (post-impl audit finding #5).
+    const { dir, handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
+    const moved = `${dir}-moved`;
+    renameSync(dir, moved);
+    cleanups.push(() => rmSync(moved, { recursive: true, force: true }));
+    mkdirSync(dir, { mode: 0o700 }); // impostor at the original path
+    expect(() => appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('DEPOSIT_CONFIRMED'))).toThrow(
+      /DIFFERENT directory/,
+    );
+    expect(() => readJournalRecords(handle, BRIDGE_JOURNAL_FILE)).toThrow(/DIFFERENT directory/);
+  });
+
+  test('a directory moved away WITHOUT an impostor throws, never reads as an empty journal', () => {
+    // Round-2 finding 4: the identity failure must not be swallowed by the
+    // "journal file absent" ENOENT path — an empty answer would make existing
+    // deposits look like nothing was ever bridged.
+    const { dir, handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
+    const moved = `${dir}-moved`;
+    renameSync(dir, moved);
+    cleanups.push(() => rmSync(moved, { recursive: true, force: true }));
+    expect(() => readJournalRecords(handle, BRIDGE_JOURNAL_FILE)).toThrow(/no longer exists at its path/);
+    expect(() => appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('X'))).toThrow(/no longer exists at its path/);
+  });
+
+  test('a symlinked journal file is refused (O_NOFOLLOW), not silently followed', () => {
+    const { dir, handle } = openTemp();
+    const outside = join(tempDir(), 'attacker-target');
+    writeFileSync(outside, '');
+    symlinkSync(outside, join(dir, BRIDGE_JOURNAL_FILE));
+    expect(() => appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'))).toThrow(
+      /ELOOP|symlink/i,
+    );
+  });
+});
+
+describe('append + read roundtrip', () => {
+  test('appended records come back intact and 0600', () => {
+    const { dir, handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED', { claimSecret: '0xaa' }));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('DEPOSIT_CONFIRMED', { messageHash: '0xbb' }));
+    const { records, tornLines } = readJournalRecords(handle, BRIDGE_JOURNAL_FILE);
+    expect(tornLines).toBe(0);
+    expect(records.map((r) => r.state)).toEqual(['SECRET_GENERATED', 'DEPOSIT_CONFIRMED']);
+    // Verify the mode was re-asserted on the file.
+    expect(statSync(join(dir, BRIDGE_JOURNAL_FILE)).mode & 0o777).toBe(0o600);
+  });
+
+  test('a torn trailing line (crash mid-append) is REPORTED, never silently skipped', () => {
+    const { dir, handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
+    // Simulate the crash: a truncated JSON line at the tail.
+    writeFileSync(join(dir, BRIDGE_JOURNAL_FILE), '{"state":"DEPOSIT_CONF', { flag: 'a', mode: 0o600 });
+    const { records, tornLines } = readJournalRecords(handle, BRIDGE_JOURNAL_FILE);
+    expect(records).toHaveLength(1);
+    expect(tornLines).toBe(1);
+  });
+
+  test('a pre-existing loose-mode journal file is tightened to 0600 on append', () => {
+    const { dir, handle } = openTemp();
+    const file = join(dir, BRIDGE_JOURNAL_FILE);
+    writeFileSync(file, '');
+    chmodSync(file, 0o644);
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('SECRET_GENERATED'));
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe('locking', () => {
+  test('serializes: a held lock makes the second taker wait (and time out)', async () => {
+    const { handle } = openTemp();
+    await withJournalLock(handle, async () => {
+      await expect(withJournalLock(handle, async () => 'should not run', { timeoutMs: 400 })).rejects.toThrow(
+        /held by another operator/,
+      );
+    });
+  });
+
+  test('a crashed holder is detected by age and stolen loudly', async () => {
+    const { handle } = openTemp();
+    const warnings: string[] = [];
+    // Take the lock and DO NOT release (simulated crash): re-enter bypassing fn.
+    await withJournalLock(handle, () => {
+      backdateLockForTests(handle, 10 * 60_000);
+      // While "crashed", a new taker must steal rather than hang.
+      return withJournalLock(handle, async () => 'ran', {
+        timeoutMs: 2_000,
+        onWarn: (m) => warnings.push(m),
+      });
+    });
+    expect(warnings.some((w) => /stealing stale journal lock/.test(w))).toBe(true);
+  });
+
+  test('the lock is released after the critical section, even on throw', async () => {
+    const { handle } = openTemp();
+    await expect(
+      withJournalLock(handle, () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    // Releasable again immediately:
+    await withJournalLock(handle, async () => {}, { timeoutMs: 300 });
+  });
+});
+
+describe('findClaimInJournal', () => {
+  const RECIPIENT = `0x0${'7'.repeat(63)}`;
+  const deposit = (messageHash: string) =>
+    record('DEPOSIT_CONFIRMED', {
+      to: RECIPIENT,
+      amountWei: '1000',
+      claimSecret: '0xsecret',
+      messageLeafIndex: '5',
+      messageHash,
+    });
+
+  test('latest-unclaimed selection skips deposits already recorded CLAIMED', () => {
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xbb'));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('CLAIMED', { to: RECIPIENT, messageHash: '0xbb' }));
+    // Without the claimed-set filter this would re-target 0xbb (the newest).
+    expect(findClaimInJournal(handle, { recipient: RECIPIENT }).messageHash).toBe('0xaa');
+  });
+
+  test('an unresolved prior attempt (limbo) is refused unless explicitly overridden', () => {
+    // Round-4 finding 3: a wait can time out AFTER broadcast — the claim may
+    // still land with nothing journaled. The CLAIM_SUBMITTING /
+    // CLAIM_OUTCOME_UNKNOWN markers make that ambiguity durable.
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_SUBMITTING', { to: RECIPIENT, messageHash: '0xaa' }),
+    );
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_OUTCOME_UNKNOWN', { to: RECIPIENT, messageHash: '0xaa', error: 'wait timeout' }),
+    );
+    expect(() => findClaimInJournal(handle, { recipient: RECIPIENT })).toThrow(/no recorded outcome/);
+    // Deliberate override, after on-chain verification, proceeds.
+    expect(findClaimInJournal(handle, { recipient: RECIPIENT, allowRetryAfterUnknownOutcome: true }).messageHash).toBe(
+      '0xaa',
+    );
+    // A resolved attempt (CLAIMED landed) is not limbo — and the claimed-set
+    // filter takes over from there.
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('CLAIMED', { to: RECIPIENT, messageHash: '0xaa' }));
+    expect(() => findClaimInJournal(handle, { recipient: RECIPIENT })).toThrow(/no unclaimed DEPOSIT_CONFIRMED/);
+  });
+
+  test('a definitively FAILED attempt is resolved — retry allowed without override', () => {
+    // Round-5 observation: a reverted/dropped receipt is a KNOWN outcome, not
+    // limbo. CLAIM_FAILED resolves the marker chain and the deposit stays
+    // claimable through the normal path.
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_SUBMITTING', { to: RECIPIENT, messageHash: '0xaa' }),
+    );
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_FAILED', { to: RECIPIENT, messageHash: '0xaa', error: 'status dropped' }),
+    );
+    expect(findClaimInJournal(handle, { recipient: RECIPIENT }).messageHash).toBe('0xaa');
+  });
+
+  test('an EXPLICIT message hash that is already CLAIMED is refused, not rebuilt', () => {
+    // The explicit-hash path must not bypass the claimed-set (post-impl audit
+    // finding #8) — retrying a redeemed claim burns gas on a doomed tx.
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, record('CLAIMED', { to: RECIPIENT, messageHash: '0xaa' }));
+    expect(() => findClaimInJournal(handle, { recipient: RECIPIENT, messageHash: '0xaa' })).toThrow(
+      /already recorded as CLAIMED/,
+    );
+  });
+});
