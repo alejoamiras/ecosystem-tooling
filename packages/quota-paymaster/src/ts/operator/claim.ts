@@ -246,12 +246,18 @@ export async function claimFeeJuice(
     throw err;
   }
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
-    // A definitive on-chain failure is NOT limbo: journal the resolution so
-    // findClaimInJournal allows a retry without the override flag.
+    // Only a MINED revert is a definitive, retry-safe failure. An UNMINED
+    // receipt handed back by a nonstandard wallet (the standard wait helper
+    // throws before returning one) proves nothing about the transaction's
+    // fate — treat it as limbo, not resolution (round-6 observation 1).
+    // NOTE: with the standard wallet this whole branch is rarely reached
+    // (reverts/drops throw from the wait and land in the catch above as
+    // CLAIM_OUTCOME_UNKNOWN — fail-safe, merely conservative).
+    const definitiveMinedRevert = receipt.isMined() && !receipt.hasExecutionSucceeded();
     if (deps.journal && messageHash) {
       await withJournalLock(deps.journal, () => {
         appendJournalRecord(deps.journal as JournalHandle, BRIDGE_JOURNAL_FILE, {
-          state: 'CLAIM_FAILED',
+          state: definitiveMinedRevert ? 'CLAIM_FAILED' : 'CLAIM_OUTCOME_UNKNOWN',
           at: new Date().toISOString(),
           to: recipientStr,
           messageHash,
@@ -262,7 +268,9 @@ export async function claimFeeJuice(
     throw new Error(
       `claim transaction ${receipt.txHash} did not execute successfully ` +
         `(status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}); ` +
-        `journaled as CLAIM_FAILED — the deposit remains claimable`,
+        (definitiveMinedRevert
+          ? 'journaled as CLAIM_FAILED — the deposit remains claimable'
+          : 'journaled as CLAIM_OUTCOME_UNKNOWN — verify on-chain before retrying'),
     );
   }
 

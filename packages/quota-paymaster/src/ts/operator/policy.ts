@@ -198,9 +198,11 @@ export interface ScheduleGuards {
  * transaction lands, the pending bundle will have gone LIVE and this change
  * replaces it only ~12h after landing. There is no protocol-level
  * transaction expiry or contract predicate to close that (the contract is
- * frozen); instead the race is DETECTED deterministically after landing and
- * reported via `pendingActivatedFirst`, so the operator can react
- * immediately rather than discover it 12h later. Refusing all scheduling
+ * frozen); instead the race is DETECTED after landing (deterministically
+ * when the observation read succeeds; `'unknown'` when it fails — the
+ * schedule itself has already succeeded either way) and reported via
+ * `pendingActivatedFirst`, so the operator can react immediately rather
+ * than discover it 12h later. Refusing all scheduling
  * while pending was considered and rejected: it would make a fat-fingered
  * pending policy un-cancelable — guaranteed 12h of exposure to trade
  * against a narrow stall race.
@@ -443,9 +445,10 @@ export async function schedulePolicyChange(
  * the pending bundle activate first. When that happens the outcome is: the
  * unwanted bundle runs until this schedule's own 12h delay elapses, then the
  * captured live values take effect (a delayed restore, not a clean cancel).
- * `pendingActivatedFirst: true` in the result is the deterministic post-send
- * signal that this occurred — decide then whether to keep the restore or
- * schedule something else.
+ * `pendingActivatedFirst: true` in the result is the post-send signal that
+ * this occurred (`'unknown'` when the observation read failed — the cancel
+ * itself succeeded; re-read state instead of re-running it) — decide then
+ * whether to keep the restore or schedule something else.
  */
 export async function cancelPendingPolicyChange(
   deps: PolicyDeps & { confirm: ConfirmAction },
