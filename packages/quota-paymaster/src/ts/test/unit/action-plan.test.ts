@@ -5,6 +5,8 @@ import {
   ActionRevalidationFailed,
   confirmAndRevalidate,
   createActionPlan,
+  digestOptions,
+  snapshotOptions,
 } from '../../operator/action-plan.js';
 
 describe('action plans', () => {
@@ -58,5 +60,32 @@ describe('action plans', () => {
         async () => undefined,
       ),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('option snapshots and digests', () => {
+  test('snapshotOptions deep-copies plain nesting; mutation after snapshot has no effect', () => {
+    class FakePayment {
+      kind = 'fake';
+    }
+    const original = { fee: { gasSettings: { l2GasLimit: 100 } }, method: new FakePayment() };
+    const snap = snapshotOptions(original);
+    original.fee.gasSettings.l2GasLimit = 999;
+    expect((snap.fee as { gasSettings: { l2GasLimit: number } }).gasSettings.l2GasLimit).toBe(100);
+    // Class instances stay by reference — the documented residual.
+    expect(snap.method).toBe(original.method);
+  });
+
+  test('digestOptions is type-injective and sensitive to instance class swaps', () => {
+    // Round-5 observation: without type tags, 1n vs "1n" and undefined vs
+    // null collide.
+    expect(digestOptions({ a: 1n })).not.toBe(digestOptions({ a: '1n' }));
+    expect(digestOptions({ a: undefined })).not.toBe(digestOptions({ a: null }));
+    expect(digestOptions({ a: 1 })).not.toBe(digestOptions({ a: '1' }));
+    class MethodA {}
+    class MethodB {}
+    expect(digestOptions({ m: new MethodA() })).not.toBe(digestOptions({ m: new MethodB() }));
+    // Deterministic across key order.
+    expect(digestOptions({ a: 1, b: 2 })).toBe(digestOptions({ b: 2, a: 1 }));
   });
 });

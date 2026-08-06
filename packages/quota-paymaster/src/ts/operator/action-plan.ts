@@ -73,20 +73,31 @@ export function snapshotOptions<T extends Record<string, unknown>>(options: T): 
  * remains the documented residual (post-impl audit round 4, finding 2).
  */
 export function digestOptions(options: Record<string, unknown>): string {
+  // Every leaf carries a TYPE TAG so the encoding is injective across types:
+  // without tags, bigint 1n and string "1n" (or undefined and null, which
+  // JSON.stringify conflates) would collide (round-5 observation).
   const canonical = (v: unknown): unknown => {
-    if (typeof v === 'bigint') return `${v}n`;
-    if (typeof v === 'function') return `[function:${v.name || 'anonymous'}]`;
-    if (Array.isArray(v)) return v.map(canonical);
-    if (v !== null && typeof v === 'object') {
+    if (v === undefined) return ['undefined'];
+    if (v === null) return ['null'];
+    if (typeof v === 'bigint') return ['bigint', v.toString()];
+    if (typeof v === 'string') return ['string', v];
+    if (typeof v === 'number') return ['number', v];
+    if (typeof v === 'boolean') return ['boolean', v];
+    if (typeof v === 'function') return ['function', v.name || 'anonymous'];
+    if (Array.isArray(v)) return ['array', v.map(canonical)];
+    if (typeof v === 'object') {
       const proto = Object.getPrototypeOf(v);
       if (proto === Object.prototype || proto === null) {
-        return Object.keys(v as Record<string, unknown>)
-          .sort()
-          .map((k) => [k, canonical((v as Record<string, unknown>)[k])]);
+        return [
+          'object',
+          Object.keys(v as Record<string, unknown>)
+            .sort()
+            .map((k) => [k, canonical((v as Record<string, unknown>)[k])]),
+        ];
       }
-      return `[instance:${(v as object).constructor?.name ?? 'unknown'}]`;
+      return ['instance', (v as object).constructor?.name ?? 'unknown'];
     }
-    return v;
+    return ['other', String(v)];
   };
   return createHash('sha256')
     .update(JSON.stringify(canonical(options)))

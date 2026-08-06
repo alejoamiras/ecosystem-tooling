@@ -11,6 +11,7 @@
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import { TxStatus } from '@aztec/stdlib/tx';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
 import { assertValidTargetList, padAllowedTargets, worstCasePerDayWei } from '../config/schema.js';
 import { type GasProfile, sponsoredFeeFloorWei } from '../gas-profile.js';
@@ -213,14 +214,17 @@ export async function schedulePolicyChange(
 ): Promise<{
   scheduledRevision: bigint;
   /**
-   * True when the previously-pending bundle is detected to have gone LIVE
+   * `true` when the previously-pending bundle is detected to have gone LIVE
    * (it activated before this schedule landed) — the confirmed
    * `replacesPending` intent was raced; this change now activates ~12h from
-   * landing. False when nothing was pending, the replacement landed in time,
-   * or the pending values were observationally identical to the live ones
-   * (in which case the race has no effect).
+   * landing. `false` when nothing was pending, the replacement landed in
+   * time, or the pending values were observationally identical to the live
+   * ones (in which case the race has no effect). `'unknown'` when the
+   * schedule itself SUCCEEDED (checkpointed) but the post-send observation
+   * read failed — do NOT retry the schedule; re-read policy state to learn
+   * the outcome.
    */
-  pendingActivatedFirst: boolean;
+  pendingActivatedFirst: boolean | 'unknown';
 }> {
   // Snapshot the caller-owned change BEFORE validating or confirming — with a
   // COPY of the target array, which would otherwise stay aliased to caller
@@ -376,34 +380,52 @@ export async function schedulePolicyChange(
       },
       expectedRevision,
     )
-    .send({ from: deps.from });
+    // CHECKPOINTED-or-better finality before declaring success (round-5
+    // finding 1): the wallet default (PROPOSED at 5.0.1) can be reorged out
+    // AFTER this function returned a revision — the operator would believe a
+    // replacement exists that doesn't. Same floor the claim path enforces.
+    .send({ from: deps.from, wait: { waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false } })
+    .then(({ receipt }) => {
+      if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
+        throw new Error(
+          `schedule_settings transaction ${receipt.txHash} did not execute successfully (status ${receipt.status})`,
+        );
+      }
+    });
 
   // Post-send race DETECTION (round-4 finding 1): if a bundle was pending,
   // determine whether it went live before our schedule landed by comparing
   // the now-live policy to the observed pending values. Exact up to
   // observational equivalence — when the pending values equal the old live
   // ones, the crossing is undetectable AND consequence-free, so `false` is
-  // the honest answer. Detection failing (RPC hiccup) must not mask a
-  // successfully landed schedule; it degrades to a thrown-in error message.
-  let pendingActivatedFirst = false;
+  // the honest answer. The schedule has ALREADY SUCCEEDED at checkpointed
+  // finality by this point, so an observation failure must not surface as a
+  // thrown error (the operator would read it as "the schedule failed" and
+  // retry, replacing their own bundle and restarting its 12h delay —
+  // round-5 finding 2). It degrades to `'unknown'`, never to a throw.
+  let pendingActivatedFirst: boolean | 'unknown' = false;
   if (state.scheduled.pending) {
-    const after = await readPolicyState(deps, guards.gasProfile);
-    const p = state.scheduled;
-    const sameTargets =
-      after.live.allowedTargets.length === p.allowedTargets.length &&
-      after.live.allowedTargets.every((t, i) => t.toLowerCase() === p.allowedTargets[i].toLowerCase());
-    const wasOldLive =
-      p.values.maxFeeWei === state.live.maxFeeWei &&
-      p.values.maxUses === state.live.maxUses &&
-      p.values.maxUsers === state.live.maxUsers &&
-      p.allowedTargets.length === state.live.allowedTargets.length &&
-      p.allowedTargets.every((t, i) => t.toLowerCase() === state.live.allowedTargets[i].toLowerCase());
-    pendingActivatedFirst =
-      !wasOldLive &&
-      after.live.maxFeeWei === p.values.maxFeeWei &&
-      after.live.maxUses === p.values.maxUses &&
-      after.live.maxUsers === p.values.maxUsers &&
-      sameTargets;
+    try {
+      const after = await readPolicyState(deps, guards.gasProfile);
+      const p = state.scheduled;
+      const sameTargets =
+        after.live.allowedTargets.length === p.allowedTargets.length &&
+        after.live.allowedTargets.every((t, i) => t.toLowerCase() === p.allowedTargets[i].toLowerCase());
+      const wasOldLive =
+        p.values.maxFeeWei === state.live.maxFeeWei &&
+        p.values.maxUses === state.live.maxUses &&
+        p.values.maxUsers === state.live.maxUsers &&
+        p.allowedTargets.length === state.live.allowedTargets.length &&
+        p.allowedTargets.every((t, i) => t.toLowerCase() === state.live.allowedTargets[i].toLowerCase());
+      pendingActivatedFirst =
+        !wasOldLive &&
+        after.live.maxFeeWei === p.values.maxFeeWei &&
+        after.live.maxUses === p.values.maxUses &&
+        after.live.maxUsers === p.values.maxUsers &&
+        sameTargets;
+    } catch {
+      pendingActivatedFirst = 'unknown';
+    }
   }
 
   return { scheduledRevision: expectedRevision + 1n, pendingActivatedFirst };
@@ -428,7 +450,7 @@ export async function schedulePolicyChange(
 export async function cancelPendingPolicyChange(
   deps: PolicyDeps & { confirm: ConfirmAction },
   guards: ScheduleGuards,
-): Promise<{ scheduledRevision: bigint; pendingActivatedFirst: boolean }> {
+): Promise<{ scheduledRevision: bigint; pendingActivatedFirst: boolean | 'unknown' }> {
   const state = await readPolicyState(deps, guards.gasProfile);
   if (!state.scheduled.pending) {
     throw new Error('nothing is pending — the last scheduled bundle is already in force');

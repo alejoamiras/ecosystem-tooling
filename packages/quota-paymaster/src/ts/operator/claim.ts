@@ -101,13 +101,17 @@ export function findClaimInJournal(
     const lastMarker = records
       .filter(
         (r) =>
-          (r.state === 'CLAIM_SUBMITTING' || r.state === 'CLAIM_OUTCOME_UNKNOWN' || r.state === 'CLAIMED') &&
+          (r.state === 'CLAIM_SUBMITTING' ||
+            r.state === 'CLAIM_OUTCOME_UNKNOWN' ||
+            r.state === 'CLAIM_FAILED' ||
+            r.state === 'CLAIMED') &&
           String(r.messageHash).toLowerCase() === hash,
       )
       .at(-1);
     // A dangling CLAIM_SUBMITTING (crash mid-send) is the same ambiguity as
     // an explicit UNKNOWN outcome: the transaction may have broadcast.
-    if (lastMarker && lastMarker.state !== 'CLAIMED') {
+    // CLAIMED and CLAIM_FAILED are RESOLVED outcomes — no limbo.
+    if (lastMarker && lastMarker.state !== 'CLAIMED' && lastMarker.state !== 'CLAIM_FAILED') {
       throw new Error(
         `a prior claim attempt for deposit ${record.messageHash} has no recorded outcome ` +
           `(${String(lastMarker.error ?? 'crashed or timed out mid-send')}) — it may still land. Verify on-chain ` +
@@ -242,9 +246,23 @@ export async function claimFeeJuice(
     throw err;
   }
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
+    // A definitive on-chain failure is NOT limbo: journal the resolution so
+    // findClaimInJournal allows a retry without the override flag.
+    if (deps.journal && messageHash) {
+      await withJournalLock(deps.journal, () => {
+        appendJournalRecord(deps.journal as JournalHandle, BRIDGE_JOURNAL_FILE, {
+          state: 'CLAIM_FAILED',
+          at: new Date().toISOString(),
+          to: recipientStr,
+          messageHash,
+          error: `status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}`,
+        });
+      });
+    }
     throw new Error(
       `claim transaction ${receipt.txHash} did not execute successfully ` +
-        `(status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}); nothing journaled`,
+        `(status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}); ` +
+        `journaled as CLAIM_FAILED — the deposit remains claimable`,
     );
   }
 

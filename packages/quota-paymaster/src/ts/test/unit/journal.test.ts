@@ -212,6 +212,25 @@ describe('findClaimInJournal', () => {
     expect(() => findClaimInJournal(handle, { recipient: RECIPIENT })).toThrow(/no unclaimed DEPOSIT_CONFIRMED/);
   });
 
+  test('a definitively FAILED attempt is resolved — retry allowed without override', () => {
+    // Round-5 observation: a reverted/dropped receipt is a KNOWN outcome, not
+    // limbo. CLAIM_FAILED resolves the marker chain and the deposit stays
+    // claimable through the normal path.
+    const { handle } = openTemp();
+    appendJournalRecord(handle, BRIDGE_JOURNAL_FILE, deposit('0xaa'));
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_SUBMITTING', { to: RECIPIENT, messageHash: '0xaa' }),
+    );
+    appendJournalRecord(
+      handle,
+      BRIDGE_JOURNAL_FILE,
+      record('CLAIM_FAILED', { to: RECIPIENT, messageHash: '0xaa', error: 'status dropped' }),
+    );
+    expect(findClaimInJournal(handle, { recipient: RECIPIENT }).messageHash).toBe('0xaa');
+  });
+
   test('an EXPLICIT message hash that is already CLAIMED is refused, not rebuilt', () => {
     // The explicit-hash path must not bypass the claimed-set (post-impl audit
     // finding #8) — retrying a redeemed claim burns gas on a doomed tx.

@@ -185,7 +185,28 @@ export async function deployQuotaFpc(
     snapshot.requireUnpublishedAccounts,
   );
   // The SNAPSHOTTED options spread FIRST: the confirmed sender is bound and
-  // cannot be overridden by an unconfirmed option (finding #1).
-  await deployment.send({ ...snapshot.sendOptions, from: snapshot.from });
+  // cannot be overridden by an unconfirmed option (finding #1). The wait is
+  // floored at CHECKPOINTED finality before success is declared — the wallet
+  // default (PROPOSED) can be reorged out after this returns (round-5
+  // finding 1, applied to deploy as well as policy). Callers may request
+  // stronger finality via sendOptions.wait; weaker is overridden.
+  const { TxStatus } = await import('@aztec/stdlib/tx');
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const { wait: callerWait, ...sendOpts } = snapshot.sendOptions;
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
+  const { receipt } = await deployment.send({
+    ...sendOpts,
+    from: snapshot.from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  });
+  if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
+    throw new Error(`deployment transaction ${receipt.txHash} did not execute successfully (status ${receipt.status})`);
+  }
   return await deployment.register();
 }
