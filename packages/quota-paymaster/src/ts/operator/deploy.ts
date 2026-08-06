@@ -16,7 +16,7 @@ import {
   type parseQuotaFpcConfig,
   worstCasePerDayWei,
 } from '../config/schema.js';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
+import { type ConfirmAction, confirmAndRevalidate, createActionPlan, snapshotOptions } from './action-plan.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
@@ -129,9 +129,10 @@ export async function deployQuotaFpc(
     requireUnpublishedAccounts: config.requireUnpublishedAccounts,
     maxLossWei: config.maxLossWei,
     from: deps.from,
-    // Options affect fee/wait behavior — snapshot them too, so a confirm
-    // callback cannot swap them after approval (round-2 finding 6).
-    sendOptions: { ...opts.sendOptions },
+    // Options affect fee/wait behavior — snapshot them too (recursively for
+    // plain objects), so a confirm callback cannot swap them after approval
+    // (round-2 finding 6; round-3 finding 4).
+    sendOptions: snapshotOptions(opts.sendOptions ?? {}),
   };
 
   const classId = await assertArtifactIsChainVerifiedClass();
@@ -150,6 +151,10 @@ export async function deployQuotaFpc(
     worstCasePerDayWei: worstCasePerDayWei(snapshot.policy).toString(),
     maxLossWei: snapshot.maxLossWei,
     from: snapshot.from.toString(),
+    // Options cannot be digested generically (class instances), but the KEY
+    // SET is shown, so an option appearing post-confirmation is visible in
+    // the digest mismatch (round-3 finding 4).
+    sendOptionKeys: Object.keys(snapshot.sendOptions).sort().join(','),
   });
   // Deployment has no CAS to recheck; revalidation re-asserts the artifact so
   // a rebuild between confirm and send cannot swap the class underneath.

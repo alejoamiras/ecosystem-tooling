@@ -42,6 +42,28 @@ export function createActionPlan<K extends string>(
   return Object.freeze({ kind, details: Object.freeze({ ...details }), digest });
 }
 
+/**
+ * Snapshots caller-supplied option bags for use after confirmation: plain
+ * objects and arrays are copied RECURSIVELY, so a confirmation callback
+ * mutating nested literals (`fee.gasSettings` etc.) cannot change what
+ * executes (post-impl audit round 3, finding 4). Class instances (payment
+ * methods, field elements) are kept by reference — they cannot be cloned
+ * generically; that shared-reference residual is the documented limit.
+ */
+export function snapshotOptions<T extends Record<string, unknown>>(options: T): T {
+  const copy = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(copy);
+    if (v !== null && typeof v === 'object') {
+      const proto = Object.getPrototypeOf(v);
+      if (proto === Object.prototype || proto === null) {
+        return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, copy(x)]));
+      }
+    }
+    return v;
+  };
+  return copy({ ...options }) as T;
+}
+
 export class ActionAborted extends Error {
   constructor(readonly plan: ActionPlan) {
     super(`aborted by operator: ${plan.kind} (${plan.digest.slice(0, 12)})`);

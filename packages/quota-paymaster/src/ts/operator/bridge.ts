@@ -89,8 +89,15 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
   if (amountWei <= 0n) throw new Error('amountWei must be positive');
   // The buffer controls the L1 gas limit — an execution-affecting input, so
   // it is validated AND appears in the confirmed plan (round-2 finding 6).
-  if (gasLimitBufferPercent !== undefined && !Number.isFinite(gasLimitBufferPercent)) {
-    throw new Error(`gasLimitBufferPercent must be a finite number, got ${gasLimitBufferPercent}`);
+  // Range-bounded, not just finite: Number.MAX_VALUE is finite but the
+  // basis-point scaling would overflow to Infinity and the BigInt conversion
+  // would throw only AFTER the secret is journaled and the L1 approval is
+  // mined (round-3 finding 5). 10000% (a 100x buffer) is already absurd.
+  if (
+    gasLimitBufferPercent !== undefined &&
+    (!Number.isFinite(gasLimitBufferPercent) || gasLimitBufferPercent < 0 || gasLimitBufferPercent > 10_000)
+  ) {
+    throw new Error(`gasLimitBufferPercent must be a number in [0, 10000], got ${gasLimitBufferPercent}`);
   }
 
   // (Snapshotted after validation — the validators above must run before any

@@ -35,4 +35,16 @@ describe('bridge recipient validation (pre-network)', () => {
       /amountWei must be positive/,
     );
   });
+
+  test('rejects an out-of-range gas buffer BEFORE any money moves (round-3 finding 5)', async () => {
+    // Number.MAX_VALUE is finite, but scaling it to basis points overflows —
+    // and would previously throw only AFTER the secret was journaled and the
+    // L1 approval mined.
+    const valid = `0x0${'3'.repeat(63)}`;
+    for (const bad of [Number.MAX_VALUE, Number.POSITIVE_INFINITY, Number.NaN, -1, 10_001]) {
+      await expect(
+        bridgeFeeJuice(untouchedDeps, { to: valid, amountWei: 1n, gasLimitBufferPercent: bad }),
+      ).rejects.toThrow(/gasLimitBufferPercent/);
+    }
+  });
 });

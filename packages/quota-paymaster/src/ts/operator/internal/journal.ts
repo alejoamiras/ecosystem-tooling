@@ -275,11 +275,20 @@ function assertDirUnmoved(handle: JournalHandle): void {
 export function appendJournalRecord(handle: JournalHandle, file: string, record: JournalRecord): void {
   assertDirUnmoved(handle);
   const buf = Buffer.from(`${JSON.stringify(record)}\n`, 'utf8');
-  const fd = openSync(
-    join(handle.dirPath, file),
-    constants.O_CREAT | constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW,
-    0o600,
-  );
+  let fd: number;
+  try {
+    fd = openSync(
+      join(handle.dirPath, file),
+      constants.O_CREAT | constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW,
+      0o600,
+    );
+  } catch (err) {
+    // A rotation between the pre-check and this open can surface as ENOENT
+    // (path vanished mid-rotation). Convert to the typed identity error so
+    // callers never mistake it for an ordinary filesystem hiccup.
+    if ((err as { code?: string }).code === 'ENOENT') assertDirUnmoved(handle);
+    throw err;
+  }
   try {
     // Post-open re-check: a rotation BETWEEN the pre-check and the open would
     // have resolved the file into the replacement directory (see
@@ -326,7 +335,15 @@ export function readJournalRecords(
   try {
     fd = openSync(join(handle.dirPath, file), constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (err) {
-    if ((err as { code?: string }).code === 'ENOENT') return { records: [], tornLines: 0 };
+    if ((err as { code?: string }).code === 'ENOENT') {
+      // ENOENT is ALSO what a rotation landing between the pre-check and this
+      // open produces (path gone mid-rotation, or an impostor without the
+      // journal file) — and answering "empty journal" then hides every
+      // deposit (round-3 finding 1). Only a directory that STILL matches the
+      // held descriptor may report "no journal yet".
+      assertDirUnmoved(handle);
+      return { records: [], tornLines: 0 };
+    }
     throw err;
   }
   try {

@@ -214,6 +214,27 @@ export async function schedulePolicyChange(
 
   const [state, info] = await Promise.all([readPolicyState(deps, guards.gasProfile), deps.node.getNodeInfo()]);
 
+  // While a bundle is PENDING, fill-from-live is refused outright (round-3
+  // finding 3): the 600s revalidation horizon below narrows the activation
+  // race but cannot ENFORCE it — nothing expires the transaction if proving
+  // stalls or the operator's machine sleeps past the horizon. With every
+  // field explicit, activation crossing mid-operation can no longer smuggle
+  // in values the operator never saw: whatever lands is byte-for-byte the
+  // confirmed digest. (Aztec transactions carry no protocol-level expiry an
+  // operator account could use here, so refusal is the enforceable option.)
+  if (state.scheduled.pending) {
+    const missing = (['maxFeeWei', 'maxUses', 'maxUsers', 'allowedTargets'] as const).filter(
+      (k) => requested[k] === undefined,
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `a scheduled change is still pending (activates at ${state.scheduled.activatesAt}); ` +
+          `omitted fields (${missing.join(', ')}) would be filled from a live policy the pending ` +
+          `activation may replace mid-operation. Specify every field explicitly, or wait for activation.`,
+      );
+    }
+  }
+
   const next: PolicyValues & { allowedTargets: string[] } = {
     maxFeeWei: requested.maxFeeWei ?? state.live.maxFeeWei,
     maxUses: requested.maxUses ?? state.live.maxUses,
@@ -291,6 +312,11 @@ export async function schedulePolicyChange(
     // inclusion latency; activation timing is known 12h ahead, so aborting
     // a few minutes early costs the operator nothing.
     const timeNow = BigInt(latestNow?.header?.globalVariables?.timestamp ?? 0);
+    // Fail CLOSED on a malformed block response: a zero timestamp would
+    // otherwise sail under every horizon comparison (round-3 finding 3).
+    if (timeNow === 0n) {
+      return 'could not read fresh chain time for the activation check; refusing on unverifiable state';
+    }
     if (state.scheduled.pending && timeNow + ACTIVATION_SAFETY_HORIZON_SECONDS >= state.scheduled.activatesAt) {
       return (
         'the pending policy change activated mid-operation or activates within the ' +

@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
+import { type ConfirmAction, confirmAndRevalidate, createActionPlan, snapshotOptions } from './action-plan.js';
 import {
   appendJournalRecord,
   BRIDGE_JOURNAL_FILE,
@@ -113,12 +113,15 @@ export async function claimFeeJuice(
   const messageLeafIndex = claim.messageLeafIndex;
   const messageHash = claim.messageHash;
   const from = deps.from;
-  // Snapshot the options too, and strip any caller-supplied `wait`: CLAIMED
-  // bookkeeping below requires a MINED SUCCESS receipt, so `wait: NO_WAIT`
-  // (resolves at submission) or `wait: {dontThrowOnRevert}` (resolves on a
-  // reverted receipt) would let a dropped/reverted claim be journaled as
-  // redeemed (post-impl audit round 2, finding 3).
-  const { wait: _callerWait, ...sendOpts } = { ...sendOptions };
+  // Snapshot the options too, and take control of `wait`: CLAIMED bookkeeping
+  // below requires a receipt at CHECKPOINTED-or-better finality, so
+  // `wait: NO_WAIT` (resolves at submission), `wait: {dontThrowOnRevert}`
+  // (resolves on a reverted receipt), and `waitForStatus: PROPOSED` (a status
+  // a reorg can still evict — journaling CLAIMED there strands a claimable
+  // deposit behind the claimed-set filter) are all overridden. A caller may
+  // still request STRONGER finality (PROVEN/FINALIZED) or tune
+  // timeout/interval (post-impl audit rounds 2-3, finding 3/2).
+  const { wait: callerWait, ...sendOpts } = snapshotOptions(sendOptions);
 
   const recipient = AztecAddress.fromStringUnsafe(recipientStr);
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
@@ -148,12 +151,22 @@ export async function claimFeeJuice(
 
   const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
   const { Fr } = await import('@aztec/aztec.js/fields');
+  const { TxStatus } = await import('@aztec/stdlib/tx');
+  // Finality floor: honor the caller's timeout/interval and any REQUEST FOR
+  // MORE finality, but never less than CHECKPOINTED, and never revert-tolerant.
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
   // sendOpts spreads FIRST: the confirmed payer is bound and cannot be
-  // overridden by an unconfirmed option (finding #1); default wait semantics
-  // (mine + throw on revert) are enforced by the wait-stripping above.
+  // overridden by an unconfirmed option (finding #1).
   const { receipt } = await FeeJuiceContract.at(deps.wallet)
     .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
-    .send({ ...sendOpts, from });
+    .send({ ...sendOpts, from, wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false } });
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     throw new Error(
       `claim transaction ${receipt.txHash} did not execute successfully ` +
