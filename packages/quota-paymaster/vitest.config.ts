@@ -21,8 +21,8 @@ export default defineConfig({
     fileParallelism: false,
     pool: 'forks',
     // vitest 4 removed poolOptions; the equivalent single-fork/no-isolation
-    // shape is expressed top-level (sibling package still carries the old
-    // form and logs a deprecation — do not copy that back).
+    // shape is expressed top-level (private-fee-juice migrated to the same
+    // shape — keep both configs in step).
     maxWorkers: 1,
     isolate: false,
     execArgv: ['--experimental-vm-modules'],

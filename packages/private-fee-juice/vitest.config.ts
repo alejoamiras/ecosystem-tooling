@@ -21,13 +21,13 @@ export default defineConfig({
     testTimeout: 200000,
     fileParallelism: false,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        isolate: false,
-        execArgv: ['--experimental-vm-modules'],
-      },
-    },
+    // vitest 4 removed poolOptions — the old poolOptions.forks block was being
+    // silently ignored (masked by fileParallelism: false serializing files
+    // anyway). The single-fork/no-isolation shape is expressed top-level, same
+    // as quota-paymaster's config.
+    maxWorkers: 1,
+    isolate: false,
+    execArgv: ['--experimental-vm-modules'],
     include: ['src/ts/test/**/*.test.ts'],
     // Use new API to inline dependencies through Vite's transform pipeline
     server: {
