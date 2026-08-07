@@ -95,12 +95,14 @@ test('actively-published EQUALS release-ready, ordered, and named in the notes t
   }
 });
 
-test('the first-publish trap is documented where the operator will hit it', () => {
-  // quota-paymaster is wired but unpublished: the workflow must carry the
-  // bootstrap warning so a failed dispatch reads as designed, not broken.
-  assert.match(
+test('the retired first-publish warning does not linger', () => {
+  // quota-paymaster@5.0.1 was first-published via the one-time bootstrap
+  // (2026-08-07) and its trusted publisher exists. A stale NEVER-published
+  // warning would send a future operator hunting for a bootstrap that is
+  // already done.
+  assert.doesNotMatch(
     releaseYml,
-    /quota-paymaster has NEVER been published|first-publish\s+bootstrap/i,
-    'release.yml lost the quota-paymaster bootstrap warning comment',
+    /quota-paymaster has NEVER been published/,
+    'release.yml still carries the pre-bootstrap warning; quota-paymaster is published',
   );
 });
