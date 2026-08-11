@@ -148,16 +148,52 @@ describe('assertOperatorContext — fields the CLI actually dereferences', () =>
     ).toThrow(/dispose must be a function/);
   });
 
-  test('a valid context with both optional fields passes', () => {
+  test('a valid context with the optional fields fully populated passes', () => {
     expect(() =>
       assertOperatorContext({
         node: {},
         wallet: {},
         from: { toString: () => '0x1' },
-        l1: { client: {} },
+        l1: {
+          client: {
+            account: { address: '0x1' },
+            simulateContract: async () => {},
+            estimateContractGas: async () => 0n,
+            writeContract: async () => '0x',
+            waitForTransactionReceipt: async () => ({ status: 'success', logs: [] }),
+          },
+        },
+        gasProfile: {
+          daGasLimit: 50_000,
+          l2GasLimit: 6_000_000,
+          teardownDaGasLimit: 5_000,
+          teardownL2GasLimit: 500_000,
+          feeHeadroomMultiplier: 1.5,
+        },
         dispose: async () => {},
       }),
     ).not.toThrow();
+  });
+
+  test('a rejected context still gets its dispose called (the key store must not leak)', async () => {
+    // resolveOperatorContext throws before withContext ever sees the context,
+    // so without this the factory's wallet + key directory would survive a
+    // failed run.
+    let disposed = false;
+    const config = defineOperatorConfig(
+      async () =>
+        ({
+          node: {},
+          wallet: {},
+          from: { toString: () => '0x1' },
+          l1: { client: {} }, // invalid on purpose
+          dispose: async () => {
+            disposed = true;
+          },
+        }) as never,
+    );
+    await expect(resolveOperatorContext(config)).rejects.toThrow(/l1\.client/);
+    expect(disposed).toBe(true);
   });
 });
 

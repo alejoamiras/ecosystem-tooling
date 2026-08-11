@@ -1,7 +1,7 @@
 /** `policy` — read live/pending policy, and schedule or cancel a change. */
 import { readFileSync } from 'node:fs';
 import { parseQuotaFpcConfig } from '../../config/schema.js';
-import type { GasProfile } from '../../gas-profile.js';
+import { assertValidGasProfile, type GasProfile } from '../../gas-profile.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { cancelPendingPolicyChange, readPolicyState, schedulePolicyChange } from '../../operator/policy.js';
 import { makeConfirm } from '../internal/confirm.js';
@@ -50,11 +50,21 @@ function gasProfileFrom(flags: ParsedFlags, fromContext: GasProfile | undefined)
         'There is deliberately no default — a foreign profile can approve a ceiling that stops sponsorship.',
     );
   }
+  let profile: GasProfile;
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as GasProfile;
+    profile = JSON.parse(readFileSync(path, 'utf8')) as GasProfile;
   } catch {
     throw new CliUsageError(`cannot read --gas-profile ${path} as JSON`);
   }
+  try {
+    // Semantic check here too: a syntactically fine but nonsensical profile
+    // would otherwise fail as a RangeError mid-computation (exit 1) rather
+    // than as the usage refusal it is.
+    assertValidGasProfile(profile);
+  } catch (error) {
+    throw new CliUsageError(`--gas-profile ${path} is invalid: ${(error as Error).message}`);
+  }
+  return profile;
 }
 
 /** The loss bound binds updates too, so it may come from the deploy config. */
@@ -69,7 +79,13 @@ function maxLossWeiFrom(flags: ParsedFlags): bigint {
     } catch {
       throw new CliUsageError(`cannot read --config ${configPath}`);
     }
-    return BigInt(parseQuotaFpcConfig(JSON.parse(raw)).maxLossWei);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new CliUsageError(`--config ${configPath} is not valid JSON`);
+    }
+    return BigInt(parseQuotaFpcConfig(parsed).maxLossWei);
   }
   throw new CliUsageError(
     'a loss bound is required for any policy edit: pass --max-loss-wei <N>, or --config <deploy.json> ' +
@@ -79,16 +95,30 @@ function maxLossWeiFrom(flags: ParsedFlags): bigint {
 
 /** Malformed numbers are usage refusals (nothing happened), never failures. */
 function parseBigint(raw: string, flag: string): bigint {
+  let value: bigint;
   try {
-    return BigInt(raw);
+    value = BigInt(raw);
   } catch {
     throw new CliUsageError(`--${flag} must be an integer (got "${raw}")`);
   }
+  // max_fee is a u128 on-chain and must be non-zero (assert_bundle_sane).
+  if (flag === 'max-fee-wei' && (value < 1n || value > (1n << 128n) - 1n)) {
+    throw new CliUsageError('--max-fee-wei must be an integer in 1..2^128-1');
+  }
+  if (value < 0n) throw new CliUsageError(`--${flag} must not be negative`);
+  return value;
 }
 
+/**
+ * The contract requires max_uses/max_users >= 1 and stores them as u32, so a 0
+ * or an out-of-range value is refused HERE rather than reverting after the
+ * operator has confirmed a plan.
+ */
 function parseCount(raw: string, flag: string): number {
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) throw new CliUsageError(`--${flag} must be a non-negative integer`);
+  if (!Number.isInteger(value) || value < 1 || value > 0xff_ff_ff_ff) {
+    throw new CliUsageError(`--${flag} must be an integer in 1..4294967295`);
+  }
   return value;
 }
 
@@ -109,6 +139,19 @@ function reportRace(pendingActivatedFirst: boolean | 'unknown', verb: string): v
 export async function run(flags: ParsedFlags): Promise<void> {
   const { AztecAddress } = await import('@aztec/aztec.js/addresses');
   const fpcAddress = AztecAddress.fromStringUnsafe(flags.require('fpc'));
+
+  // Everything that can be judged from argv + local files is judged BEFORE the
+  // config module runs: loading a config executes the operator's own code, and
+  // an invocation already known to be invalid should never reach it.
+  const isEdit = !flags.has('show');
+  const change = isEdit
+    ? {
+        maxFeeWei: flags.get('max-fee-wei') ? parseBigint(flags.require('max-fee-wei'), 'max-fee-wei') : undefined,
+        maxUses: flags.get('max-uses') ? parseCount(flags.require('max-uses'), 'max-uses') : undefined,
+        maxUsers: flags.get('max-users') ? parseCount(flags.require('max-users'), 'max-users') : undefined,
+      }
+    : undefined;
+  const maxLossWei = isEdit ? maxLossWeiFrom(flags) : undefined;
 
   await withContext(flags, async (ctx) => {
     const gasProfile = gasProfileFrom(flags, ctx.gasProfile);
@@ -134,7 +177,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     if (flags.has('show')) return;
 
     const guards = {
-      maxLossWei: maxLossWeiFrom(flags),
+      maxLossWei: maxLossWei as bigint,
       gasProfile,
       acceptCeilingBelowClientFloor: flags.has('accept-below-floor'),
       acceptWorstCaseAboveMaxLoss: flags.has('accept-above-max-loss'),
@@ -158,16 +201,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
       allowedTargets = [...kept, ...added.filter((t) => !known.has(t.toLowerCase()))];
     }
 
-    const change = {
-      maxFeeWei: flags.get('max-fee-wei') ? parseBigint(flags.require('max-fee-wei'), 'max-fee-wei') : undefined,
-      maxUses: flags.get('max-uses') ? parseCount(flags.require('max-uses'), 'max-uses') : undefined,
-      maxUsers: flags.get('max-users') ? parseCount(flags.require('max-users'), 'max-users') : undefined,
-      allowedTargets,
-    };
-    if (Object.values(change).every((v) => v === undefined)) {
+    const edit = { ...(change as NonNullable<typeof change>), allowedTargets };
+    if (Object.values(edit).every((v) => v === undefined)) {
       throw new CliUsageError('nothing to change — pass --show to read only, or at least one edit flag.');
     }
-    const result = await schedulePolicyChange({ ...deps, confirm }, change, guards);
+    const result = await schedulePolicyChange({ ...deps, confirm }, edit, guards);
     reportRace(result.pendingActivatedFirst, 'schedule');
     console.log(`\nScheduled (revision ${result.scheduledRevision}). Takes effect in 12h; one pending slot.`);
   });

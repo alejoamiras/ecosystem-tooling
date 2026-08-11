@@ -312,6 +312,50 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     expect(result.status).toBe(2);
   });
 
+  test('policy bounds match the contract: 0 and overflow are refused up front', () => {
+    // The contract asserts max_uses/max_users >= 1 and stores u32; catching it
+    // here means the operator is not asked to confirm a plan that must revert.
+    for (const args of [
+      ['--max-uses', '0'],
+      ['--max-users', '0'],
+      ['--max-uses', '4294967296'],
+      ['--max-fee-wei', '0'],
+    ]) {
+      const result = run([
+        'policy',
+        '--fpc',
+        `0x${'1'.repeat(64)}`,
+        ...args,
+        '--max-loss-wei',
+        '1',
+        '--config-module',
+        poisonConfig(),
+      ]);
+      expect(result.status, args.join(' ')).toBe(2);
+      expect(result.combined, args.join(' ')).toMatch(/must be an integer in|must not be negative/);
+      expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+    }
+  });
+
+  test('malformed --config JSON refuses with exit 2 (as deploy already did)', () => {
+    const dir = tempDir('quota-bin-badjson-');
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, '{ not json');
+    const result = run([
+      'policy',
+      '--fpc',
+      `0x${'1'.repeat(64)}`,
+      '--max-uses',
+      '3',
+      '--config',
+      bad,
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/not valid JSON/);
+  });
+
   test('a positional argument is refused WITHOUT echoing it', () => {
     // A mistyped `--secret x` lands the secret in the positional slot; the
     // refusal must not copy it into logs.

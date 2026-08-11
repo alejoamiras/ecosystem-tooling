@@ -110,12 +110,24 @@ export async function run(flags: ParsedFlags): Promise<void> {
     });
     if ((await makeConfirm(flags)(plan)) !== true) throw new ActionAborted(plan);
 
+    // A fresh PXE knows neither contract: `.at()` alone leaves reads and proving
+    // failing with "No artifact registered for contract class". Register both
+    // deployed instances with their artifacts first (same step readPolicyState
+    // performs for the paymaster).
+    const quotaArtifact = (await import('../../../artifacts/QuotaFpc.js')).QuotaFpcContractArtifact;
+    const register = async (address: typeof fpcAddress, contractArtifact: unknown) => {
+      const instance = await ctx.node.getContract(address);
+      if (!instance) throw new CliUsageError(`no contract deployed at ${address.toString()} on this node`);
+      await (ctx.wallet as unknown as { registerContract(i: unknown, a: unknown): Promise<void> }).registerContract(
+        instance,
+        contractArtifact,
+      );
+    };
+    await register(fpcAddress, quotaArtifact);
+    await register(targetAddress, artifact);
+
     const targetContract = await Contract.at(targetAddress, artifact, ctx.wallet);
-    const fpcContract = await Contract.at(
-      fpcAddress,
-      (await import('../../../artifacts/QuotaFpc.js')).QuotaFpcContractArtifact,
-      ctx.wallet,
-    );
+    const fpcContract = await Contract.at(fpcAddress, quotaArtifact, ctx.wallet);
     const alreadySubscribed = await hasSubscribed({
       node: ctx.node as never,
       fpcAddress,

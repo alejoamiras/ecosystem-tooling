@@ -18,7 +18,7 @@ import { pathToFileURL } from 'node:url';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import type { GasProfile } from '../gas-profile.js';
+import { assertValidGasProfile, type GasProfile } from '../gas-profile.js';
 import type { BridgeL1Client } from './bridge.js';
 
 /** Everything the operator library needs, supplied by the operator's module. */
@@ -191,7 +191,22 @@ export async function resolveOperatorContext(module: OperatorConfigModule): Prom
   } catch (cause) {
     throw new OperatorConfigError('factory-threw', `The config factory threw: ${describe(cause)}`, { cause });
   }
-  assertOperatorContext(context);
+  // If the context is malformed we still owe it its cleanup: the factory may
+  // already have created a wallet and a key directory, and `withContext` never
+  // receives this context, so its `finally` cannot run.
+  try {
+    assertOperatorContext(context);
+  } catch (error) {
+    const dispose = (context as { dispose?: unknown })?.dispose;
+    if (typeof dispose === 'function') {
+      try {
+        await (dispose as () => Promise<void>)();
+      } catch {
+        /* the shape error is the one worth reporting */
+      }
+    }
+    throw error;
+  }
   return context;
 }
 
@@ -218,19 +233,40 @@ export function assertOperatorContext(context: unknown): asserts context is Oper
     throw new OperatorConfigError('shape-invalid', 'OperatorContext.sendOptions must be an object when present');
   }
   if (ctx.l1 !== undefined) {
-    // Validate what the bridge command actually dereferences, not just the
-    // wrapper: a context with `l1: {}` would pass a shallow check and then fail
-    // mid-bridge, after the confirmation gate.
-    const l1 = ctx.l1 as { client?: unknown };
+    // Validate what the bridge command actually dereferences, down to the
+    // members: `l1: { client: {} }` would pass a wrapper-only check and then
+    // fail mid-bridge, AFTER the confirmation gate and after the claim secret
+    // has been journaled.
+    const l1 = ctx.l1 as { client?: Record<string, unknown> };
     if (typeof ctx.l1 !== 'object' || ctx.l1 === null || typeof l1.client !== 'object' || l1.client === null) {
       throw new OperatorConfigError('shape-invalid', 'OperatorContext.l1 must be { client } when present');
+    }
+    const client = l1.client;
+    if (typeof client.account !== 'object' || client.account === null) {
+      throw new OperatorConfigError('shape-invalid', 'OperatorContext.l1.client.account is missing');
+    }
+    for (const method of ['simulateContract', 'estimateContractGas', 'writeContract', 'waitForTransactionReceipt']) {
+      if (typeof client[method] !== 'function') {
+        throw new OperatorConfigError('shape-invalid', `OperatorContext.l1.client.${method} is missing`);
+      }
     }
   }
   if (ctx.dispose !== undefined && typeof ctx.dispose !== 'function') {
     throw new OperatorConfigError('shape-invalid', 'OperatorContext.dispose must be a function when present');
   }
-  if (ctx.gasProfile !== undefined && (typeof ctx.gasProfile !== 'object' || ctx.gasProfile === null)) {
-    throw new OperatorConfigError('shape-invalid', 'OperatorContext.gasProfile must be an object when present');
+  if (ctx.gasProfile !== undefined) {
+    if (typeof ctx.gasProfile !== 'object' || ctx.gasProfile === null) {
+      throw new OperatorConfigError('shape-invalid', 'OperatorContext.gasProfile must be an object when present');
+    }
+    // Semantic validation, not just shape: an all-zero or half-filled profile
+    // would otherwise surface as a RangeError deep in a fee computation.
+    try {
+      assertValidGasProfile(ctx.gasProfile as GasProfile);
+    } catch (cause) {
+      throw new OperatorConfigError('shape-invalid', `OperatorContext.gasProfile is invalid: ${describe(cause)}`, {
+        cause,
+      });
+    }
   }
 }
 

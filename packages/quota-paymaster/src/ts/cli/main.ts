@@ -68,7 +68,7 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     await command.run(flags);
-    return process.exitCode === 2 ? 2 : 0;
+    return 0;
   } catch (error) {
     // Refusals are distinct from failures: an operator who declined a plan, a
     // rejected config, or a usage mistake all mean "nothing happened".
