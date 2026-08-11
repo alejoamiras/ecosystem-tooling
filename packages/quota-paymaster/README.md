@@ -158,7 +158,7 @@ npx @alejoamiras/quota-paymaster deploy  --config ./quota.json --config-module $
 npx @alejoamiras/quota-paymaster policy  --fpc 0x… --config-module $CFG --max-uses 3 --max-loss-wei N --yes
 npx @alejoamiras/quota-paymaster bridge  --to 0x… --amount 5 --config-module $CFG --yes
 npx @alejoamiras/quota-paymaster claim   --for 0x… --config-module $CFG --yes
-npx @alejoamiras/quota-paymaster measure --fpc 0x… --target 0x… --artifact ./Target.json --config-module $CFG --yes
+npx @alejoamiras/quota-paymaster measure --fpc 0x… --target 0x… --artifact ./Target.json --method myFn --config-module $CFG --yes
 ```
 
 Contributors can run the same CLI from source without building:

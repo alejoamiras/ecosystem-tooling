@@ -214,6 +214,23 @@ describe('published CLI (live network)', () => {
     expect(result.out).not.toMatch(/accountings disagree/);
   }, 900_000);
 
+  test('measure without --method is refused (the old default only existed in this repo)', () => {
+    const refused = cli([
+      'measure',
+      '--fpc',
+      fpc.address.toString(),
+      '--target',
+      target.address.toString(),
+      '--artifact',
+      join(PKG_ROOT, 'target/fpc_test_target-FpcTestTarget.json'),
+      '--config-module',
+      configModulePath,
+    ]);
+    expect(refused.status).toBe(2);
+    expect(refused.out).toMatch(/--method <value> is required/);
+    expect(refused.out).not.toMatch(/Action plan/);
+  });
+
   test('measure WITHOUT --yes prints the plan (with the gas envelope) and sends nothing', () => {
     const artifactPath = join(PKG_ROOT, 'target/fpc_test_target-FpcTestTarget.json');
     const dry = cli([
@@ -224,6 +241,8 @@ describe('published CLI (live network)', () => {
       target.address.toString(),
       '--artifact',
       artifactPath,
+      '--method',
+      'ping',
       '--count',
       '1',
       '--config-module',

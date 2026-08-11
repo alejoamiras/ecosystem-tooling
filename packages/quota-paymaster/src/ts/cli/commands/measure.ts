@@ -38,8 +38,8 @@ export const schema: FlagSchema = {
 };
 
 export const usage =
-  'measure --fpc 0x… --target 0x… --artifact <compiled-artifact.json> --config-module <path>\n' +
-  '        [--method <name>] [--args <json-array>] [--count N] [--yes]\n' +
+  'measure --fpc 0x… --target 0x… --artifact <compiled-artifact.json> --method <name>\n' +
+  '        --config-module <path> [--args <json-array>] [--count N] [--yes]\n' +
   '  SPENDS real fee juice and consumes daily allowance. Without --yes: plan only.';
 
 export async function run(flags: ParsedFlags): Promise<void> {
@@ -47,7 +47,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
   const fpcAddress = AztecAddress.fromStringUnsafe(flags.require('fpc'));
   const targetAddress = AztecAddress.fromStringUnsafe(flags.require('target'));
   const artifactPath = flags.require('artifact');
-  const method = flags.get('method') ?? 'ping';
+  // No default: `ping` exists only in this repo's own test target, so against
+  // a real contract it became `methods['ping']` === undefined and died as a
+  // bare TypeError AFTER the confirm gate — exit 1 ("something may have
+  // happened") for what is a pure usage error (round-8 finding 2).
+  const method = flags.require('method');
   const count = Number(flags.get('count') ?? '2');
   if (!Number.isInteger(count) || count < 1) throw new CliUsageError('--count must be a positive integer');
   let args: unknown[] = [];

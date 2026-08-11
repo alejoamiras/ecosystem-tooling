@@ -15,7 +15,13 @@ import { createHash } from 'node:crypto';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan, snapshotOptions } from './action-plan.js';
+import {
+  type ConfirmAction,
+  confirmAndRevalidate,
+  createActionPlan,
+  digestOptions,
+  snapshotOptions,
+} from './action-plan.js';
 import { MAX_FEE_JUICE_AMOUNT_WEI } from './bridge.js';
 import {
   appendJournalRecord,
@@ -199,6 +205,12 @@ export async function claimFeeJuice(
     // a hash commits to the exact preimage, so a swapped secret changes the
     // digest, where a bare "present" boolean would not (finding #1).
     claimSecretSha256: createHash('sha256').update(claimSecret).digest('hex'),
+    // The options are an EXECUTION input (they carry the fee payment method
+    // that pays for this claim) and they are spread into the send below, so
+    // they belong in the digest — deploy and measure already bind theirs.
+    // Round 3 gave this function the snapshot half of the anti-mutation fix
+    // and stopped short of the digest half (round-8 finding 1).
+    sendOptionsDigest: digestOptions(sendOpts),
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     const again = await deps.node.getNodeInfo();

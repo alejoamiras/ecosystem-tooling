@@ -16,6 +16,7 @@
  * Exit codes: 0 success · 2 refused (aborted plan, rejected config, usage) ·
  * 1 operational failure.
  */
+import { pathToFileURL } from 'node:url';
 import { QuotaFpcConfigError } from '../config/schema.js';
 import { ActionAborted } from '../operator/action-plan.js';
 import { OperatorConfigError } from '../operator/config-module.js';
@@ -87,8 +88,14 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-// Executed directly (via the bin launcher), not when imported by tests.
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+// Runs main when this file is executed DIRECTLY (`bun src/ts/cli/main.ts`,
+// which the contributor flow and the CLI tests both use); the bin launcher and
+// scripts/cli.ts import main() instead, and for them this is correctly false.
+// pathToFileURL, not `file://` + the path: a checkout path containing a space
+// (or anything needing percent-encoding) makes the string comparison false and
+// the CLI would exit 0 having done nothing — the same trap
+// scripts/release-policy.mjs documents (round-8 finding 3).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;
