@@ -243,10 +243,15 @@ export function assertOperatorContext(context: unknown): asserts context is Oper
     }
     const client = l1.client;
     const account = client.account as { address?: unknown } | undefined;
-    if (typeof account !== 'object' || account === null || typeof account.address !== 'string') {
+    if (
+      typeof account !== 'object' ||
+      account === null ||
+      typeof account.address !== 'string' ||
+      !/^0x[0-9a-fA-F]{40}$/.test(account.address)
+    ) {
       throw new OperatorConfigError(
         'shape-invalid',
-        'OperatorContext.l1.client.account must carry an { address } (bridge sends from it)',
+        'OperatorContext.l1.client.account.address must be an Ethereum address (0x + 40 hex) — bridge sends from it',
       );
     }
     for (const method of ['simulateContract', 'estimateContractGas', 'writeContract', 'waitForTransactionReceipt']) {

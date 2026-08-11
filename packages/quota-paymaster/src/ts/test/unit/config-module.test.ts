@@ -156,7 +156,7 @@ describe('assertOperatorContext — fields the CLI actually dereferences', () =>
         from: { toString: () => '0x1' },
         l1: {
           client: {
-            account: { address: '0x1' },
+            account: { address: `0x${'a'.repeat(40)}` },
             simulateContract: async () => {},
             estimateContractGas: async () => 0n,
             writeContract: async () => '0x',

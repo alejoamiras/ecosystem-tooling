@@ -356,6 +356,35 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     expect(result.combined).toMatch(/not valid JSON/);
   });
 
+  test('--cancel cannot be combined with edit flags (it would do something else)', () => {
+    const result = run([
+      'policy',
+      '--fpc',
+      `0x${'1'.repeat(64)}`,
+      '--cancel',
+      '--max-uses',
+      '3',
+      '--max-loss-wei',
+      '1',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/--cancel restores the live policy/);
+    expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+  });
+
+  test('bridge refuses a zero amount and an absurd gas buffer up front', () => {
+    for (const args of [
+      ['--amount-wei', '0'],
+      ['--amount-wei', '1', '--gas-limit-buffer-percent', '99999'],
+    ]) {
+      const result = run(['bridge', '--to', `0x${'1'.repeat(64)}`, ...args, '--config-module', poisonConfig()]);
+      expect(result.status, args.join(' ')).toBe(2);
+      expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+    }
+  });
+
   test('a positional argument is refused WITHOUT echoing it', () => {
     // A mistyped `--secret x` lands the secret in the positional slot; the
     // refusal must not copy it into logs.

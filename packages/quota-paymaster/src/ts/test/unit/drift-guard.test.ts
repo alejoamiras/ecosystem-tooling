@@ -70,12 +70,31 @@ describe('fee-floor arithmetic', () => {
     expect(() => sponsoredFeeFloorWei(profile, 1n, 1n)).toThrow(RangeError);
   });
 
+  test('gas limits above the u32 wire field are rejected (they would WRAP to zero)', () => {
+    // 4294967296 serializes as 0 — a transaction with no gas at all, sent
+    // without any error along the way.
+    expect(() =>
+      sponsoredFeeFloorWei({ ...DARK_FOREST_REFERENCE_GAS_PROFILE, l2GasLimit: 0x1_00_00_00_00 }, 1n, 1n),
+    ).toThrow(/u32 gas field/);
+  });
+
+  test('a teardown limit above its total describes an impossible envelope', () => {
+    expect(() =>
+      sponsoredFeeFloorWei({ ...DARK_FOREST_REFERENCE_GAS_PROFILE, teardownL2GasLimit: 9_000_000 }, 1n, 1n),
+    ).toThrow(/exceeds l2GasLimit/);
+  });
+
   test('fractional headroom multipliers work and round the floor UP (review #6)', () => {
     // BigInt(1.5) throws — the floor uses scaled integer math instead.
     const profile = {
       ...DARK_FOREST_REFERENCE_GAS_PROFILE,
       daGasLimit: 1,
       l2GasLimit: 1,
+      // Teardown is reserved INSIDE the totals, so it must shrink with them —
+      // the old fixture kept the reference profile's 5000/500000 against
+      // totals of 1, an envelope that cannot exist (validation rejects it now).
+      teardownDaGasLimit: 1,
+      teardownL2GasLimit: 1,
       feeHeadroomMultiplier: 1.5,
     };
     // perTx = 1 wei (l2 fee zero); 1.5x rounds UP to 2 — never less protection

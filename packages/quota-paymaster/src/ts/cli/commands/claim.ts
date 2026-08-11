@@ -29,11 +29,17 @@ export const usage =
 
 /** Malformed numbers are usage refusals (nothing happened), never failures. */
 function parseBigint(raw: string, flag: string): bigint {
+  let value: bigint;
   try {
-    return BigInt(raw);
+    value = BigInt(raw);
   } catch {
     throw new CliUsageError(`--${flag} must be an integer (got "${raw}")`);
   }
+  // A negative amount or leaf index cannot describe a real deposit; refusing
+  // here avoids confirming a claim that can only fail.
+  if (value < 0n) throw new CliUsageError(`--${flag} must not be negative`);
+  if (flag === 'amount-wei' && value === 0n) throw new CliUsageError('--amount-wei must be greater than zero');
+  return value;
 }
 
 /**

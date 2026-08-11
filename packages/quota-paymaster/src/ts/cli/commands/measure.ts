@@ -95,13 +95,17 @@ export async function run(flags: ParsedFlags): Promise<void> {
       );
     }
 
-    const [{ Contract, getContractClassFromArtifact }, { DefaultEntrypoint }, { Gas, GasSettings }, { waitForTx }] =
-      await Promise.all([
-        import('@aztec/aztec.js/contracts'),
-        import('@aztec/entrypoints/default'),
-        import('@aztec/stdlib/gas'),
-        import('@aztec/aztec.js/node'),
-      ]);
+    const [
+      { Contract, getContractClassFromArtifact },
+      { DefaultEntrypoint },
+      { Gas, GasFees, GasSettings },
+      { waitForTx },
+    ] = await Promise.all([
+      import('@aztec/aztec.js/contracts'),
+      import('@aztec/entrypoints/default'),
+      import('@aztec/stdlib/gas'),
+      import('@aztec/aztec.js/node'),
+    ]);
 
     const info = await ctx.node.getNodeInfo();
     const chainTimestamp = BigInt((await ctx.node.getBlockData('latest'))?.header?.globalVariables?.timestamp ?? 0);
@@ -192,9 +196,20 @@ export async function run(flags: ParsedFlags): Promise<void> {
             fpcContract as never,
           );
           sent += 1;
+          // The whole CONFIRMED envelope, not just the totals: teardown limits
+          // and the fee headroom are part of what the operator approved, and
+          // letting the SDK invent its own would measure a different envelope
+          // than the one on the plan.
+          const minFees = await ctx.node.getCurrentMinFees();
+          const scaled = BigInt(Math.ceil(gasProfile.feeHeadroomMultiplier * 1000));
+          const withHeadroom = (fee: bigint) => (fee * scaled + 999n) / 1000n;
           const gasSettings = GasSettings.fallback({
             gasLimits: new Gas(gasProfile.daGasLimit, gasProfile.l2GasLimit),
-            maxFeesPerGas: await ctx.node.getCurrentMinFees(),
+            teardownGasLimits: new Gas(gasProfile.teardownDaGasLimit, gasProfile.teardownL2GasLimit),
+            maxFeesPerGas: new GasFees(
+              withHeadroom(BigInt(minFees.feePerDaGas)),
+              withHeadroom(BigInt(minFees.feePerL2Gas)),
+            ),
           });
           const request = await new DefaultEntrypoint().createTxExecutionRequest(
             payload,

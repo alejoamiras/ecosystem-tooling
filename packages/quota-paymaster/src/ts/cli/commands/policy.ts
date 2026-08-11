@@ -154,6 +154,20 @@ export async function run(flags: ParsedFlags): Promise<void> {
   const maxLossWei = isEdit ? maxLossWeiFrom(flags) : undefined;
   // Everything else judgeable from argv + local files, also BEFORE user code:
   // the gas-profile FILE (when supplied), target syntax, and a no-op edit.
+  // --cancel schedules the LIVE values; combining it with edit flags would
+  // silently execute a different mutation than the one asked for.
+  if (flags.has('cancel')) {
+    const conflicting = ['max-fee-wei', 'max-uses', 'max-users', 'add-target', 'remove-target'].filter((f) =>
+      flags.has(f),
+    );
+    if (conflicting.length > 0) {
+      throw new CliUsageError(
+        `--cancel restores the live policy and cannot be combined with edit flags (${conflicting
+          .map((f) => `--${f}`)
+          .join(', ')}). Cancel first, then schedule the change you want.`,
+      );
+    }
+  }
   const gasProfileFromFlag = flags.get('gas-profile') ? gasProfileFrom(flags, undefined) : undefined;
   const addTargets = flags.list('add-target');
   const removeTargets = flags.list('remove-target');

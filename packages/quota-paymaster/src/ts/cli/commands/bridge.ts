@@ -42,9 +42,19 @@ export async function run(flags: ParsedFlags): Promise<void> {
     // A malformed amount is a refusal: nothing was sent, so exit 2 not 1.
     throw new CliUsageError(`--amount-wei must be an integer (got "${amountWeiFlag}")`);
   }
+  // The library refuses a non-positive amount too, but only after the config
+  // module has run and the plan has been built: refuse here, where nothing has
+  // happened yet.
+  if (amountWei <= 0n) throw new CliUsageError('--amount-wei / --amount must be greater than zero');
   const bufferPercent = flags.get('gas-limit-buffer-percent');
-  if (bufferPercent !== undefined && !/^\d+(\.\d+)?$/.test(bufferPercent)) {
-    throw new CliUsageError('--gas-limit-buffer-percent must be a non-negative number');
+  if (bufferPercent !== undefined) {
+    if (!/^\d+(\.\d+)?$/.test(bufferPercent)) {
+      throw new CliUsageError('--gas-limit-buffer-percent must be a non-negative number');
+    }
+    // Same bound the operator library enforces (its scaling overflows above it).
+    if (Number(bufferPercent) > 10_000) {
+      throw new CliUsageError('--gas-limit-buffer-percent must be <= 10000');
+    }
   }
 
   await withContext(flags, async (ctx) => {

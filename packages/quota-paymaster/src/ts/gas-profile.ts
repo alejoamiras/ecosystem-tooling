@@ -33,9 +33,15 @@ export interface GasProfile {
 }
 
 export function assertValidGasProfile(profile: GasProfile): void {
+  // Gas is serialized as UInt32 on the wire: a larger value does not error, it
+  // WRAPS (4294967296 becomes 0), which would quietly send a transaction with
+  // no gas at all. Bound it where the value is accepted.
   const positiveInt = (v: number, name: string) => {
     if (!Number.isInteger(v) || v <= 0) {
       throw new RangeError(`GasProfile.${name} must be a positive integer, got ${v}`);
+    }
+    if (v > 0xff_ff_ff_ff) {
+      throw new RangeError(`GasProfile.${name} exceeds the u32 gas field (max 4294967295), got ${v}`);
     }
   };
   positiveInt(profile.daGasLimit, 'daGasLimit');
@@ -51,6 +57,18 @@ export function assertValidGasProfile(profile: GasProfile): void {
   // the value is accepted.
   if (!Number.isSafeInteger(Math.round(profile.feeHeadroomMultiplier * 1000))) {
     throw new RangeError(`GasProfile.feeHeadroomMultiplier is too large: ${profile.feeHeadroomMultiplier}`);
+  }
+  // Teardown is reserved INSIDE the totals at v5.0.1, so a teardown limit
+  // above its total describes an envelope that cannot exist.
+  if (profile.teardownDaGasLimit > profile.daGasLimit) {
+    throw new RangeError(
+      `GasProfile.teardownDaGasLimit (${profile.teardownDaGasLimit}) exceeds daGasLimit (${profile.daGasLimit})`,
+    );
+  }
+  if (profile.teardownL2GasLimit > profile.l2GasLimit) {
+    throw new RangeError(
+      `GasProfile.teardownL2GasLimit (${profile.teardownL2GasLimit}) exceeds l2GasLimit (${profile.l2GasLimit})`,
+    );
   }
 }
 
