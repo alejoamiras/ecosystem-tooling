@@ -13,7 +13,7 @@ import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { TxStatus } from '@aztec/stdlib/tx';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
-import { assertValidTargetList, padAllowedTargets, worstCasePerDayWei } from '../config/schema.js';
+import { assertValidTargetList, padAllowedTargets, U32_MAX, U128_MAX, worstCasePerDayWei } from '../config/schema.js';
 import { type GasProfile, sponsoredFeeFloorWei } from '../gas-profile.js';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
 
@@ -275,6 +275,22 @@ export async function schedulePolicyChange(
     maxUsers: requested.maxUsers ?? state.live.maxUsers,
     allowedTargets: requested.allowedTargets ?? [...state.live.allowedTargets],
   };
+
+  // The contract's own field widths, checked here because a DIRECT library
+  // caller never passed through the CLI's parsing: without this, `maxUses: 0`
+  // is planned, digested, approved by a human, and only then reverts in Noir
+  // (round-6 finding 5).
+  if (next.maxFeeWei <= 0n || next.maxFeeWei > U128_MAX) {
+    throw new Error(`maxFeeWei must be in [1, ${U128_MAX}], got ${next.maxFeeWei}`);
+  }
+  for (const [field, value] of [
+    ['maxUses', next.maxUses],
+    ['maxUsers', next.maxUsers],
+  ] as const) {
+    if (!Number.isInteger(value) || value <= 0 || value > U32_MAX) {
+      throw new Error(`${field} must be an integer in [1, ${U32_MAX}], got ${value}`);
+    }
+  }
 
   // The floor the CLIENT will actually spend against. Below it, every
   // sponsored transaction becomes unprovable — with no on-chain error.

@@ -77,15 +77,23 @@ async function readSecretFromStdin(): Promise<string> {
 
 export async function run(flags: ParsedFlags): Promise<void> {
   const recipient = flags.require('for');
+  // Parse and range-check BEFORE withContext: a refusal must not have executed
+  // the operator's config module, which is arbitrary code (round-6 finding 1;
+  // same hoisting the other commands already do).
+  const manualAmounts = flags.has('secret-stdin')
+    ? {
+        amountWei: parseBigint(flags.require('amount-wei'), 'amount-wei'),
+        messageLeafIndex: parseBigint(flags.require('leaf-index'), 'leaf-index'),
+      }
+    : undefined;
 
   await withContext(flags, async (ctx) => {
     const journal = openJournalDir(flags.get('journal-dir') ?? process.env.QUOTA_JOURNAL_DIR);
     try {
-      const claim = flags.has('secret-stdin')
+      const claim = manualAmounts
         ? {
             recipient,
-            amountWei: parseBigint(flags.require('amount-wei'), 'amount-wei'),
-            messageLeafIndex: parseBigint(flags.require('leaf-index'), 'leaf-index'),
+            ...manualAmounts,
             claimSecret: await readSecretFromStdin(),
           }
         : findClaimInJournal(journal, {

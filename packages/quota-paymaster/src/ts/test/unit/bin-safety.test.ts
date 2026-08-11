@@ -388,6 +388,25 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     }
   });
 
+  test('a manual claim with impossible numbers is refused before the config module runs', () => {
+    for (const args of [
+      ['--amount-wei', '0', '--leaf-index', '1'],
+      ['--amount-wei', '1', '--leaf-index', (2n ** 36n).toString()],
+    ]) {
+      const result = run([
+        'claim',
+        '--for',
+        `0x${'1'.repeat(64)}`,
+        '--secret-stdin',
+        ...args,
+        '--config-module',
+        poisonConfig(),
+      ]);
+      expect(result.status, args.join(' ')).toBe(2);
+      expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+    }
+  });
+
   test('a positional argument is refused WITHOUT echoing it', () => {
     // A mistyped `--secret x` lands the secret in the positional slot; the
     // refusal must not copy it into logs.

@@ -168,6 +168,12 @@ export async function claimFeeJuice(
   // L1->L2 message tree has 2^36 leaves (L1_TO_L2_MSG_TREE_HEIGHT = 36), so a
   // value above either describes a claim that cannot exist. Refusing here
   // keeps it out of the plan a human is asked to approve (round-5 finding 2).
+  if (amountWei <= 0n) {
+    throw new Error('amountWei must be positive — a zero or negative deposit cannot be claimed');
+  }
+  if (messageLeafIndex < 0n) {
+    throw new Error(`messageLeafIndex ${messageLeafIndex} is negative — no such leaf exists`);
+  }
   if (amountWei > MAX_FEE_JUICE_AMOUNT_WEI) {
     throw new Error(`amountWei ${amountWei} exceeds the u128 the fee-juice claim accepts`);
   }

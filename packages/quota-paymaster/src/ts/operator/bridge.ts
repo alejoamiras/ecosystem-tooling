@@ -16,6 +16,7 @@
  * journal and in this function's return value (process memory), which
  * claimFeeJuice can consume directly.
  */
+import type { ExtendedViemWalletClient } from '@aztec/ethereum/types';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
 import { appendJournalRecord, BRIDGE_JOURNAL_FILE, type JournalHandle, withJournalLock } from './internal/journal.js';
@@ -24,16 +25,17 @@ import { appendJournalRecord, BRIDGE_JOURNAL_FILE, type JournalHandle, withJourn
 /** The fee-juice claim takes a u128 amount (verified against the 5.0.1 FeeJuice artifact). */
 export const MAX_FEE_JUICE_AMOUNT_WEI = (1n << 128n) - 1n;
 
-export interface BridgeL1Client {
-  account: { address: string };
-  simulateContract(args: object): Promise<unknown>;
-  estimateContractGas(args: object): Promise<bigint>;
-  writeContract(args: object): Promise<`0x${string}`>;
-  waitForTransactionReceipt(args: { hash: `0x${string}` }): Promise<{
-    status: string;
-    logs: unknown[];
-  }>;
-}
+/**
+ * The L1 wallet a bridge needs.
+ *
+ * This is deliberately the SDK's own extended client type rather than the
+ * four methods this file calls directly: `L1FeeJuicePortalManager` requires
+ * the full extended client, so a hand-rolled object satisfying a narrower
+ * interface type-checks, passes confirmation, gets its claim secret
+ * journaled, and only THEN fails inside the portal manager (round-6 finding
+ * 6). Naming the real requirement makes that a compile error instead.
+ */
+export type BridgeL1Client = ExtendedViemWalletClient;
 
 export interface BridgeDeps {
   node: AztecNode;
@@ -169,10 +171,14 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
     // Approval is a separate, reversible L1 write; the SDK's token manager
     // already knows the ERC20 quirks.
-    const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client as never, logger);
+    const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client, logger);
     await portal.getTokenManager().approve(amountWei, portalHex, 'FeeJuice Portal');
 
-    const args = [to, amountWei, claimSecretHash.toString()] as const;
+    // The regex above proved the 0x + 64-hex shape, and an Fr always renders
+    // 0x-prefixed; viem's ABI types just cannot see that. Same narrowing idiom
+    // as portalHex — and it is only needed because the client is now typed
+    // honestly, which is the point (round-6 finding 6).
+    const args = [to as `0x${string}`, amountWei, claimSecretHash.toString() as `0x${string}`] as const;
     // Simulate first: a revert here costs nothing, whereas a reverted deposit
     // costs gas and tells us less.
     await deps.l1Client.simulateContract({

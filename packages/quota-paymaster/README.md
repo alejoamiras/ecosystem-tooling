@@ -94,6 +94,11 @@ Gas budgets are a REQUIRED input (`GasProfile`): measure your own actions with t
 tooling — `DARK_FOREST_REFERENCE_GAS_PROFILE` is labeled reference data, not a default.
 Human-facing copy is deliberately not in the SDK; tested templates live in `examples/`.
 
+A sponsored client must declare `maxFeesPerGas` using `maxFeePerGasWithHeadroom(profile, fee)`.
+The contract bills `gas_limits × max_fees_per_gas` per dimension, and the policy's fee floor
+budgets for exactly that number — a client that rounds the headroom differently can satisfy
+the policy check and still be rejected on-chain.
+
 ## Operating
 
 The package ships an operator CLI. **Always invoke it scoped** — the unscoped name
