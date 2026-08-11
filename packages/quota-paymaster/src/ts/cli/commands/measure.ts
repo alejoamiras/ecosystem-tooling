@@ -59,20 +59,35 @@ export async function run(flags: ParsedFlags): Promise<void> {
     if (!Array.isArray(args)) throw new CliUsageError('--args must be a JSON array');
   }
 
-  // The compiled artifact JSON, shaped by whatever `aztec codegen` produced —
-  // validated by the SDK when it is used, not re-modelled here.
+  // --artifact is the COMPILED artifact `aztec compile` writes (target/<crate>-<Contract>.json),
+  // which is what an operator actually has on disk. It must be run through
+  // loadContractArtifact before the SDK can use it — feeding the raw JSON
+  // straight to Contract.at surfaces as "undefined passed to BaseField ctor"
+  // deep inside the ABI layer.
   // biome-ignore lint/suspicious/noExplicitAny: version-loose contract artifact
   let artifact: any;
-  try {
-    artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
-  } catch {
-    throw new CliUsageError(`cannot read --artifact ${artifactPath} as JSON`);
+  {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(readFileSync(artifactPath, 'utf8'));
+    } catch {
+      throw new CliUsageError(`cannot read --artifact ${artifactPath} as JSON`);
+    }
+    const { loadContractArtifact } = await import('@aztec/aztec.js/abi');
+    try {
+      artifact = loadContractArtifact(raw as never);
+    } catch (error) {
+      throw new CliUsageError(
+        `--artifact ${artifactPath} is not a compiled contract artifact ` +
+          `(expected the JSON \`aztec compile\` writes to target/): ${(error as Error).message}`,
+      );
+    }
   }
 
   await withContext(flags, async (ctx) => {
     // The gas envelope is an explicit input by design — this command exists to
     // MEASURE what a profile costs, so inventing a default would beg the question.
-    const gasProfile = ctx.gasProfile;
+    const gasProfile = ctx.gasProfile ? { ...ctx.gasProfile } : undefined;
     if (!gasProfile) {
       throw new CliUsageError(
         'measure needs a gas profile: return `gasProfile` from your config module (it defines the ' +
@@ -106,6 +121,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
       generation,
       player: ctx.from.toString(),
       sendOptionsDigest: digestOptions(ctx.sendOptions ?? {}),
+      // The gas envelope determines what each send can cost, so it belongs in
+      // what the operator confirms — and is snapshotted, since `ctx` is the
+      // config module's own mutable object.
+      gasProfileDigest: digestOptions({ ...gasProfile }),
       spendsRealFeeJuice: true,
     });
     if ((await makeConfirm(flags)(plan)) !== true) throw new ActionAborted(plan);
@@ -152,10 +171,20 @@ export async function run(flags: ParsedFlags): Promise<void> {
         node: ctx.node,
         fpcAddress,
         sendSponsored: async () => {
-          const seat =
-            !alreadySubscribed && sent === 0
-              ? ((await findFreeSeat({ node: ctx.node as never, fpcAddress, generation, maxUsers })) ?? undefined)
-              : undefined;
+          let seat: number | undefined;
+          if (!alreadySubscribed && sent === 0) {
+            const free = await findFreeSeat({ node: ctx.node as never, fpcAddress, generation, maxUsers });
+            // null means the day is FULL. Coercing it to undefined would send
+            // sponsor_and_execute for a player with no subscription, which the
+            // contract rejects — refuse plainly instead.
+            if (free === null) {
+              throw new CliUsageError(
+                `no sponsorship seats are free for generation ${generation} (max_users ${maxUsers}); ` +
+                  'measurement needs a seat for an unsubscribed player — try after the daily reset.',
+              );
+            }
+            seat = free;
+          }
           const calls = [await targetContract.methods[method](...args).request()].flatMap((p) => p.calls);
           const payload = await buildSandwichPayload(
             { calls, player: ctx.from, fpcAddress, generation, seat },

@@ -197,13 +197,13 @@ export async function resolveOperatorContext(module: OperatorConfigModule): Prom
   try {
     assertOperatorContext(context);
   } catch (error) {
-    const dispose = (context as { dispose?: unknown })?.dispose;
-    if (typeof dispose === 'function') {
-      try {
-        await (dispose as () => Promise<void>)();
-      } catch {
-        /* the shape error is the one worth reporting */
-      }
+    // Call it ON the context: a factory may return an object whose dispose is a
+    // method using `this`, and an extracted reference would throw instead of
+    // cleaning up — silently, since the shape error is what we rethrow.
+    try {
+      await (context as OperatorContext)?.dispose?.();
+    } catch {
+      /* the shape error is the one worth reporting */
     }
     throw error;
   }
@@ -242,8 +242,12 @@ export function assertOperatorContext(context: unknown): asserts context is Oper
       throw new OperatorConfigError('shape-invalid', 'OperatorContext.l1 must be { client } when present');
     }
     const client = l1.client;
-    if (typeof client.account !== 'object' || client.account === null) {
-      throw new OperatorConfigError('shape-invalid', 'OperatorContext.l1.client.account is missing');
+    const account = client.account as { address?: unknown } | undefined;
+    if (typeof account !== 'object' || account === null || typeof account.address !== 'string') {
+      throw new OperatorConfigError(
+        'shape-invalid',
+        'OperatorContext.l1.client.account must carry an { address } (bridge sends from it)',
+      );
     }
     for (const method of ['simulateContract', 'estimateContractGas', 'writeContract', 'waitForTransactionReceipt']) {
       if (typeof client[method] !== 'function') {

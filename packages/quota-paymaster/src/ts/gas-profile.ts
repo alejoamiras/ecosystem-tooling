@@ -45,6 +45,13 @@ export function assertValidGasProfile(profile: GasProfile): void {
   if (!Number.isFinite(profile.feeHeadroomMultiplier) || profile.feeHeadroomMultiplier < 1) {
     throw new RangeError(`GasProfile.feeHeadroomMultiplier must be >= 1, got ${profile.feeHeadroomMultiplier}`);
   }
+  // The multiplier is applied as scaled integer arithmetic (x1000) to keep the
+  // fee math exact. Number.MAX_VALUE is "finite" but overflows that scaling to
+  // Infinity, where BigInt() throws far from here — so bound it at the point
+  // the value is accepted.
+  if (!Number.isSafeInteger(Math.round(profile.feeHeadroomMultiplier * 1000))) {
+    throw new RangeError(`GasProfile.feeHeadroomMultiplier is too large: ${profile.feeHeadroomMultiplier}`);
+  }
 }
 
 /**

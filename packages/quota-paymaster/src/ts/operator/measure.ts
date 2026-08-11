@@ -48,7 +48,7 @@ export async function measureSponsoredFee(
   const [beforeRaw, quota] = await Promise.all([getFeeJuiceBalance(deps.fpcAddress, deps.node), deps.readQuotaInfo()]);
   const before = BigInt(beforeRaw ?? 0n);
   const budget = quota.hasAllowance ? quota.remaining : 0;
-  const count = Math.min(opts.count, Math.max(budget, opts.count === 0 ? 0 : budget));
+  const count = Math.min(opts.count, budget);
   if (count < opts.count) {
     deps.onProgress?.(`allowance permits ${count}/${opts.count} sends — measuring what is available`);
   }

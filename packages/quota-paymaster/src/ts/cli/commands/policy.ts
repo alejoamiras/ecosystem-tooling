@@ -1,6 +1,6 @@
 /** `policy` — read live/pending policy, and schedule or cancel a change. */
 import { readFileSync } from 'node:fs';
-import { parseQuotaFpcConfig } from '../../config/schema.js';
+import { assertValidTargetList, parseQuotaFpcConfig } from '../../config/schema.js';
 import { assertValidGasProfile, type GasProfile } from '../../gas-profile.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { cancelPendingPolicyChange, readPolicyState, schedulePolicyChange } from '../../operator/policy.js';
@@ -152,9 +152,26 @@ export async function run(flags: ParsedFlags): Promise<void> {
       }
     : undefined;
   const maxLossWei = isEdit ? maxLossWeiFrom(flags) : undefined;
+  // Everything else judgeable from argv + local files, also BEFORE user code:
+  // the gas-profile FILE (when supplied), target syntax, and a no-op edit.
+  const gasProfileFromFlag = flags.get('gas-profile') ? gasProfileFrom(flags, undefined) : undefined;
+  const addTargets = flags.list('add-target');
+  const removeTargets = flags.list('remove-target');
+  if (addTargets.length > 0) assertValidTargetList(addTargets);
+  if (removeTargets.length > 0) assertValidTargetList(removeTargets);
+  if (
+    isEdit &&
+    !flags.has('cancel') &&
+    addTargets.length === 0 &&
+    removeTargets.length === 0 &&
+    change !== undefined &&
+    Object.values(change).every((v) => v === undefined)
+  ) {
+    throw new CliUsageError('nothing to change — pass --show to read only, or at least one edit flag.');
+  }
 
   await withContext(flags, async (ctx) => {
-    const gasProfile = gasProfileFrom(flags, ctx.gasProfile);
+    const gasProfile = gasProfileFromFlag ?? gasProfileFrom(flags, ctx.gasProfile);
     const deps = { node: ctx.node, wallet: ctx.wallet, from: ctx.from, fpcAddress };
 
     const state = await readPolicyState(deps, gasProfile);
@@ -191,9 +208,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
       return;
     }
 
-    // Target edits are a full-list replacement computed against live state.
-    const added = flags.list('add-target');
-    const removed = flags.list('remove-target').map((t) => t.toLowerCase());
+    // Target edits are a full-list replacement computed against live state
+    // (their SYNTAX was already validated before any user code ran).
+    const added = addTargets;
+    const removed = removeTargets.map((t) => t.toLowerCase());
     let allowedTargets: string[] | undefined;
     if (added.length > 0 || removed.length > 0) {
       const kept = state.live.allowedTargets.filter((t) => !removed.includes(t.toLowerCase()));
@@ -202,9 +220,6 @@ export async function run(flags: ParsedFlags): Promise<void> {
     }
 
     const edit = { ...(change as NonNullable<typeof change>), allowedTargets };
-    if (Object.values(edit).every((v) => v === undefined)) {
-      throw new CliUsageError('nothing to change — pass --show to read only, or at least one edit flag.');
-    }
     const result = await schedulePolicyChange({ ...deps, confirm }, edit, guards);
     reportRace(result.pendingActivatedFirst, 'schedule');
     console.log(`\nScheduled (revision ${result.scheduledRevision}). Takes effect in 12h; one pending slot.`);

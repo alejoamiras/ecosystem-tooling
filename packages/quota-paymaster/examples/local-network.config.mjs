@@ -21,5 +21,20 @@ export default defineOperatorConfig(async () => {
   const accounts = await registerInitialLocalNetworkAccountsInWallet(wallet);
   if (accounts.length === 0) throw new Error('no pre-registered accounts on this network');
 
-  return { node, wallet, from: accounts[0], dispose: () => wallet.stop() };
+  return {
+    node,
+    wallet,
+    from: accounts[0],
+    // The gas envelope is a REQUIRED input (there is no default): `policy` needs
+    // it to compute the sequencer reserve, and `measure` to size its sends.
+    // These are the reference numbers — measure YOUR actions and replace them.
+    gasProfile: {
+      daGasLimit: 50_000,
+      l2GasLimit: 6_000_000,
+      teardownDaGasLimit: 5_000,
+      teardownL2GasLimit: 500_000,
+      feeHeadroomMultiplier: 1.5,
+    },
+    dispose: () => wallet.stop(),
+  };
 });

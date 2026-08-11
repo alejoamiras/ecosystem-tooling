@@ -48,6 +48,7 @@ function cli(args: string[]): CliResult {
 describe('published CLI (live network)', () => {
   let ctx: Ctx;
   let fpc: QuotaFpcContract;
+  let target: FpcTestTargetContract;
   let configModulePath: string;
 
   beforeAll(async () => {
@@ -56,7 +57,7 @@ describe('published CLI (live network)', () => {
 
     const targetDeploy = FpcTestTargetContract.deploy(ctx.wallet);
     await targetDeploy.send({ from: player });
-    const target = await targetDeploy.register();
+    target = await targetDeploy.register();
     fpc = await deployOwnFpc(ctx, target, player);
     await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, () =>
       target.methods.ping().send({ from: player }),
@@ -84,7 +85,10 @@ describe('published CLI (live network)', () => {
         `  await waitForNode(node);\n` +
         `  const wallet = await EmbeddedWallet.create(node, { ephemeral: true });\n` +
         `  const accounts = await registerInitialLocalNetworkAccountsInWallet(wallet);\n` +
-        `  return { node, wallet, from: accounts[0], dispose: () => wallet.stop() };\n` +
+        `  return { node, wallet, from: accounts[0],\n` +
+        `    gasProfile: { daGasLimit: 50000, l2GasLimit: 6000000, teardownDaGasLimit: 5000,\n` +
+        `      teardownL2GasLimit: 500000, feeHeadroomMultiplier: 1.5 },\n` +
+        `    dispose: () => wallet.stop() };\n` +
         `});\n`,
     );
   }, 600_000);
@@ -176,4 +180,59 @@ describe('published CLI (live network)', () => {
     expect(result.out).toMatch(/QUOTA_FPC_CONTRACT_ADDRESS=0x[0-9a-f]{64}/i);
     expect(result.out).toMatch(/Fund LAST/);
   }, 600_000);
+
+  test('measure spends real quota and reports two agreeing accountings', () => {
+    // This command was a stub until Phase 2 and had NO live coverage, which is
+    // why an unregistered-artifact bug (fatal on the first read) survived a
+    // whole review round. It sends real sponsored transactions, so it is
+    // --yes-gated like every other state-changing command.
+    // The COMPILED artifact on disk — exactly what an operator passes.
+    const artifactPath = join(PKG_ROOT, 'target/fpc_test_target-FpcTestTarget.json');
+
+    const result = cli([
+      'measure',
+      '--fpc',
+      fpc.address.toString(),
+      '--target',
+      target.address.toString(),
+      '--artifact',
+      artifactPath,
+      '--method',
+      'record',
+      '--count',
+      '1',
+      '--config-module',
+      configModulePath,
+      '--yes',
+    ]);
+    evidence('cli/measure', result.out.slice(-500));
+    expect(result.status).toBe(0);
+    expect(result.out).toMatch(/Measured 1 sponsored transaction/);
+    // The two independent accountings the operator library cross-checks.
+    expect(result.out).toMatch(/total \(receipts\)/);
+    expect(result.out).toMatch(/balance delta/);
+    expect(result.out).not.toMatch(/accountings disagree/);
+  }, 900_000);
+
+  test('measure WITHOUT --yes prints the plan (with the gas envelope) and sends nothing', () => {
+    const artifactPath = join(PKG_ROOT, 'target/fpc_test_target-FpcTestTarget.json');
+    const dry = cli([
+      'measure',
+      '--fpc',
+      fpc.address.toString(),
+      '--target',
+      target.address.toString(),
+      '--artifact',
+      artifactPath,
+      '--count',
+      '1',
+      '--config-module',
+      configModulePath,
+    ]);
+    expect(dry.status).toBe(2);
+    expect(dry.out).toMatch(/Action plan: measure-sponsored-fee/);
+    expect(dry.out).toMatch(/gasProfileDigest/);
+    expect(dry.out).toMatch(/spendsRealFeeJuice/);
+    expect(dry.out).toMatch(/Dry run: nothing was sent/);
+  }, 300_000);
 });
