@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { computeReleasePolicy } from './release-policy.mjs';
+import { computeReleasePolicy, validatePackagesSubset } from './release-policy.mjs';
 
 const AZTEC = '5.0.1';
 const ok = (input) => {
@@ -132,4 +132,74 @@ test('multi-digit revision N derives the revision tag', () => {
     tag: 'revision',
     prereleaseFlag: '--prerelease',
   });
+});
+
+// ---------------------------------------------------------------------------
+// Package-subset validation (per-package revision releases).
+// ---------------------------------------------------------------------------
+
+const ALL = 'aztec-benchmark private-fee-juice quota-paymaster';
+const subsetOk = (input) => {
+  const r = validatePackagesSubset({ releasePackages: ALL, ...input });
+  assert.ok(!('error' in r), `expected success, got error: ${r.error}`);
+  return r.packages;
+};
+const subsetErr = (input) => {
+  const r = validatePackagesSubset({ releasePackages: ALL, ...input });
+  assert.ok('error' in r, `expected error, got ${JSON.stringify(r)}`);
+  return r.error;
+};
+
+test('subset: empty input publishes the full set for release/rehearsal', () => {
+  assert.deepEqual(subsetOk({ mode: 'release', packages: '' }), ALL.split(' '));
+  assert.deepEqual(subsetOk({ mode: 'rehearsal', packages: '   ' }), ALL.split(' '));
+});
+
+test('subset: revision REQUIRES an explicit single package', () => {
+  // A revision number is per-package, so "everything" has no meaning here.
+  assert.match(
+    subsetErr({ mode: 'revision', packages: '' }),
+    /requires --packages naming exactly one|exactly one package/,
+  );
+});
+
+test('subset: revision accepts exactly one member', () => {
+  assert.deepEqual(subsetOk({ mode: 'revision', packages: 'quota-paymaster' }), ['quota-paymaster']);
+});
+
+test('subset: revision REJECTS more than one package', () => {
+  assert.match(subsetErr({ mode: 'revision', packages: 'quota-paymaster private-fee-juice' }), /exactly ONE package/);
+});
+
+test('subset: a non-member is rejected, naming what is known', () => {
+  assert.match(subsetErr({ mode: 'revision', packages: 'aztec-standards' }), /not in RELEASE_PACKAGES/);
+});
+
+test('subset: duplicates are rejected rather than silently deduped', () => {
+  assert.match(subsetErr({ mode: 'rehearsal', packages: 'quota-paymaster quota-paymaster' }), /duplicates/);
+});
+
+test('subset: order is normalized to the canonical publish order', () => {
+  // Publish order is load-bearing; it must not depend on dispatch spelling.
+  assert.deepEqual(subsetOk({ mode: 'rehearsal', packages: 'quota-paymaster aztec-benchmark' }), [
+    'aztec-benchmark',
+    'quota-paymaster',
+  ]);
+});
+
+test('subset: comma-separated input is accepted (dispatch forms are free text)', () => {
+  assert.deepEqual(subsetOk({ mode: 'rehearsal', packages: 'aztec-benchmark,quota-paymaster' }), [
+    'aztec-benchmark',
+    'quota-paymaster',
+  ]);
+});
+
+test('subset: an explicit full list in revision mode is rejected, not silently widened', () => {
+  assert.match(subsetErr({ mode: 'revision', packages: ALL }), /exactly ONE package/);
+});
+
+test('subset: an empty RELEASE_PACKAGES is an error, never an empty publish set', () => {
+  const r = validatePackagesSubset({ mode: 'release', packages: '', releasePackages: '  ' });
+  assert.ok('error' in r);
+  assert.match(r.error, /releasePackages is empty/);
 });

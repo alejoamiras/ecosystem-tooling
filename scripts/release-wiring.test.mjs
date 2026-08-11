@@ -106,3 +106,67 @@ test('the retired first-publish warning does not linger', () => {
     'release.yml still carries the pre-bootstrap warning; quota-paymaster is published',
   );
 });
+
+test('subset revisions: the validated publish set is what every publish-path locus reads', () => {
+  // The load-bearing invariant: RELEASE_PACKAGES stays the immutable
+  // release-ready list (the equality test above depends on it), and the SUBSET
+  // lives in a separate, validated variable. A job that re-parsed the raw
+  // dispatch input could bypass the subset / single-package / ordering rules.
+  assert.match(releaseYml, /packages:\n\s+description: "Which packages this dispatch publishes/);
+  assert.match(
+    releaseYml,
+    /publish-packages: \$\{\{ steps\.derive\.outputs\.publish_packages \}\}/,
+    'validate must expose the normalized publish set as an output',
+  );
+
+  // Every job that touches the registry or tags consumes the OUTPUT via env.
+  const consumers = releaseYml.match(/PUBLISH_PACKAGES: \$\{\{ needs\.validate\.outputs\.publish-packages \}\}/g);
+  assert.ok(
+    consumers && consumers.length >= 3,
+    `build, publish and tag-release must each read the validated set (found ${consumers?.length ?? 0})`,
+  );
+
+  // The publish-path loops are scoped to the subset...
+  const scoped = releaseYml.match(/for pkg in \$PUBLISH_PACKAGES; do/g) ?? [];
+  assert.ok(scoped.length >= 6, `expected >=6 subset-scoped loops, found ${scoped.length}`);
+  // ...including the arity backstop, which would otherwise compare a subset's
+  // tarball count against the full list and fail every subset dispatch.
+  assert.match(releaseYml, /EXPECTED_COUNT=\$\(echo "\$PUBLISH_PACKAGES" \| wc -w\)/);
+
+  // Fail closed: an empty set must never mean "loop zero times and succeed".
+  const emptyGuards = releaseYml.match(/PUBLISH_PACKAGES is empty/g) ?? [];
+  assert.ok(emptyGuards.length >= 3, `expected >=3 empty-set guards, found ${emptyGuards.length}`);
+});
+
+test('subset revisions: tags are name-qualified, and checked BEFORE anything irreversible', () => {
+  // npm publish cannot be undone; a tag failure after it strands the release.
+  assert.match(
+    releaseYml,
+    /Preflight — tags and releases are free BEFORE anything irreversible/,
+    'the publish job must preflight tag availability before publishing',
+  );
+  // Per-package tags for subset runs (the bootstrap precedent), plain tag only
+  // when the whole set publishes.
+  assert.match(releaseYml, /TAGS="\$TAGS \$pkg-v\$INPUT_VERSION"/);
+  assert.match(releaseYml, /if \[ "\$PUBLISH_PACKAGES" = "\$RELEASE_PACKAGES" \]; then/);
+});
+
+test('subset revisions: the notes never advertise a version a package does not have', () => {
+  assert.match(
+    releaseYml,
+    /if \[ "\$PUBLISH_PACKAGES" != "\$RELEASE_PACKAGES" \]; then/,
+    'the rendered notes must be pruned for subset runs',
+  );
+  assert.match(releaseYml, /Not published at this version \(unchanged/);
+});
+
+test('the release build still asserts quota-paymaster lineage on the packed artifacts', () => {
+  // A revision must be TS-only: if the compiled contract changed, its class id
+  // moves and this gate fails — that is a base-version bump, not a revision.
+  // (Guarding the step's presence, because a previous review deleted it once.)
+  assert.match(
+    releaseYml,
+    /run: bun run --cwd packages\/quota-paymaster verify:lineage/,
+    'release.yml lost the post-build lineage assertion',
+  );
+});
