@@ -204,7 +204,15 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           AZTEC_VERSION: ${{ steps.derive.outputs.aztec_version }}
           DIST_TAG: ${{ steps.derive.outputs.dist_tag }}
+          # From the STEP output — this job produces the value, so it cannot come
+          # from needs.validate like the downstream jobs. Without this the notes
+          # pruning below would see an empty set, conclude "subset run", and strip
+          # EVERY package from the notes while the guard loop iterated zero times.
+          PUBLISH_PACKAGES: ${{ steps.derive.outputs.publish_packages }}
         run: |
+          if [ -z "$PUBLISH_PACKAGES" ]; then
+            echo "PUBLISH_PACKAGES is empty — refusing to render notes for an unknown publish set" >&2; exit 1
+          fi
           cat > release-notes.md <<'TEMPLATE'
           Aztec ecosystem packages `__VERSION__`, targeting **Aztec `__AZTEC_VERSION__`**. All packages are published with [npm provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline that re-runs the full test matrix before publishing.
 

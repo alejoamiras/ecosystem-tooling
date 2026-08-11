@@ -170,3 +170,20 @@ test('the release build still asserts quota-paymaster lineage on the packed arti
     'release.yml lost the post-build lineage assertion',
   );
 });
+
+test('the notes renderer reads the publish set from its OWN job step, not from needs', () => {
+  // The validate job PRODUCES publish_packages, so it cannot read it from
+  // needs.validate like downstream jobs do. Getting this wrong is silent and
+  // destructive: an empty value reads as "subset run", which strips EVERY
+  // package from the rendered notes while the name-guard loop iterates zero
+  // times and passes.
+  const start = releaseYml.indexOf('- name: Render release notes');
+  const renderStep = releaseYml.slice(start, releaseYml.indexOf('\n      - name:', start + 1));
+  assert.ok(renderStep.length > 0, 'render step not found');
+  assert.match(
+    renderStep,
+    /PUBLISH_PACKAGES: \$\{\{ steps\.derive\.outputs\.publish_packages \}\}/,
+    'the render step must take the publish set from its own job step output',
+  );
+  assert.match(renderStep, /PUBLISH_PACKAGES is empty/, 'the render step must fail closed on an empty set');
+});
