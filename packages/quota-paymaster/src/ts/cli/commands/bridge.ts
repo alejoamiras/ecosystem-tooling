@@ -35,8 +35,17 @@ export async function run(flags: ParsedFlags): Promise<void> {
   if (amountFlag !== undefined && !/^\d+$/.test(amountFlag)) {
     throw new CliUsageError('--amount takes whole AZTEC units (integer); use --amount-wei for precision');
   }
-  const amountWei = amountWeiFlag !== undefined ? BigInt(amountWeiFlag) : BigInt(amountFlag as string) * WEI_PER_AZTEC;
+  let amountWei: bigint;
+  try {
+    amountWei = amountWeiFlag !== undefined ? BigInt(amountWeiFlag) : BigInt(amountFlag as string) * WEI_PER_AZTEC;
+  } catch {
+    // A malformed amount is a refusal: nothing was sent, so exit 2 not 1.
+    throw new CliUsageError(`--amount-wei must be an integer (got "${amountWeiFlag}")`);
+  }
   const bufferPercent = flags.get('gas-limit-buffer-percent');
+  if (bufferPercent !== undefined && !/^\d+(\.\d+)?$/.test(bufferPercent)) {
+    throw new CliUsageError('--gas-limit-buffer-percent must be a non-negative number');
+  }
 
   await withContext(flags, async (ctx) => {
     if (!ctx.l1) {

@@ -278,6 +278,87 @@ describe('published CLI: key material never reaches the output', () => {
   });
 });
 
+describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
+  // Exit 2 means "nothing happened". A native BigInt/JSON throw escaping as
+  // exit 1 would tell an operator the run failed operationally, which reads as
+  // "it might have done something".
+  test('a non-numeric --amount-wei refuses with exit 2', () => {
+    const result = run([
+      'bridge',
+      '--to',
+      `0x${'1'.repeat(64)}`,
+      '--amount-wei',
+      'nope',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/--amount-wei must be an integer/);
+    expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+  });
+
+  test('a non-numeric --max-loss-wei refuses with exit 2', () => {
+    const result = run([
+      'policy',
+      '--fpc',
+      `0x${'1'.repeat(64)}`,
+      '--max-uses',
+      '3',
+      '--max-loss-wei',
+      'lots',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+  });
+
+  test('a positional argument is refused WITHOUT echoing it', () => {
+    // A mistyped `--secret x` lands the secret in the positional slot; the
+    // refusal must not copy it into logs.
+    const result = run(['policy', 'supersecretvalue']);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/unexpected positional argument/);
+    expect(result.combined).not.toContain('supersecretvalue');
+  });
+});
+
+describe('published CLI: the gas profile is always explicit', () => {
+  test('a policy edit without any gas profile refuses and names both ways to supply one', () => {
+    // No silent fallback to a reference profile: a foreign envelope can approve
+    // a ceiling that stops sponsorship for the real application. The check
+    // consults ctx.gasProfile, so it necessarily runs AFTER the config loads —
+    // hence a minimal working config here rather than the poison one. It still
+    // never reaches the network: the refusal precedes every chain read.
+    const dir = tempDir('quota-bin-nogas-');
+    const configPath = join(dir, 'nogas.config.mjs');
+    writeFileSync(
+      configPath,
+      `export default { __quotaPaymasterConfig: true, load: async () => ` +
+        `({ node: {}, wallet: {}, from: { toString: () => '0x1' } }) };`,
+    );
+    const result = run([
+      'policy',
+      '--fpc',
+      `0x${'1'.repeat(64)}`,
+      '--max-uses',
+      '3',
+      '--max-loss-wei',
+      '1',
+      '--config-module',
+      configPath,
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/gas profile is required/);
+    expect(result.combined).toMatch(/--gas-profile/);
+  });
+
+  test('help no longer advertises --config-module as optional', () => {
+    const help = run(['deploy', '--help']).stdout;
+    expect(help).toMatch(/--config-module <path>/);
+    expect(help).not.toMatch(/\[--config-module/);
+  });
+});
+
 describe('published CLI: source and packaging agree', () => {
   test('the bin launcher points at the compiled CLI entry', () => {
     const launcher = readFileSync(join(PKG_ROOT, 'bin/quota-paymaster.mjs'), 'utf8');

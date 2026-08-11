@@ -133,6 +133,34 @@ describe('resolveOperatorContext', () => {
   });
 });
 
+describe('assertOperatorContext — fields the CLI actually dereferences', () => {
+  // A shallow check would let a context pass validation and then fail LATER,
+  // after the confirmation gate, when the CLI calls dispose() or l1.client.
+  test('l1 without a client is rejected', () => {
+    expect(() => assertOperatorContext({ node: {}, wallet: {}, from: { toString: () => '0x1' }, l1: {} })).toThrow(
+      /l1 must be \{ client \}/,
+    );
+  });
+
+  test('a non-function dispose is rejected', () => {
+    expect(() =>
+      assertOperatorContext({ node: {}, wallet: {}, from: { toString: () => '0x1' }, dispose: 'later' }),
+    ).toThrow(/dispose must be a function/);
+  });
+
+  test('a valid context with both optional fields passes', () => {
+    expect(() =>
+      assertOperatorContext({
+        node: {},
+        wallet: {},
+        from: { toString: () => '0x1' },
+        l1: { client: {} },
+        dispose: async () => {},
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe('schnorrAccountFromEnv — key handling', () => {
   test('missing required vars fail by NAME before anything else happens', async () => {
     const factory = schnorrAccountFromEnv({ env: {} });

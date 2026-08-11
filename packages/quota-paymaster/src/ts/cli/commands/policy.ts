@@ -1,7 +1,7 @@
 /** `policy` — read live/pending policy, and schedule or cancel a change. */
 import { readFileSync } from 'node:fs';
 import { parseQuotaFpcConfig } from '../../config/schema.js';
-import { DARK_FOREST_REFERENCE_GAS_PROFILE, type GasProfile } from '../../gas-profile.js';
+import type { GasProfile } from '../../gas-profile.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { cancelPendingPolicyChange, readPolicyState, schedulePolicyChange } from '../../operator/policy.js';
 import { makeConfirm } from '../internal/confirm.js';
@@ -35,24 +35,61 @@ export const usage =
   '  --show reads only. Any edit needs a loss bound: --max-loss-wei, or --config\n' +
   '  to reuse the bound accepted at deploy time.';
 
-/** Operators SHOULD measure their own; the reference profile is labeled data. */
-function gasProfileFrom(flags: ParsedFlags): GasProfile {
+/**
+ * The gas envelope is ALWAYS explicit — from the config module or --gas-profile.
+ * There is deliberately no default: the fee floor derived from someone else's
+ * profile can approve a ceiling that silently stops sponsorship for YOUR app.
+ */
+function gasProfileFrom(flags: ParsedFlags, fromContext: GasProfile | undefined): GasProfile {
+  if (fromContext) return fromContext;
   const path = flags.get('gas-profile');
-  if (path) return JSON.parse(readFileSync(path, 'utf8')) as GasProfile;
-  console.warn('  (using DARK_FOREST_REFERENCE_GAS_PROFILE — pass --gas-profile <json> with YOUR measured numbers)');
-  return DARK_FOREST_REFERENCE_GAS_PROFILE;
+  if (!path) {
+    throw new CliUsageError(
+      'a gas profile is required: return `gasProfile` from your config module, or pass ' +
+        '--gas-profile <json> with YOUR measured numbers (measure them with the `measure` command). ' +
+        'There is deliberately no default — a foreign profile can approve a ceiling that stops sponsorship.',
+    );
+  }
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as GasProfile;
+  } catch {
+    throw new CliUsageError(`cannot read --gas-profile ${path} as JSON`);
+  }
 }
 
 /** The loss bound binds updates too, so it may come from the deploy config. */
 function maxLossWeiFrom(flags: ParsedFlags): bigint {
   const direct = flags.get('max-loss-wei');
-  if (direct) return BigInt(direct);
+  if (direct) return parseBigint(direct, 'max-loss-wei');
   const configPath = flags.get('config');
-  if (configPath) return BigInt(parseQuotaFpcConfig(JSON.parse(readFileSync(configPath, 'utf8'))).maxLossWei);
+  if (configPath) {
+    let raw: string;
+    try {
+      raw = readFileSync(configPath, 'utf8');
+    } catch {
+      throw new CliUsageError(`cannot read --config ${configPath}`);
+    }
+    return BigInt(parseQuotaFpcConfig(JSON.parse(raw)).maxLossWei);
+  }
   throw new CliUsageError(
     'a loss bound is required for any policy edit: pass --max-loss-wei <N>, or --config <deploy.json> ' +
       'to reuse the bound accepted at deploy time.',
   );
+}
+
+/** Malformed numbers are usage refusals (nothing happened), never failures. */
+function parseBigint(raw: string, flag: string): bigint {
+  try {
+    return BigInt(raw);
+  } catch {
+    throw new CliUsageError(`--${flag} must be an integer (got "${raw}")`);
+  }
+}
+
+function parseCount(raw: string, flag: string): number {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) throw new CliUsageError(`--${flag} must be a non-negative integer`);
+  return value;
 }
 
 function reportRace(pendingActivatedFirst: boolean | 'unknown', verb: string): void {
@@ -74,7 +111,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
   const fpcAddress = AztecAddress.fromStringUnsafe(flags.require('fpc'));
 
   await withContext(flags, async (ctx) => {
-    const gasProfile = ctx.gasProfile ?? gasProfileFrom(flags);
+    const gasProfile = gasProfileFrom(flags, ctx.gasProfile);
     const deps = { node: ctx.node, wallet: ctx.wallet, from: ctx.from, fpcAddress };
 
     const state = await readPolicyState(deps, gasProfile);
@@ -122,9 +159,9 @@ export async function run(flags: ParsedFlags): Promise<void> {
     }
 
     const change = {
-      maxFeeWei: flags.get('max-fee-wei') ? BigInt(flags.require('max-fee-wei')) : undefined,
-      maxUses: flags.get('max-uses') ? Number(flags.require('max-uses')) : undefined,
-      maxUsers: flags.get('max-users') ? Number(flags.require('max-users')) : undefined,
+      maxFeeWei: flags.get('max-fee-wei') ? parseBigint(flags.require('max-fee-wei'), 'max-fee-wei') : undefined,
+      maxUses: flags.get('max-uses') ? parseCount(flags.require('max-uses'), 'max-uses') : undefined,
+      maxUsers: flags.get('max-users') ? parseCount(flags.require('max-users'), 'max-users') : undefined,
       allowedTargets,
     };
     if (Object.values(change).every((v) => v === undefined)) {

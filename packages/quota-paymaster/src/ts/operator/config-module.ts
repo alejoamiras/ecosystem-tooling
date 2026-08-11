@@ -217,8 +217,20 @@ export function assertOperatorContext(context: unknown): asserts context is Oper
   if (ctx.sendOptions !== undefined && (typeof ctx.sendOptions !== 'object' || ctx.sendOptions === null)) {
     throw new OperatorConfigError('shape-invalid', 'OperatorContext.sendOptions must be an object when present');
   }
-  if (ctx.l1 !== undefined && (typeof ctx.l1 !== 'object' || ctx.l1 === null)) {
-    throw new OperatorConfigError('shape-invalid', 'OperatorContext.l1 must be an object when present');
+  if (ctx.l1 !== undefined) {
+    // Validate what the bridge command actually dereferences, not just the
+    // wrapper: a context with `l1: {}` would pass a shallow check and then fail
+    // mid-bridge, after the confirmation gate.
+    const l1 = ctx.l1 as { client?: unknown };
+    if (typeof ctx.l1 !== 'object' || ctx.l1 === null || typeof l1.client !== 'object' || l1.client === null) {
+      throw new OperatorConfigError('shape-invalid', 'OperatorContext.l1 must be { client } when present');
+    }
+  }
+  if (ctx.dispose !== undefined && typeof ctx.dispose !== 'function') {
+    throw new OperatorConfigError('shape-invalid', 'OperatorContext.dispose must be a function when present');
+  }
+  if (ctx.gasProfile !== undefined && (typeof ctx.gasProfile !== 'object' || ctx.gasProfile === null)) {
+    throw new OperatorConfigError('shape-invalid', 'OperatorContext.gasProfile must be an object when present');
   }
 }
 

@@ -47,7 +47,11 @@ export function parseFlags(argv: string[], schema: FlagSchema): ParsedFlags {
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (!token.startsWith('--')) {
-      throw new CliUsageError(`unexpected argument "${token}" (flags must start with --)`);
+      // Deliberately does NOT echo the token: a mistyped `--secret x` puts the
+      // secret in the positional slot, and echoing it would copy it into logs.
+      throw new CliUsageError(
+        'unexpected positional argument (every input is a --flag; value withheld from this message)',
+      );
     }
     const eq = token.indexOf('=');
     const name = eq === -1 ? token.slice(2) : token.slice(2, eq);

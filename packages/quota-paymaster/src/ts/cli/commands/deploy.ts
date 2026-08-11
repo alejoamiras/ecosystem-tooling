@@ -14,7 +14,7 @@ export const schema: FlagSchema = {
 };
 
 export const usage =
-  'deploy --config <path.json> [--config-module <path>] [--yes] [--allow-unverified-account-classes]\n' +
+  'deploy --config <path.json> --config-module <path> [--yes] [--allow-unverified-account-classes]\n' +
   '  Without --yes: prints the plan and its digest, sends nothing.\n' +
   '  Config validation runs offline — a bad config fails before any network access.';
 

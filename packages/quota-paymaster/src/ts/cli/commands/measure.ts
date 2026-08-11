@@ -11,7 +11,12 @@
  */
 import { readFileSync } from 'node:fs';
 import { generationAt } from '../../generation.js';
-import { createActionPlan, digestOptions } from '../../operator/action-plan.js';
+import {
+  ActionAborted,
+  ActionRevalidationFailed,
+  createActionPlan,
+  digestOptions,
+} from '../../operator/action-plan.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { measureSponsoredFee } from '../../operator/measure.js';
 import { buildSandwichPayload } from '../../sandwich.js';
@@ -44,9 +49,25 @@ export async function run(flags: ParsedFlags): Promise<void> {
   const method = flags.get('method') ?? 'ping';
   const count = Number(flags.get('count') ?? '2');
   if (!Number.isInteger(count) || count < 1) throw new CliUsageError('--count must be a positive integer');
-  const args = flags.get('args') ? (JSON.parse(flags.require('args')) as unknown[]) : [];
+  let args: unknown[] = [];
+  if (flags.get('args')) {
+    try {
+      args = JSON.parse(flags.require('args')) as unknown[];
+    } catch {
+      throw new CliUsageError('--args must be a JSON array');
+    }
+    if (!Array.isArray(args)) throw new CliUsageError('--args must be a JSON array');
+  }
 
-  const artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
+  // The compiled artifact JSON, shaped by whatever `aztec codegen` produced —
+  // validated by the SDK when it is used, not re-modelled here.
+  // biome-ignore lint/suspicious/noExplicitAny: version-loose contract artifact
+  let artifact: any;
+  try {
+    artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
+  } catch {
+    throw new CliUsageError(`cannot read --artifact ${artifactPath} as JSON`);
+  }
 
   await withContext(flags, async (ctx) => {
     // The gas envelope is an explicit input by design — this command exists to
@@ -87,11 +108,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
       sendOptionsDigest: digestOptions(ctx.sendOptions ?? {}),
       spendsRealFeeJuice: true,
     });
-    if ((await makeConfirm(flags)(plan)) !== true) {
-      console.error('Aborted: nothing was sent.');
-      process.exitCode = 2;
-      return;
-    }
+    if ((await makeConfirm(flags)(plan)) !== true) throw new ActionAborted(plan);
 
     const targetContract = await Contract.at(targetAddress, artifact, ctx.wallet);
     const fpcContract = await Contract.at(
@@ -105,6 +122,17 @@ export async function run(flags: ParsedFlags): Promise<void> {
       generation,
       player: ctx.from,
     });
+    // The live policy, once: an unsubscribed player reads (false, 0), so the
+    // budget for the first send is max_uses — without this the measurement
+    // stops before sending anything. max_users is also the real seat range;
+    // guessing it picks seats the contract rejects.
+    const livePolicyRaw = await fpcContract.methods.get_policy().simulate({ from: ctx.from });
+    const livePolicy = ((livePolicyRaw as { result?: unknown })?.result ?? livePolicyRaw) as {
+      max_uses: number | bigint;
+      max_users: number | bigint;
+    };
+    const maxUses = Number(livePolicy.max_uses);
+    const maxUsers = Number(livePolicy.max_users);
 
     let sent = 0;
     const result = await measureSponsoredFee(
@@ -114,7 +142,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
         sendSponsored: async () => {
           const seat =
             !alreadySubscribed && sent === 0
-              ? ((await findFreeSeat({ node: ctx.node as never, fpcAddress, generation, maxUsers: 1024 })) ?? undefined)
+              ? ((await findFreeSeat({ node: ctx.node as never, fpcAddress, generation, maxUsers })) ?? undefined)
               : undefined;
           const calls = [await targetContract.methods[method](...args).request()].flatMap((p) => p.calls);
           const payload = await buildSandwichPayload(
@@ -138,6 +166,12 @@ export async function run(flags: ParsedFlags): Promise<void> {
             }
           ).pxe.proveTx(request, { scopes: [ctx.from] });
           const tx = await proven.toTx();
+          // The plan was confirmed against a specific chain; re-read identity
+          // immediately before the send so a swapped endpoint cannot receive it.
+          const nowInfo = await ctx.node.getNodeInfo();
+          if (nowInfo.l1ChainId !== info.l1ChainId || nowInfo.rollupVersion !== info.rollupVersion) {
+            throw new ActionRevalidationFailed(plan, 'chain identity changed between confirmation and broadcast');
+          }
           await ctx.node.sendTx(tx as never);
           const receipt = await waitForTx(ctx.node, (tx as { getTxHash: () => never }).getTxHash());
           return { transactionFeeWei: BigInt((receipt as { transactionFee?: bigint })?.transactionFee ?? 0n) };
@@ -146,6 +180,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
           const raw = await fpcContract.methods.get_quota_info(ctx.from, generation).simulate({ from: ctx.from });
           const unwrapped = (raw as { result?: unknown })?.result ?? raw;
           const [has, remaining] = unwrapped as [boolean, number | bigint];
+          if (!has && sent === 0) return { hasAllowance: true, remaining: maxUses };
           return { hasAllowance: Boolean(has), remaining: Number(remaining) };
         },
         onProgress: (m) => console.log(`  ${m}`),

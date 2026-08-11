@@ -137,28 +137,50 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
     }
 
     const nodeUrl = env.NODE_URL?.trim() || 'http://localhost:8080';
-    const node = createAztecNodeClient(nodeUrl);
-    await waitForNode(node);
-
-    const wallet = await EmbeddedWallet.create(node, { dataDirectory: walletDir });
-    const account = (await (
-      wallet as unknown as {
-        createSchnorrInitializerlessAccount: (s: unknown, sa: unknown, sk: unknown) => Promise<{ address: unknown }>;
+    // From here on the directory exists (and will hold keys), so every failure
+    // path must clean it up — dispose() is only reachable once we RETURN.
+    const cleanupOnFailure = async (wallet?: { stop: () => Promise<void> }) => {
+      try {
+        await wallet?.stop();
+      } finally {
+        if (deleteOnDispose) rmSync(walletDir, { recursive: true, force: true, maxRetries: 3 });
       }
-    ).createSchnorrInitializerlessAccount(secretKey, salt, signingKey)) as { address: { toString(): string } };
+    };
 
-    const l1RpcUrl = env.L1_RPC_URL?.trim();
-    const l1PrivateKey = env.L1_PRIVATE_KEY?.trim();
+    let node: Awaited<ReturnType<typeof createAztecNodeClient>>;
+    let wallet: Record<string, unknown>;
+    try {
+      node = createAztecNodeClient(nodeUrl);
+      await waitForNode(node);
+      wallet = await EmbeddedWallet.create(node, { dataDirectory: walletDir });
+    } catch (error) {
+      await cleanupOnFailure();
+      throw error;
+    }
+    let account: { address: { toString(): string } };
     let l1: OperatorContext['l1'];
-    if (l1RpcUrl && l1PrivateKey) {
-      // Same construction the repo-local CLI already uses for bridging.
-      const [info, { createEthereumChain }, { createExtendedL1Client }] = await Promise.all([
-        node.getNodeInfo(),
-        import('@aztec/ethereum/chain'),
-        import('@aztec/ethereum/client'),
-      ]);
-      const chain = createEthereumChain([l1RpcUrl], info.l1ChainId);
-      l1 = { client: createExtendedL1Client(chain.rpcUrls, l1PrivateKey, chain.chainInfo) as never };
+    try {
+      account = (await (
+        wallet as unknown as {
+          createSchnorrInitializerlessAccount: (s: unknown, sa: unknown, sk: unknown) => Promise<{ address: unknown }>;
+        }
+      ).createSchnorrInitializerlessAccount(secretKey, salt, signingKey)) as { address: { toString(): string } };
+
+      const l1RpcUrl = env.L1_RPC_URL?.trim();
+      const l1PrivateKey = env.L1_PRIVATE_KEY?.trim();
+      if (l1RpcUrl && l1PrivateKey) {
+        // Same construction the repo-local CLI already uses for bridging.
+        const [info, { createEthereumChain }, { createExtendedL1Client }] = await Promise.all([
+          node.getNodeInfo(),
+          import('@aztec/ethereum/chain'),
+          import('@aztec/ethereum/client'),
+        ]);
+        const chain = createEthereumChain([l1RpcUrl], info.l1ChainId);
+        l1 = { client: createExtendedL1Client(chain.rpcUrls, l1PrivateKey, chain.chainInfo) as never };
+      }
+    } catch (error) {
+      await cleanupOnFailure(wallet as unknown as { stop: () => Promise<void> });
+      throw error;
     }
 
     return {
