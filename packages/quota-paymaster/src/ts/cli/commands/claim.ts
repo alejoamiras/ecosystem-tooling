@@ -1,6 +1,7 @@
 /** `claim` — redeem a bridged deposit. The secret comes from the journal. */
 import { createInterface } from 'node:readline/promises';
-import { claimFeeJuice, findClaimInJournal } from '../../operator/claim.js';
+import { MAX_FEE_JUICE_AMOUNT_WEI } from '../../operator/bridge.js';
+import { claimFeeJuice, findClaimInJournal, MAX_L1_TO_L2_LEAF_INDEX } from '../../operator/claim.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { closeJournalDir, openJournalDir } from '../../operator/internal/journal.js';
 import { makeConfirm } from '../internal/confirm.js';
@@ -38,7 +39,17 @@ function parseBigint(raw: string, flag: string): bigint {
   // A negative amount or leaf index cannot describe a real deposit; refusing
   // here avoids confirming a claim that can only fail.
   if (value < 0n) throw new CliUsageError(`--${flag} must not be negative`);
-  if (flag === 'amount-wei' && value === 0n) throw new CliUsageError('--amount-wei must be greater than zero');
+  if (flag === 'amount-wei') {
+    if (value === 0n) throw new CliUsageError('--amount-wei must be greater than zero');
+    // The claim's amount is a u128 and the L1->L2 tree has 2^36 leaves, so a
+    // larger value names a claim that cannot exist on either side.
+    if (value > MAX_FEE_JUICE_AMOUNT_WEI) {
+      throw new CliUsageError('--amount-wei exceeds the u128 a fee-juice claim accepts');
+    }
+  }
+  if (flag === 'leaf-index' && value > MAX_L1_TO_L2_LEAF_INDEX) {
+    throw new CliUsageError('--leaf-index is past the last leaf of the L1->L2 message tree');
+  }
   return value;
 }
 

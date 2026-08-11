@@ -18,7 +18,11 @@ import { SchnorrInitializerlessAccountContractArtifact } from '@aztec/accounts/s
 import { FunctionSelector } from '@aztec/stdlib/abi';
 import { describe, expect, test } from 'vitest';
 import { MAX_ALLOWED_ACCOUNT_CLASSES, MAX_ALLOWED_TARGETS } from '../../config/schema.js';
-import { DARK_FOREST_REFERENCE_GAS_PROFILE, sponsoredFeeFloorWei } from '../../gas-profile.js';
+import {
+  DARK_FOREST_REFERENCE_GAS_PROFILE,
+  maxFeePerGasWithHeadroom,
+  sponsoredFeeFloorWei,
+} from '../../gas-profile.js';
 import { ROLLOVER_GRACE_SECONDS, SECONDS_PER_DAY } from '../../generation.js';
 import { PLAYER_NULLIFIER_SEPARATOR, SEAT_NULLIFIER_SEPARATOR } from '../../nullifiers.js';
 import { ACCOUNT_MAX_CALLS } from '../../sandwich.js';
@@ -97,9 +101,12 @@ describe('fee-floor arithmetic', () => {
       teardownL2GasLimit: 1,
       feeHeadroomMultiplier: 1.5,
     };
-    // perTx = 1 wei (l2 fee zero); 1.5x rounds UP to 2 — never less protection
-    // than the profile declares.
+    // The fee itself rounds up (1 -> 2/gas), THEN multiplies by the limit —
+    // the order the contract bills in. Rounding the summed total instead would
+    // budget 150 for the 100-gas case while the transaction declares 2/gas and
+    // is billed against 200.
     expect(sponsoredFeeFloorWei(profile, 1n, 0n)).toBe(2n);
-    expect(sponsoredFeeFloorWei({ ...profile, daGasLimit: 100 }, 1n, 0n)).toBe(150n);
+    expect(sponsoredFeeFloorWei({ ...profile, daGasLimit: 100 }, 1n, 0n)).toBe(200n);
+    expect(maxFeePerGasWithHeadroom(profile, 1n)).toBe(2n);
   });
 });

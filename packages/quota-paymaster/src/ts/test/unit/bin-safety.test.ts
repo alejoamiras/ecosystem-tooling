@@ -378,6 +378,9 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     for (const args of [
       ['--amount-wei', '0'],
       ['--amount-wei', '1', '--gas-limit-buffer-percent', '99999'],
+      // Above the u128 the fee-juice claim accepts: the L1 portal would take
+      // the deposit and no L2 claim could ever redeem it.
+      ['--amount-wei', (2n ** 128n).toString()],
     ]) {
       const result = run(['bridge', '--to', `0x${'1'.repeat(64)}`, ...args, '--config-module', poisonConfig()]);
       expect(result.status, args.join(' ')).toBe(2);

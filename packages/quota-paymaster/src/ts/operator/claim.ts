@@ -16,6 +16,7 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan, snapshotOptions } from './action-plan.js';
+import { MAX_FEE_JUICE_AMOUNT_WEI } from './bridge.js';
 import {
   appendJournalRecord,
   BRIDGE_JOURNAL_FILE,
@@ -23,6 +24,9 @@ import {
   readJournalRecords,
   withJournalLock,
 } from './internal/journal.js';
+
+/** The L1->L2 message tree holds 2^L1_TO_L2_MSG_TREE_HEIGHT (36) leaves. */
+export const MAX_L1_TO_L2_LEAF_INDEX = (1n << 36n) - 1n;
 
 export interface ClaimDeps {
   node: AztecNode;
@@ -159,6 +163,17 @@ export async function claimFeeJuice(
   // still request STRONGER finality (PROVEN/FINALIZED) or tune
   // timeout/interval (post-impl audit rounds 2-3, finding 3/2).
   const { wait: callerWait, ...sendOpts } = snapshotOptions(sendOptions);
+
+  // Bounds the on-chain types impose: the claim amount is a u128 and the
+  // L1->L2 message tree has 2^36 leaves (L1_TO_L2_MSG_TREE_HEIGHT = 36), so a
+  // value above either describes a claim that cannot exist. Refusing here
+  // keeps it out of the plan a human is asked to approve (round-5 finding 2).
+  if (amountWei > MAX_FEE_JUICE_AMOUNT_WEI) {
+    throw new Error(`amountWei ${amountWei} exceeds the u128 the fee-juice claim accepts`);
+  }
+  if (messageLeafIndex > MAX_L1_TO_L2_LEAF_INDEX) {
+    throw new Error(`messageLeafIndex ${messageLeafIndex} is past the last leaf of the L1->L2 message tree`);
+  }
 
   const recipient = AztecAddress.fromStringUnsafe(recipientStr);
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');

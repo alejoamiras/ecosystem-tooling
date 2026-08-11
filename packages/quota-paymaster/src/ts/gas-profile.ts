@@ -96,10 +96,31 @@ export const DARK_FOREST_REFERENCE_GAS_PROFILE: GasProfile = {
  */
 export function sponsoredFeeFloorWei(profile: GasProfile, feePerDaGas: bigint, feePerL2Gas: bigint): bigint {
   assertValidGasProfile(profile);
-  const perTx = BigInt(profile.daGasLimit) * feePerDaGas + BigInt(profile.l2GasLimit) * feePerL2Gas;
-  // Fractional multipliers (1.5x is a natural headroom) via scaled integer
-  // math, rounding UP — flooring a headroom hands back less protection than
-  // the profile declares. BigInt(1.5) would throw.
+  // Per DIMENSION, mirroring the billing formula exactly: a client declares an
+  // integer max fee for each of DA and L2, and the contract bills
+  // `gas_limits x max_fees_per_gas`. Rounding the SUM instead understates the
+  // bound whenever either fee rounds up — with 100 DA gas at 1 wei and 1.5x,
+  // summing first permits 150 while the transaction declares 2/gas and is
+  // billed against 200, so the policy passes the drift guard and sponsorship
+  // still fails (round-5 finding 1).
+  return (
+    BigInt(profile.daGasLimit) * maxFeePerGasWithHeadroom(profile, feePerDaGas) +
+    BigInt(profile.l2GasLimit) * maxFeePerGasWithHeadroom(profile, feePerL2Gas)
+  );
+}
+
+/**
+ * The max fee per gas a client should declare for `fee` under `profile` — the
+ * SAME number the floor above budgets for. Fractional multipliers (1.5x is a
+ * natural headroom) go through scaled integer math, rounding UP: flooring a
+ * headroom hands back less protection than the profile declares, and
+ * `BigInt(1.5)` throws outright.
+ *
+ * Exported because a sponsored client has to compute this too, and any client
+ * that computes it differently than the guard can pass the policy check and
+ * still be rejected on-chain.
+ */
+export function maxFeePerGasWithHeadroom(profile: GasProfile, feePerGas: bigint): bigint {
   const scaled = BigInt(Math.ceil(profile.feeHeadroomMultiplier * 1000));
-  return (perTx * scaled + 999n) / 1000n;
+  return (feePerGas * scaled + 999n) / 1000n;
 }

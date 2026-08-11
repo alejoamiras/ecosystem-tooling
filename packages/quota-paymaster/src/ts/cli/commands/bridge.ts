@@ -1,5 +1,5 @@
 /** `bridge` — L1 deposit into Aztec fee juice. IRREVERSIBLE. */
-import { bridgeFeeJuice } from '../../operator/bridge.js';
+import { bridgeFeeJuice, MAX_FEE_JUICE_AMOUNT_WEI } from '../../operator/bridge.js';
 import { OperatorConfigError } from '../../operator/config-module.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { closeJournalDir, openJournalDir } from '../../operator/internal/journal.js';
@@ -46,6 +46,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // module has run and the plan has been built: refuse here, where nothing has
   // happened yet.
   if (amountWei <= 0n) throw new CliUsageError('--amount-wei / --amount must be greater than zero');
+  if (amountWei > MAX_FEE_JUICE_AMOUNT_WEI) {
+    throw new CliUsageError(
+      '--amount-wei / --amount exceeds the u128 a fee-juice claim accepts (it could never be claimed)',
+    );
+  }
   const bufferPercent = flags.get('gas-limit-buffer-percent');
   if (bufferPercent !== undefined) {
     if (!/^\d+(\.\d+)?$/.test(bufferPercent)) {

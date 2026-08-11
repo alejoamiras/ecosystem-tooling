@@ -21,6 +21,9 @@ import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './ac
 import { appendJournalRecord, BRIDGE_JOURNAL_FILE, type JournalHandle, withJournalLock } from './internal/journal.js';
 
 /** The L1 client surface this module needs (an @aztec/ethereum extended client). */
+/** The fee-juice claim takes a u128 amount (verified against the 5.0.1 FeeJuice artifact). */
+export const MAX_FEE_JUICE_AMOUNT_WEI = (1n << 128n) - 1n;
+
 export interface BridgeL1Client {
   account: { address: string };
   simulateContract(args: object): Promise<unknown>;
@@ -87,6 +90,13 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     );
   }
   if (amountWei <= 0n) throw new Error('amountWei must be positive');
+  // FeeJuice.claim takes a u128 amount, but the L1 portal takes a uint256: an
+  // amount above the u128 range leaves L1 and can never be claimed on L2.
+  if (amountWei > MAX_FEE_JUICE_AMOUNT_WEI) {
+    throw new Error(
+      `amountWei ${amountWei} exceeds the u128 the fee-juice claim accepts — the deposit could never be claimed`,
+    );
+  }
   // The buffer controls the L1 gas limit — an execution-affecting input, so
   // it is validated AND appears in the confirmed plan (round-2 finding 6).
   // Range-bounded, not just finite: Number.MAX_VALUE is finite but the

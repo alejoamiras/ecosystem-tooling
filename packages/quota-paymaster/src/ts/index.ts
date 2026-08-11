@@ -44,6 +44,7 @@ export {
   assertValidGasProfile,
   DARK_FOREST_REFERENCE_GAS_PROFILE,
   type GasProfile,
+  maxFeePerGasWithHeadroom,
   sponsoredFeeFloorWei,
 } from './gas-profile.js';
 export {

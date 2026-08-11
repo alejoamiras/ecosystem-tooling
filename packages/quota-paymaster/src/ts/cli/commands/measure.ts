@@ -10,6 +10,7 @@
  * app-agnostic, so it works for any allowlisted contract.
  */
 import { readFileSync } from 'node:fs';
+import { maxFeePerGasWithHeadroom } from '../../gas-profile.js';
 import { generationAt } from '../../generation.js';
 import {
   ActionAborted,
@@ -201,8 +202,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
           // letting the SDK invent its own would measure a different envelope
           // than the one on the plan.
           const minFees = await ctx.node.getCurrentMinFees();
-          const scaled = BigInt(Math.ceil(gasProfile.feeHeadroomMultiplier * 1000));
-          const withHeadroom = (fee: bigint) => (fee * scaled + 999n) / 1000n;
+          const withHeadroom = (fee: bigint) => maxFeePerGasWithHeadroom(gasProfile, fee);
           const gasSettings = GasSettings.fallback({
             gasLimits: new Gas(gasProfile.daGasLimit, gasProfile.l2GasLimit),
             teardownGasLimits: new Gas(gasProfile.teardownDaGasLimit, gasProfile.teardownL2GasLimit),
