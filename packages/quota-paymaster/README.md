@@ -92,7 +92,8 @@ import { deployQuotaFpc, readPolicyState, bridgeFeeJuice } from '@alejoamiras/qu
 
 Gas budgets are a REQUIRED input (`GasProfile`): measure your own actions with the measure
 tooling — `DARK_FOREST_REFERENCE_GAS_PROFILE` is labeled reference data, not a default.
-Human-facing copy is deliberately not in the SDK; tested templates live in `examples/`.
+Human-facing copy is deliberately not in the SDK; tested templates live in `examples/` in the
+[repository](https://github.com/alejoamiras/ecosystem-tooling) (they are not shipped in the tarball).
 
 A sponsored client must declare `maxFeesPerGas` using `maxFeePerGasWithHeadroom(profile, fee)`.
 The contract bills `gas_limits × max_fees_per_gas` per dimension, and the policy's fee floor
@@ -113,13 +114,30 @@ npx @alejoamiras/quota-paymaster --help
 
 The CLI never reads keys from the command line and contains no key material of its own.
 You write a small module that hands it a wallet; you name that module explicitly on every
-invocation. Two lines for the common case:
+invocation:
 
 ```js
 // quota-paymaster.config.mjs
 import { defineOperatorConfig, schnorrAccountFromEnv } from '@alejoamiras/quota-paymaster/operator/config';
-export default defineOperatorConfig(schnorrAccountFromEnv());
+
+const account = schnorrAccountFromEnv();
+export default defineOperatorConfig(async () => ({
+  ...(await account()),
+  // Required by every command that prices the client's envelope: `policy`
+  // (including --show, which reports the sequencer reserve) and `measure`,
+  // which has no flag for it. Measure YOUR actions — these are placeholders.
+  gasProfile: {
+    daGasLimit: 50_000,
+    l2GasLimit: 6_000_000,
+    teardownDaGasLimit: 5_000,
+    teardownL2GasLimit: 500_000,
+    feeHeadroomMultiplier: 1.5,
+  },
+}));
 ```
+
+`deploy`, `bridge` and `claim` need no profile, so `export default defineOperatorConfig(schnorrAccountFromEnv())`
+on its own is enough if those are all you run.
 
 `schnorrAccountFromEnv()` reads `ACCOUNT_SECRET_KEY`, `ACCOUNT_SALT`, `ACCOUNT_SIGNING_KEY`
 from the environment (optionally `ACCOUNT_ADDRESS` — it cross-checks the derived address

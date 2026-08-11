@@ -161,7 +161,14 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
     },
     chainTimestamp,
     balanceWei,
-    sequencerReserveWei: sponsoredFeeFloorWei({ ...gasProfile, feeHeadroomMultiplier: 1 }, feePerDaGas, feePerL2Gas),
+    // The profile's OWN headroom, not a stripped 1x: admission checks the fee
+    // payer against GasSettings.getFeeLimit() = gas_limits x MAX_fees_per_gas,
+    // and the client declares those maxima with headroom applied
+    // (maxFeePerGasWithHeadroom). Reporting the 1x number understates the
+    // reserve by the multiplier, so a paymaster funded between the two reads
+    // as healthy and sponsors nothing — the exact failure this line exists to
+    // catch (round-7 finding 1).
+    sequencerReserveWei: sponsoredFeeFloorWei(gasProfile, feePerDaGas, feePerL2Gas),
     currentFees: { feePerDaGas, feePerL2Gas },
   };
 }

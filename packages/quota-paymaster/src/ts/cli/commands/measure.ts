@@ -236,7 +236,13 @@ export async function run(flags: ParsedFlags): Promise<void> {
           const raw = await fpcContract.methods.get_quota_info(ctx.from, generation).simulate({ from: ctx.from });
           const unwrapped = (raw as { result?: unknown })?.result ?? raw;
           const [has, remaining] = unwrapped as [boolean, number | bigint];
-          if (!has && sent === 0) return { hasAllowance: true, remaining: maxUses };
+          // Only an UNSUBSCRIBED player's first send reads as "no quota record
+          // yet"; a subscribed player reporting no allowance has genuinely
+          // exhausted the day. Without the subscription check, that player got
+          // a full-allowance budget and then a sponsor_and_execute that the
+          // contract rejects (round-7 finding 5) — and this now matches the
+          // seat logic above, which was already conditioned on it.
+          if (!has && sent === 0 && !alreadySubscribed) return { hasAllowance: true, remaining: maxUses };
           return { hasAllowance: Boolean(has), remaining: Number(remaining) };
         },
         onProgress: (m) => console.log(`  ${m}`),

@@ -28,6 +28,10 @@ export const usage =
   '  --allow-retry-after-unknown proceeds despite a prior attempt with no recorded\n' +
   '  outcome — verify on-chain first, it may have landed.';
 
+const TTY_REFUSAL =
+  '--secret-stdin refuses an interactive terminal (the secret would be echoed to the screen). ' +
+  'Pipe it instead: printf %s "$SECRET" | ... --secret-stdin';
+
 /** Malformed numbers are usage refusals (nothing happened), never failures. */
 function parseBigint(raw: string, flag: string): bigint {
   let value: bigint;
@@ -60,12 +64,7 @@ function parseBigint(raw: string, flag: string): bigint {
  *   printf %s "$SECRET" | quota-paymaster claim ... --secret-stdin
  */
 async function readSecretFromStdin(): Promise<string> {
-  if (process.stdin.isTTY) {
-    throw new CliUsageError(
-      '--secret-stdin refuses an interactive terminal (the secret would be echoed to the screen). ' +
-        'Pipe it instead: printf %s "$SECRET" | ... --secret-stdin',
-    );
-  }
+  if (process.stdin.isTTY) throw new CliUsageError(TTY_REFUSAL);
   const rl = createInterface({ input: process.stdin });
   try {
     const line = await rl.question('');
@@ -86,6 +85,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
         messageLeafIndex: parseBigint(flags.require('leaf-index'), 'leaf-index'),
       }
     : undefined;
+  // The TTY refusal belongs up here with the other refusals: at a terminal
+  // this command can never proceed, so running the operator's config module
+  // first is pure cost (round-7 finding 3).
+  if (manualAmounts && process.stdin.isTTY) throw new CliUsageError(TTY_REFUSAL);
 
   await withContext(flags, async (ctx) => {
     const journal = openJournalDir(flags.get('journal-dir') ?? process.env.QUOTA_JOURNAL_DIR);
