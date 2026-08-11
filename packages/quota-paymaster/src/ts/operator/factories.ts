@@ -176,7 +176,10 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
           import('@aztec/ethereum/client'),
         ]);
         const chain = createEthereumChain([l1RpcUrl], info.l1ChainId);
-        l1 = { client: createExtendedL1Client(chain.rpcUrls, l1PrivateKey, chain.chainInfo) as never };
+        // No cast: createExtendedL1Client returns exactly the client type
+        // BridgeL1Client now names (the cast existed only to squeeze it into
+        // the old four-method interface).
+        l1 = { client: createExtendedL1Client(chain.rpcUrls, l1PrivateKey, chain.chainInfo) };
       }
     } catch (error) {
       await cleanupOnFailure(wallet as unknown as { stop: () => Promise<void> });
