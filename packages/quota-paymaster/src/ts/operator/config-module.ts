@@ -222,8 +222,21 @@ export function assertOperatorContext(context: unknown): asserts context is Oper
   }
 }
 
-/** Error text only — never a value, so a malformed key cannot reach output. */
+/**
+ * Enough to diagnose, never enough to leak.
+ *
+ * Errors contribute name + message (key-parse failures are sanitized where
+ * they are raised, so their messages name fields, not values). A non-Error
+ * throw contributes only its constructor name — a bare `typeof` (i.e.
+ * "object") makes real failures undiagnosable, which cost a debugging cycle
+ * during Phase 4.
+ */
 function describe(cause: unknown): string {
   if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
+  if (typeof cause === 'object' && cause !== null) {
+    const name = (cause as { constructor?: { name?: string } }).constructor?.name ?? 'object';
+    const message = (cause as { message?: unknown }).message;
+    return typeof message === 'string' ? `${name}: ${message}` : name;
+  }
   return typeof cause;
 }
