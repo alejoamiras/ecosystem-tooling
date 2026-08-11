@@ -28,7 +28,9 @@ function tsFilesUnder(dir: string, skip: string[]): string[] {
 
 describe('browser safety', () => {
   test('no node-only imports in the browser-facing SDK sources', () => {
-    const files = tsFilesUnder(srcRoot, ['/operator', '/test']);
+    // /cli is node-only for the same reason /operator is: it reads files,
+    // spawns readline, and loads the operator's config module.
+    const files = tsFilesUnder(srcRoot, ['/operator', '/test', '/cli']);
     expect(files.length).toBeGreaterThan(5);
     for (const file of files) {
       const source = readFileSync(file, 'utf8');

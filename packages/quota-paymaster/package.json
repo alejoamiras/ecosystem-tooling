@@ -23,12 +23,20 @@
       "import": "./dist/src/ts/operator/index.js",
       "types": "./dist/src/ts/operator/index.d.ts"
     },
+    "./operator/config": {
+      "import": "./dist/src/ts/operator/config.js",
+      "types": "./dist/src/ts/operator/config.d.ts"
+    },
     "./known-deployments.json": "./known-deployments.json",
     "./package.json": "./package.json"
   },
   "main": "./dist/src/ts/index.js",
   "types": "./dist/src/ts/index.d.ts",
+  "bin": {
+    "quota-paymaster": "bin/quota-paymaster.mjs"
+  },
   "files": [
+    "bin",
     "dist",
     "target",
     "!target/*.json.bak",
