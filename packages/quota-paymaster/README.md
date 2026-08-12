@@ -90,6 +90,10 @@ confirm-exact-plan / revalidate-before-broadcast protocol):
 import { deployQuotaFpc, readPolicyState, bridgeFeeJuice } from '@alejoamiras/quota-paymaster/operator';
 ```
 
+**Integrating this into an app?** [`INTEGRATING.md`](./INTEGRATING.md) is the client-side
+guide: the order to call things in, and the four places where a reasonable-looking
+integration silently stops sponsoring.
+
 Gas budgets are a REQUIRED input (`GasProfile`): measure your own actions with the measure
 tooling — `DARK_FOREST_REFERENCE_GAS_PROFILE` is labeled reference data, not a default.
 Human-facing copy is deliberately not in the SDK; tested templates live in `examples/` in the

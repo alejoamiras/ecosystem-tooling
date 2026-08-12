@@ -36,6 +36,7 @@
     "quota-paymaster": "bin/quota-paymaster.mjs"
   },
   "files": [
+    "INTEGRATING.md",
     "bin",
     "dist",
     "target",
