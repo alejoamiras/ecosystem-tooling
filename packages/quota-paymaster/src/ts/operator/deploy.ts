@@ -172,15 +172,18 @@ export async function deployQuotaFpc(
     rollupVersion: chain.version.toString(),
     contractClassId: classId,
     deploymentName: snapshot.name,
-    admin: snapshot.adminAddress,
-    maxFeeWei: snapshot.policy.maxFeeWei,
+    // Canonical forms: the SAME deployment written with an uppercase address
+    // or a hex amount produced a different digest, so a rehearsed digest and
+    // the real one disagreed over nothing (round-17).
+    admin: snapshot.adminAddress.toLowerCase(),
+    maxFeeWei: BigInt(snapshot.policy.maxFeeWei).toString(),
     maxUsesPerDay: snapshot.policy.maxUsesPerDay,
     maxUsersPerDay: snapshot.policy.maxUsersPerDay,
-    targets: snapshot.targets.map((t) => t.address).join(','),
-    accountClasses: snapshot.accountClasses.map((c) => c.classId).join(','),
+    targets: snapshot.targets.map((t) => t.address.toLowerCase()).join(','),
+    accountClasses: snapshot.accountClasses.map((c) => BigInt(c.classId).toString()).join(','),
     requireUnpublishedAccounts: snapshot.requireUnpublishedAccounts,
     worstCasePerDayWei: worstCasePerDayWei(snapshot.policy).toString(),
-    maxLossWei: snapshot.maxLossWei,
+    maxLossWei: BigInt(snapshot.maxLossWei).toString(),
     from: snapshot.from.toString(),
     // Binds option VALUES, not just names: plain parts by canonical value,
     // class instances by constructor name (round-3 finding 4; round-4

@@ -200,6 +200,32 @@ export async function run(flags: ParsedFlags): Promise<void> {
     const maxUses = Number(livePolicy.max_uses);
     const maxUsers = Number(livePolicy.max_users);
 
+    // Both done BEFORE the plan: `.request()` is what validates argument TYPES
+    // against the ABI (arity is checked earlier, offline), and the wallet's
+    // chain identity was previously read only inside the send — after a human
+    // had approved a plan built from the NODE's identity (round-17).
+    // biome-ignore lint/suspicious/noExplicitAny: version-loose call shape
+    let calls: any[];
+    try {
+      calls = [await targetContract.methods[method](...args).request()].flatMap((p) => p.calls);
+    } catch (error) {
+      throw new CliUsageError(`--args does not match ${method}'s ABI: ${(error as Error).message}`);
+    }
+    const walletChain = await (ctx.wallet as unknown as { getChainInfo: () => Promise<never> }).getChainInfo();
+    const walletChainInfo = walletChain as unknown as {
+      chainId: { toString(): string };
+      version: { toString(): string };
+    };
+    if (
+      BigInt(walletChainInfo.chainId.toString()) !== BigInt(info.l1ChainId) ||
+      BigInt(walletChainInfo.version.toString()) !== BigInt(info.rollupVersion)
+    ) {
+      throw new CliUsageError(
+        `the config module's wallet is on chain ${walletChainInfo.chainId}/${walletChainInfo.version}, but its node ` +
+          `reports ${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and measure another`,
+      );
+    }
+
     // Declared before readQuotaInfo, which closes over it: the allowance
     // preflight below runs before any send, so this must already exist.
     let sent = 0;
@@ -271,7 +297,6 @@ export async function run(flags: ParsedFlags): Promise<void> {
             }
             seat = free;
           }
-          const calls = [await targetContract.methods[method](...args).request()].flatMap((p) => p.calls);
           const payload = await buildSandwichPayload(
             { calls, player: ctx.from, fpcAddress, generation, seat },
             ctx.wallet as never,
@@ -291,11 +316,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
               withHeadroom(BigInt(minFees.feePerL2Gas)),
             ),
           });
-          const request = await new DefaultEntrypoint().createTxExecutionRequest(
-            payload,
-            gasSettings,
-            await (ctx.wallet as unknown as { getChainInfo: () => Promise<never> }).getChainInfo(),
-          );
+          const request = await new DefaultEntrypoint().createTxExecutionRequest(payload, gasSettings, walletChain);
           const proven = await (
             ctx.wallet as unknown as {
               pxe: { proveTx: (r: unknown, o: unknown) => Promise<{ toTx: () => Promise<unknown> }> };

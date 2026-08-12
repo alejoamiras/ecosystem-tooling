@@ -260,7 +260,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
 
     // Target edits are a full-list replacement computed against live state
     // (their SYNTAX was already validated before any user code ran).
-    const added = addTargets;
+    // Lowercased: an address differing only in case is the SAME target, and
+    // feeding the typed spelling into the plan made the digest depend on how
+    // the operator capitalised it (round-17).
+    const added = addTargets.map((t) => t.toLowerCase());
     const removed = removeTargets.map((t) => t.toLowerCase());
     let allowedTargets: string[] | undefined;
     if (added.length > 0 || removed.length > 0) {

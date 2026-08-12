@@ -265,7 +265,22 @@ export async function schedulePolicyChange(
     assertValidTargetList(requested.allowedTargets);
   }
 
-  const [state, info] = await Promise.all([readPolicyState(deps, guards.gasProfile), deps.node.getNodeInfo()]);
+  const [state, info, walletChain] = await Promise.all([
+    readPolicyState(deps, guards.gasProfile),
+    deps.node.getNodeInfo(),
+    deps.wallet.getChainInfo(),
+  ]);
+  // Same as claim: the plan describes the node's chain while the send goes
+  // through the wallet (round-17).
+  if (
+    BigInt(walletChain.chainId.toString()) !== BigInt(info.l1ChainId) ||
+    BigInt(walletChain.version.toString()) !== BigInt(info.rollupVersion)
+  ) {
+    throw new Error(
+      `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
+        `${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and execute on another`,
+    );
+  }
 
   // While a bundle is PENDING, fill-from-live is refused outright (round-3
   // finding 3): the 600s revalidation horizon below narrows the activation

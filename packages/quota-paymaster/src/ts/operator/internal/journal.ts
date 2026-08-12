@@ -33,12 +33,13 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   statSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 export interface JournalHandle {
   readonly dirPath: string;
@@ -61,12 +62,29 @@ const STALE_LOCK_MS = 120_000;
  * Opens (creating if needed) the owned journal directory and verifies it on
  * the DESCRIPTOR: a directory, owned by this uid, no group/other permissions.
  */
-export function openJournalDir(dirPath: string = DEFAULT_JOURNAL_DIR()): JournalHandle {
-  mkdirSync(dirPath, { recursive: true, mode: 0o700 });
-  const dirFd = openSync(dirPath, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+export function openJournalDir(requestedPath: string = DEFAULT_JOURNAL_DIR()): JournalHandle {
+  // Resolved once, here: the path is now part of the confirmed plan (it decides
+  // where the only copy of a claim secret lands), and a relative path would
+  // show the operator "./j" while meaning something different depending on the
+  // working directory (round-17). Error messages get the real location too.
+  const lexicalPath = resolve(requestedPath);
+  mkdirSync(lexicalPath, { recursive: true, mode: 0o700 });
+  const dirFd = openSync(lexicalPath, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  // CANONICAL, not merely absolute: resolve() is lexical, so a symlinked
+  // parent gave the same digest for two different destinations, and the
+  // symlinked and canonical spellings of ONE directory gave two different
+  // digests. The inode check ties the name in the plan to the directory
+  // actually opened (round-17).
+  const dirPath = realpathSync(lexicalPath);
   try {
     const st = fstatSync(dirFd);
     if (!st.isDirectory()) throw new Error(`${dirPath} is not a directory`);
+    // The canonical name must BE the directory we hold open, or the plan would
+    // name one place while the writes go to another.
+    const canonical = statSync(dirPath);
+    if (canonical.ino !== st.ino || canonical.dev !== st.dev) {
+      throw new Error(`journal dir ${dirPath} changed underneath this process; refusing`);
+    }
     if (process.getuid && st.uid !== process.getuid()) {
       throw new Error(`journal dir ${dirPath} is not owned by this user; refusing`);
     }

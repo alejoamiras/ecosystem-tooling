@@ -224,10 +224,24 @@ export async function claimFeeJuice(
 
   const recipient = AztecAddress.fromStringUnsafe(recipientStr);
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  const [before, info] = await Promise.all([
+  const [before, info, walletChain] = await Promise.all([
     getFeeJuiceBalance(recipient, deps.node).then((b) => BigInt(b ?? 0n)),
     deps.node.getNodeInfo(),
+    deps.wallet.getChainInfo(),
   ]);
+  // The plan is built from the NODE's identity, but the transaction is sent
+  // through the WALLET — a config module supplying the two independently could
+  // display chain A and execute on chain B (round-17). deploy already binds
+  // the wallet's chain; this is the same check for the wallet-sent commands.
+  if (
+    BigInt(walletChain.chainId.toString()) !== BigInt(info.l1ChainId) ||
+    BigInt(walletChain.version.toString()) !== BigInt(info.rollupVersion)
+  ) {
+    throw new Error(
+      `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
+        `${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and execute on another`,
+    );
+  }
 
   // Anything derived from a failed send can carry the calldata — which
   // CONTAINS the secret — so scrub both spellings out of every diagnostic
