@@ -24,7 +24,20 @@ export function makeConfirm(flags: ParsedFlags, isTty: boolean = process.stdin.i
     if (!isTty) return true;
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
-      const answer = await rl.question('\nProceed? Type the first 6 digest chars to confirm: ');
+      // Raced against `close`, because readline's question() NEVER settles on
+      // EOF: pressing Ctrl-D at this prompt left the promise pending forever,
+      // so the CLI hung — or drained its event loop and exited 0 having sent
+      // nothing, which for a state-changing command reads as success. Same
+      // root cause as the --secret-stdin bug, in the other call site
+      // (round-14). End of input is a refusal, like any unmatched answer.
+      const answer = await new Promise<string | null>((resolve) => {
+        rl.once('close', () => resolve(null));
+        rl.question('\nProceed? Type the first 6 digest chars to confirm: ').then(resolve, () => resolve(null));
+      });
+      if (answer === null) {
+        console.error('\nNo confirmation was given (end of input) — nothing was sent.');
+        return false;
+      }
       return answer.trim() === plan.digest.slice(0, 6);
     } finally {
       rl.close();

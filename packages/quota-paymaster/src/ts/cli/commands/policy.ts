@@ -159,6 +159,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // --show has the same problem and had no guard: `policy --show --max-uses 5
   // --yes` printed the state and exited 0 having scheduled NOTHING, with no
   // plan and no warning (round-13).
+  // ...and not each other: --show returns before the cancel runs, so the pair
+  // exited 0 having cancelled nothing (round-14).
+  if (flags.has('show') && flags.has('cancel')) {
+    throw new CliUsageError('--show and --cancel do different things; run them as separate commands');
+  }
   for (const mode of ['cancel', 'show'] as const) {
     if (!flags.has(mode)) continue;
     const conflicting = ['max-fee-wei', 'max-uses', 'max-users', 'add-target', 'remove-target'].filter((f) =>

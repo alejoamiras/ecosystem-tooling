@@ -175,7 +175,11 @@ export async function withJournalLock<T>(
         continue; // lock vanished between EEXIST and stat — retry immediately
       }
       if (stale && observed !== undefined) {
-        opts.onWarn?.(`stealing stale journal lock ${lockPath} (holder presumed crashed)`);
+        // Defaults to console.warn rather than staying silent: NO caller ever
+        // passed onWarn, so a lock steal — which means another process was
+        // presumed dead mid-write — could never reach the operator it concerns
+        // (round-14). The callback still lets a caller capture it instead.
+        (opts.onWarn ?? console.warn)(`stealing stale journal lock ${lockPath} (holder presumed crashed)`);
         try {
           // Identity-checked steal: only remove the exact lock we observed as
           // stale — if the content changed, a fresh holder took it; re-queue.

@@ -115,7 +115,9 @@ export function parseFlags(argv: string[], schema: FlagSchema): ParsedFlags {
     // bookkeeping silently switched off and the next claim re-targeted an
     // already-claimed deposit. `--leaf-index ""` was worse: BigInt('') is 0n,
     // so it claimed leaf 0 (round-13).
-    if (value === '') throw new CliUsageError(`--${name} was given an empty value`);
+    // trim(), not just '': BigInt(' ') is 0n too, so a whitespace-only
+    // --leaf-index silently selected leaf 0 (round-14).
+    if (value.trim() === '') throw new CliUsageError(`--${name} was given an empty value`);
 
     if (spec.repeatable) {
       const bucket = lists.get(name) ?? [];

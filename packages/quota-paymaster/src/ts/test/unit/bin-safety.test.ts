@@ -96,12 +96,30 @@ describe('published CLI: help and dispatch', () => {
     for (const args of [
       ['claim', '--for', `0x0${'1'.repeat(63)}`, '--message-hash', ''],
       ['claim', '--for', `0x0${'1'.repeat(63)}`, '--secret-stdin', '--amount-wei', '1', '--leaf-index', ''],
+      // Whitespace is empty too: BigInt(' ') is 0n.
+      ['claim', '--for', `0x0${'1'.repeat(63)}`, '--secret-stdin', '--amount-wei', '1', '--leaf-index', '  '],
     ]) {
       const result = run([...args, '--config-module', poisonConfig()]);
       expect(result.status, args.join(' ')).toBe(2);
       expect(result.combined).toMatch(/was given an empty value/);
       expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
     }
+  });
+
+  test('policy --show and --cancel together are refused (--show would win silently)', () => {
+    const result = run([
+      'policy',
+      '--fpc',
+      `0x0${'1'.repeat(63)}`,
+      '--show',
+      '--cancel',
+      '--yes',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/run them as separate commands/);
+    expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
   });
 
   test('policy --show refuses edit flags instead of ignoring them', () => {

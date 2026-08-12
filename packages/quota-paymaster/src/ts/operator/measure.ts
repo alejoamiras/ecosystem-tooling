@@ -9,7 +9,7 @@
  * The send pipeline is injected: building, proving, and sending a sponsored
  * transaction needs a wallet + client wiring that the caller (test harness,
  * CLI, app) already owns. This module owns the measurement discipline around
- * it: quota preflight, clamping, the inter-send PXE-lag wait, and honest
+ * it: quota preflight, the allowance refusal, the inter-send PXE-lag wait, and honest
  * accounting from receipts + balance deltas.
  */
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
@@ -41,8 +41,14 @@ export async function measureSponsoredFee(
   deps: MeasureDeps,
   opts: { count: number; interSendPollMs?: number; interSendTimeoutMs?: number } = { count: 2 },
 ): Promise<MeasureResult> {
+  // The public entry point validates its own count: 0 or a negative returned a
+  // SUCCESSFUL zero-send result, and 1.5 sent twice while reporting
+  // `measured: 1.5` (round-14).
+  if (!Number.isInteger(opts.count) || opts.count < 1) {
+    throw new Error(`count must be a positive integer, got ${opts.count}`);
+  }
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  // Preflight so re-running does not try to over-subscribe; clamp to what the
+  // Preflight so re-running does not try to over-subscribe; refuse what the
   // allowance actually permits rather than failing partway. Independent of the
   // balance read, so both go out together.
   const [beforeRaw, quota] = await Promise.all([getFeeJuiceBalance(deps.fpcAddress, deps.node), deps.readQuotaInfo()]);
