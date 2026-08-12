@@ -40,6 +40,17 @@ export async function withContext<T>(flags: ParsedFlags, fn: (context: OperatorC
   try {
     return await fn(context);
   } finally {
-    await context.dispose?.();
+    // dispose is OPERATOR code. Unguarded, a throw from it replaces the
+    // command's outcome in both directions: a refusal's ActionAborted stops
+    // being an ActionAborted (so the exit code becomes 1, "something may have
+    // happened", for a dry run that sent nothing), and a SUCCESSFUL bridge
+    // exits 1 right after printing success — inviting a second irreversible
+    // deposit. Cleanup failing is worth a warning, never the verdict
+    // (round-9 finding 1; config-module.ts already does this).
+    try {
+      await context.dispose?.();
+    } catch (error) {
+      console.warn(`warning: the config module's dispose() threw: ${(error as Error)?.message ?? error}`);
+    }
   }
 }

@@ -210,7 +210,10 @@ export async function claimFeeJuice(
     // they belong in the digest — deploy and measure already bind theirs.
     // Round 3 gave this function the snapshot half of the anti-mutation fix
     // and stopped short of the digest half (round-8 finding 1).
-    sendOptionsDigest: digestOptions(sendOpts),
+    // The FULL snapshot including `wait`: a caller's timeout, poll interval or
+    // stronger finality all change what executes, and digesting the bag with
+    // `wait` removed left them uncovered (round-9).
+    sendOptionsDigest: digestOptions({ ...sendOpts, wait: callerWait }),
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     const again = await deps.node.getNodeInfo();

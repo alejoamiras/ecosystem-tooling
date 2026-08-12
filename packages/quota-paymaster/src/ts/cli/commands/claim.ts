@@ -6,7 +6,7 @@ import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { closeJournalDir, openJournalDir } from '../../operator/internal/journal.js';
 import { makeConfirm } from '../internal/confirm.js';
 import { withContext } from '../internal/context.js';
-import { CliUsageError, type FlagSchema, type ParsedFlags } from '../internal/flags.js';
+import { CliUsageError, type FlagSchema, type ParsedFlags, requireAddressFlag } from '../internal/flags.js';
 
 export const schema: FlagSchema = {
   for: { type: 'string' },
@@ -75,7 +75,7 @@ async function readSecretFromStdin(): Promise<string> {
 }
 
 export async function run(flags: ParsedFlags): Promise<void> {
-  const recipient = flags.require('for');
+  const recipient = requireAddressFlag(flags, 'for');
   // Parse and range-check BEFORE withContext: a refusal must not have executed
   // the operator's config module, which is arbitrary code (round-6 finding 1;
   // same hoisting the other commands already do).

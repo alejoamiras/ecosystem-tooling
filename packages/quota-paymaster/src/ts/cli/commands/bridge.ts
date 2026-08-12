@@ -5,7 +5,7 @@ import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { closeJournalDir, openJournalDir } from '../../operator/internal/journal.js';
 import { makeConfirm } from '../internal/confirm.js';
 import { withContext } from '../internal/context.js';
-import { CliUsageError, type FlagSchema, type ParsedFlags } from '../internal/flags.js';
+import { CliUsageError, type FlagSchema, type ParsedFlags, requireAddressFlag } from '../internal/flags.js';
 
 export const schema: FlagSchema = {
   to: { type: 'string' },
@@ -26,14 +26,11 @@ export const usage =
 const WEI_PER_AZTEC = 10n ** 18n;
 
 export async function run(flags: ParsedFlags): Promise<void> {
-  const to = flags.require('to');
   // Shape-checked here as well as in the library: reaching the library's
   // plain Error means the config module already ran and the exit code says
-  // "something may have happened" for what is purely a typo (round-7 finding
-  // 4). The library keeps its own check — it is a public entry point too.
-  if (!/^0x[0-9a-fA-F]{64}$/.test(to)) {
-    throw new CliUsageError(`--to must be a 32-byte Aztec address (0x + 64 hex), got "${to}"`);
-  }
+  // "something may have happened" for what is purely a typo. The library keeps
+  // its own check — it is a public entry point too.
+  const to = requireAddressFlag(flags, 'to');
   const amountWeiFlag = flags.get('amount-wei');
   const amountFlag = flags.get('amount');
   if ((amountWeiFlag === undefined) === (amountFlag === undefined)) {

@@ -144,7 +144,13 @@ export async function deployQuotaFpc(
   const classId = await assertArtifactIsChainVerifiedClass();
   await verifyAccountClassIds(snapshot.accountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
 
+  // WHICH CHAIN. Every sibling plan binds this; deploy bound none, so a dry
+  // run against a testnet NODE_URL and a --yes run against mainnet produced a
+  // byte-identical digest and the same confirm characters (round-9 finding 2).
+  const chain = await deps.wallet.getChainInfo();
   const plan = createActionPlan('deploy-quota-fpc', {
+    l1ChainId: chain.chainId.toString(),
+    rollupVersion: chain.version.toString(),
     contractClassId: classId,
     deploymentName: snapshot.name,
     admin: snapshot.adminAddress,
@@ -166,7 +172,12 @@ export async function deployQuotaFpc(
   // a rebuild between confirm and send cannot swap the class underneath.
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     const now = await getContractClassFromArtifact(QuotaFpcContractArtifact);
-    return now.id.toString() === classId ? undefined : 'compiled artifact changed';
+    if (now.id.toString() !== classId) return 'compiled artifact changed';
+    const nowChain = await deps.wallet.getChainInfo();
+    return nowChain.chainId.toString() === chain.chainId.toString() &&
+      nowChain.version.toString() === chain.version.toString()
+      ? undefined
+      : 'chain identity changed between confirmation and deployment';
   });
 
   const allowed = padAllowedTargets(snapshot.targets.map((t) => t.address)).map((a) =>

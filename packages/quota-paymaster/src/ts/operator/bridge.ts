@@ -123,6 +123,18 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     throw new Error('Fee juice portal or token is not deployed on this L1');
   }
   const portalHex = portalAddress.toString() as `0x${string}`;
+  const tokenHex = tokenAddress.toString() as `0x${string}`;
+  // WHICH L1. The plan's chain id comes from the Aztec node, but the deposit
+  // is sent by the CONFIG MODULE's client — nothing tied the two together, so
+  // a client pointed at a different chain bridged there irreversibly
+  // (round-9). getChainId is on the extended client this function now names.
+  const clientChainId = await deps.l1Client.getChainId();
+  if (BigInt(clientChainId) !== BigInt(info.l1ChainId)) {
+    throw new Error(
+      `the config module's L1 client is on chain ${clientChainId}, but this Aztec node's L1 is ` +
+        `${info.l1ChainId} — the deposit would land on the wrong chain and could never be claimed`,
+    );
+  }
 
   const plan = createActionPlan('bridge-fee-juice', {
     l1ChainId: info.l1ChainId,
@@ -130,6 +142,10 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     to: to,
     amountWei: amountWei.toString(),
     portal: portalHex,
+    // The token is what gets APPROVED below, and the portal manager re-reads
+    // it from the node after confirmation — so bind it and re-check it.
+    token: tokenHex,
+    l1ClientChainId: String(clientChainId),
     gasLimitBufferPercent: Math.max(gasLimitBufferPercent ?? 100, 100),
     irreversible: true,
   });
@@ -137,6 +153,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     // Hostile-capable node discipline: re-read the portal immediately before
     // money moves; a different answer means the plan was built on sand.
     const again = await deps.node.getNodeInfo();
+    if (again.l1ContractAddresses.feeJuiceAddress.toString() !== tokenHex) {
+      return 'fee juice token address changed between reads';
+    }
     return again.l1ContractAddresses.feeJuicePortalAddress.toString() === portalHex &&
       again.l1ChainId === info.l1ChainId
       ? undefined

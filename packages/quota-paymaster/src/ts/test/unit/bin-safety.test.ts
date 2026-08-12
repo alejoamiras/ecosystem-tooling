@@ -388,6 +388,50 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     }
   });
 
+  test('a malformed address is a USAGE refusal, not an operational failure', () => {
+    for (const args of [
+      ['policy', '--fpc', '0xnothex'],
+      ['measure', '--fpc', `0x${'1'.repeat(64)}`, '--target', '0xshort', '--artifact', 'x.json', '--method', 'm'],
+      ['claim', '--for', '0x1'],
+    ]) {
+      const result = run([...args, '--config-module', poisonConfig()]);
+      expect(result.status, args.join(' ')).toBe(2);
+      expect(result.combined).toMatch(/must be an Aztec address/);
+      expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+    }
+  });
+
+  test('a throwing dispose() warns but does NOT become the command outcome', () => {
+    // The refusal here is bridge's "no l1 in the context" (exit 2). Before the
+    // fix, dispose's throw replaced it and the CLI reported exit 1 — which for
+    // a SUCCESSFUL bridge would mean printing success and then failing, an
+    // invitation to deposit twice.
+    // INSIDE the package: a config module's own imports resolve from ITS
+    // location, so one written to a temp dir cannot resolve @aztec/*.
+    const path = join(PKG_ROOT, `.tmp-dispose-${process.pid}.config.mjs`);
+    cleanups.push(() => rmSync(path, { force: true }));
+    // The context must VALIDATE, so that the refusal happens inside
+    // withContext — which is where the dispose under test runs.
+    writeFileSync(
+      path,
+      [
+        `import { defineOperatorConfig } from './src/ts/operator/config.js';`,
+        `import { AztecAddress } from '@aztec/aztec.js/addresses';`,
+        `export default defineOperatorConfig(async () => ({`,
+        `  node: { getNodeInfo: async () => ({ l1ChainId: 1, rollupVersion: 1 }) },`,
+        `  wallet: { getChainInfo: async () => ({ chainId: 1n, version: 1n }) },`,
+        // Below the BN254 modulus, or AztecAddress refuses it.
+        `  from: AztecAddress.fromStringUnsafe('0x0${'a'.repeat(63)}'),`,
+        `  dispose: () => { throw new Error('DISPOSE_BOOM'); },`,
+        `}));`,
+      ].join('\n'),
+    );
+    const result = run(['bridge', '--to', `0x${'1'.repeat(64)}`, '--amount-wei', '1', '--config-module', path]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/has no `l1.client`/);
+    expect(result.combined).toMatch(/dispose\(\) threw: DISPOSE_BOOM/);
+  });
+
   test('a manual claim with impossible numbers is refused before the config module runs', () => {
     for (const args of [
       ['--amount-wei', '0', '--leaf-index', '1'],

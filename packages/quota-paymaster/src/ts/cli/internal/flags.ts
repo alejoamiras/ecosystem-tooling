@@ -38,6 +38,21 @@ export interface ParsedFlags {
   require(name: string): string;
 }
 
+/**
+ * A required flag that must be an Aztec address, refused as a USAGE error.
+ *
+ * `AztecAddress.fromStringUnsafe` throws a bare Error ("Invalid AztecAddress
+ * length 0."), which reaches the exit-1 bucket — "something may have happened"
+ * — for a typo where nothing has happened at all (round-9).
+ */
+export function requireAddressFlag(flags: ParsedFlags, name: string): string {
+  const value = flags.require(name);
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new CliUsageError(`--${name} must be an Aztec address (0x + 64 hex), got "${value}"`);
+  }
+  return value;
+}
+
 export function parseFlags(argv: string[], schema: FlagSchema): ParsedFlags {
   const booleans = new Set<string>();
   const strings = new Map<string, string>();

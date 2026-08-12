@@ -6,7 +6,7 @@ import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { cancelPendingPolicyChange, readPolicyState, schedulePolicyChange } from '../../operator/policy.js';
 import { makeConfirm } from '../internal/confirm.js';
 import { withContext } from '../internal/context.js';
-import { CliUsageError, type FlagSchema, type ParsedFlags } from '../internal/flags.js';
+import { CliUsageError, type FlagSchema, type ParsedFlags, requireAddressFlag } from '../internal/flags.js';
 
 export const schema: FlagSchema = {
   fpc: { type: 'string' },
@@ -138,7 +138,7 @@ function reportRace(pendingActivatedFirst: boolean | 'unknown', verb: string): v
 
 export async function run(flags: ParsedFlags): Promise<void> {
   const { AztecAddress } = await import('@aztec/aztec.js/addresses');
-  const fpcAddress = AztecAddress.fromStringUnsafe(flags.require('fpc'));
+  const fpcAddress = AztecAddress.fromStringUnsafe(requireAddressFlag(flags, 'fpc'));
 
   // Everything that can be judged from argv + local files is judged BEFORE the
   // config module runs: loading a config executes the operator's own code, and
@@ -234,7 +234,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     }
 
     const edit = { ...(change as NonNullable<typeof change>), allowedTargets };
-    const result = await schedulePolicyChange({ ...deps, confirm }, edit, guards);
+    const result = await schedulePolicyChange({ ...deps, confirm, sendOptions: ctx.sendOptions }, edit, guards);
     reportRace(result.pendingActivatedFirst, 'schedule');
     console.log(`\nScheduled (revision ${result.scheduledRevision}). Takes effect in 12h; one pending slot.`);
   });

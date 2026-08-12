@@ -24,7 +24,7 @@ import { buildSandwichPayload } from '../../sandwich.js';
 import { findFreeSeat, hasSubscribed } from '../../seat-picker.js';
 import { makeConfirm } from '../internal/confirm.js';
 import { withContext } from '../internal/context.js';
-import { CliUsageError, type FlagSchema, type ParsedFlags } from '../internal/flags.js';
+import { CliUsageError, type FlagSchema, type ParsedFlags, requireAddressFlag } from '../internal/flags.js';
 
 export const schema: FlagSchema = {
   fpc: { type: 'string' },
@@ -44,8 +44,8 @@ export const usage =
 
 export async function run(flags: ParsedFlags): Promise<void> {
   const { AztecAddress } = await import('@aztec/aztec.js/addresses');
-  const fpcAddress = AztecAddress.fromStringUnsafe(flags.require('fpc'));
-  const targetAddress = AztecAddress.fromStringUnsafe(flags.require('target'));
+  const fpcAddress = AztecAddress.fromStringUnsafe(requireAddressFlag(flags, 'fpc'));
+  const targetAddress = AztecAddress.fromStringUnsafe(requireAddressFlag(flags, 'target'));
   const artifactPath = flags.require('artifact');
   // No default: `ping` exists only in this repo's own test target, so against
   // a real contract it became `methods['ping']` === undefined and died as a
@@ -129,7 +129,6 @@ export async function run(flags: ParsedFlags): Promise<void> {
       count,
       generation,
       player: ctx.from.toString(),
-      sendOptionsDigest: digestOptions(ctx.sendOptions ?? {}),
       // The gas envelope determines what each send can cost, so it belongs in
       // what the operator confirms — and is snapshotted, since `ctx` is the
       // config module's own mutable object.

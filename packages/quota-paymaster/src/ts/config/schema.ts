@@ -185,6 +185,16 @@ export const U32_MAX = 2 ** 32 - 1;
 const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 function requirePositiveBigint(value: string, field: string, max: bigint): bigint {
+  // A STRING, which is what the type says but JSON does not enforce: a wei
+  // amount written as a JSON number above 2^53 has already lost precision by
+  // the time JSON.parse returns, and BigInt() would happily accept the rounded
+  // value and deploy it as the fee ceiling (round-9).
+  if (typeof value !== 'string') {
+    throw new QuotaFpcConfigError(
+      `${field} must be a quoted string, not a JSON number — large values lose precision before ` +
+        `they are read (got ${JSON.stringify(value)})`,
+    );
+  }
   let parsed: bigint;
   try {
     parsed = BigInt(value);

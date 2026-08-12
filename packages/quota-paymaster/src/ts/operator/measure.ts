@@ -67,7 +67,19 @@ export async function measureSponsoredFee(
       const expected = quota.remaining - (i + 1);
       for (;;) {
         const now = await deps.readQuotaInfo();
-        if (now.remaining <= expected || Date.now() > deadline) break;
+        // hasAllowance too, not just the count: a PXE that has not caught up
+        // reports (false, 0), and `0 <= expected` ended the wait instantly —
+        // sending straight into the failure this loop exists to avoid. And a
+        // timeout must NOT fall through into that same doomed send; sends have
+        // already happened, so this is a failure, not a refusal (round-9).
+        if (now.hasAllowance && now.remaining <= expected) break;
+        if (Date.now() > deadline) {
+          throw new Error(
+            `the node did not report the expected allowance (<= ${expected}) within ` +
+              `${opts.interSendTimeoutMs ?? 60_000}ms after send ${i + 1}/${count}; ` +
+              `${i + 1} sponsored transaction(s) already landed. Re-read state before retrying.`,
+          );
+        }
         await new Promise((r) => setTimeout(r, opts.interSendPollMs ?? 500));
       }
     }

@@ -15,7 +15,13 @@ import { TxStatus } from '@aztec/stdlib/tx';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
 import { assertValidTargetList, padAllowedTargets, U32_MAX, U128_MAX, worstCasePerDayWei } from '../config/schema.js';
 import { type GasProfile, sponsoredFeeFloorWei } from '../gas-profile.js';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
+import {
+  type ConfirmAction,
+  confirmAndRevalidate,
+  createActionPlan,
+  digestOptions,
+  snapshotOptions,
+} from './action-plan.js';
 
 export interface PolicyDeps {
   node: AztecNode;
@@ -215,7 +221,13 @@ export interface ScheduleGuards {
  * against a narrow stall race.
  */
 export async function schedulePolicyChange(
-  deps: PolicyDeps & { confirm: ConfirmAction },
+  deps: PolicyDeps & {
+    confirm: ConfirmAction;
+    /** Merged into the send, exactly like deploy and claim do with theirs.
+     * Dropping them silently made a configured fee-payment method not apply
+     * to policy updates alone (round-9). */
+    sendOptions?: Record<string, unknown>;
+  },
   change: ScheduleChange,
   guards: ScheduleGuards,
   /** Extra abort condition checked with the CAS immediately before sending. */
@@ -323,11 +335,20 @@ export async function schedulePolicyChange(
     );
   }
 
+  // Snapshot before the plan digests them, so a confirm callback cannot swap
+  // the options between the digest and the send.
+  const sendOpts = snapshotOptions(deps.sendOptions ?? {});
   const expectedRevision = state.scheduled.revision;
   const plan = createActionPlan('schedule-policy-change', {
     l1ChainId: info.l1ChainId,
     rollupVersion: info.rollupVersion,
     fpc: deps.fpcAddress.toString(),
+    // WHO acts: `from` is the signer and payer, and the contract gates this
+    // call on the admin. It was the only command whose plan did not bind it,
+    // so a config module resolving `from` differently between the dry run and
+    // the --yes run produced the same digest (round-9 finding 3).
+    from: deps.from.toString(),
+    sendOptionsDigest: digestOptions(sendOpts),
     expectedRevision: expectedRevision.toString(),
     maxFeeWei: next.maxFeeWei.toString(),
     maxUses: next.maxUses,
@@ -409,7 +430,13 @@ export async function schedulePolicyChange(
     // finding 1): the wallet default (PROPOSED at 5.0.1) can be reorged out
     // AFTER this function returned a revision — the operator would believe a
     // replacement exists that doesn't. Same floor the claim path enforces.
-    .send({ from: deps.from, wait: { waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false } })
+    .send({
+      ...sendOpts,
+      // from and wait come AFTER the spread: the admin identity and the
+      // finality floor are not caller-overridable.
+      from: deps.from,
+      wait: { waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false },
+    })
     .then(({ receipt }) => {
       if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
         throw new Error(
