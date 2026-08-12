@@ -178,13 +178,23 @@ export function worstCasePerDayWei(policy: {
 }
 
 /** The contract's u128 fields cannot hold more than this. */
-const U128_MAX = 2n ** 128n - 1n;
+export const U128_MAX = 2n ** 128n - 1n;
 /** The contract's u32 fields cannot hold more than this. */
-const U32_MAX = 2 ** 32 - 1;
+export const U32_MAX = 2 ** 32 - 1;
 /** BN254 scalar field modulus — a class id is a Field and must sit below it. */
 const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 function requirePositiveBigint(value: string, field: string, max: bigint): bigint {
+  // A STRING, which is what the type says but JSON does not enforce: a wei
+  // amount written as a JSON number above 2^53 has already lost precision by
+  // the time JSON.parse returns, and BigInt() would happily accept the rounded
+  // value and deploy it as the fee ceiling (round-9).
+  if (typeof value !== 'string') {
+    throw new QuotaFpcConfigError(
+      `${field} must be a quoted string, not a JSON number — large values lose precision before ` +
+        `they are read (got ${JSON.stringify(value)})`,
+    );
+  }
   let parsed: bigint;
   try {
     parsed = BigInt(value);
@@ -242,7 +252,15 @@ export function parseQuotaFpcConfig(
   const maxFee = requirePositiveBigint(config.policy.maxFeeWei, 'policy.maxFeeWei', U128_MAX);
   const maxUses = requirePositiveInt(config.policy.maxUsesPerDay, 'policy.maxUsesPerDay');
   const maxUsers = requirePositiveInt(config.policy.maxUsersPerDay, 'policy.maxUsersPerDay');
-  const maxLoss = requirePositiveBigint(config.maxLossWei, 'maxLossWei', U128_MAX * BigInt(U32_MAX) * BigInt(U32_MAX));
+  // The cap must not sit below the worst case it is compared against:
+  // worstCasePerDayWei is 3 x maxFee x maxUses x maxUsers, so a policy at the
+  // field maxima needs a bound 3x this product to be expressible at all
+  // (round-6 finding 4).
+  const maxLoss = requirePositiveBigint(
+    config.maxLossWei,
+    'maxLossWei',
+    3n * U128_MAX * BigInt(U32_MAX) * BigInt(U32_MAX),
+  );
 
   if (!Array.isArray(config.allowedTargets) || config.allowedTargets.length === 0) {
     throw new QuotaFpcConfigError('allowedTargets must list at least one contract');

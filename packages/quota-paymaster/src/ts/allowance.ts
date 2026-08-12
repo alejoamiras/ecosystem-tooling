@@ -12,7 +12,17 @@ import { isGenerationStale } from './generation.js';
 
 export interface AllowanceState {
   generation: number;
-  /** True once the user has claimed a seat this generation. */
+  /**
+   * True once the user has claimed a seat this generation — i.e. a SECOND
+   * subscription would collide with the existing player nullifier.
+   *
+   * NOT the contract's `has_allowance`, which is `spent < max_uses` and flips
+   * to false when the day's uses run out. Feeding `has_allowance` in here maps
+   * an exhausted player to `subscribed: false`, and `resolveFeeSource` then
+   * chooses `subscribe_and_execute` for someone who is already subscribed —
+   * a transaction that cannot prove. Read it as "already has a seat", and let
+   * `remaining` carry how many uses are left.
+   */
   subscribed: boolean;
   /** Transactions left today. Meaningful only when `subscribed`. */
   remaining: number;
@@ -114,8 +124,9 @@ export async function resolveFeeSource(inputs: FeeSourceInputs): Promise<FeeSour
  * Waits for the allowance to reach the state a just-sent transaction implies.
  *
  * Polls for a *specific expected transition* rather than "any change", because
- * the terminal case — the note vanishing when the last transaction is used — is
- * indistinguishable from "not synced yet" under a looser check.
+ * the terminal case — the last use of the day — is indistinguishable from "not
+ * synced yet" under a looser check. (The note itself does NOT disappear: the
+ * contract re-inserts it unconditionally and only `has_allowance` flips.)
  *
  * Returns the observed state; `syncing: true` means the wait timed out and the
  * caller must keep treating the allowance as unknown.
@@ -148,8 +159,8 @@ export async function awaitAllowanceTransition(options: {
   const startedAt = now();
   let last = { subscribed: false, remaining: 0 };
   let absentStreak = 0;
-  // Prior evidence can also arrive DURING the wait (a read that shows the
-  // note before it vanishes).
+  // Prior evidence can also arrive DURING the wait (a read taken while the
+  // allowance was still positive).
   let sawSubscribed = options.observedSubscribedBefore === true;
 
   while (now() - startedAt < timeoutMs) {

@@ -16,3 +16,4 @@ dist/
 wallet_data_*
 pxe_data_*
 warp-network-*/
+.tmp-cli-it-*/

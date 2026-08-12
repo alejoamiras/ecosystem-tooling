@@ -5,6 +5,7 @@
  * deploy → verify the tooling drives the instance → audit → canary → tranche),
  * because fee juice sent to the paymaster can never be recovered.
  */
+
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
 import type { Wallet } from '@aztec/aztec.js/wallet';
@@ -23,6 +24,7 @@ import {
   digestOptions,
   snapshotOptions,
 } from './action-plan.js';
+import { OperatorConfigError } from './config-module.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
@@ -144,30 +146,38 @@ export async function deployQuotaFpc(
   const classId = await assertArtifactIsChainVerifiedClass();
   await verifyAccountClassIds(snapshot.accountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
 
-  const plan = createActionPlan('deploy-quota-fpc', {
-    contractClassId: classId,
-    deploymentName: snapshot.name,
-    admin: snapshot.adminAddress,
-    maxFeeWei: snapshot.policy.maxFeeWei,
-    maxUsesPerDay: snapshot.policy.maxUsesPerDay,
-    maxUsersPerDay: snapshot.policy.maxUsersPerDay,
-    targets: snapshot.targets.map((t) => t.address).join(','),
-    accountClasses: snapshot.accountClasses.map((c) => c.classId).join(','),
-    requireUnpublishedAccounts: snapshot.requireUnpublishedAccounts,
-    worstCasePerDayWei: worstCasePerDayWei(snapshot.policy).toString(),
-    maxLossWei: snapshot.maxLossWei,
-    from: snapshot.from.toString(),
-    // Binds option VALUES, not just names: plain parts by canonical value,
-    // class instances by constructor name (round-3 finding 4; round-4
-    // finding 2 — same-class internal state is the documented residual).
-    sendOptionsDigest: digestOptions(snapshot.sendOptions),
-  });
-  // Deployment has no CAS to recheck; revalidation re-asserts the artifact so
-  // a rebuild between confirm and send cannot swap the class underneath.
-  await confirmAndRevalidate(plan, deps.confirm, async () => {
-    const now = await getContractClassFromArtifact(QuotaFpcContractArtifact);
-    return now.id.toString() === classId ? undefined : 'compiled artifact changed';
-  });
+  // WHICH CHAIN. Every sibling plan binds this; deploy bound none, so a dry
+  // run against a testnet NODE_URL and a --yes run against mainnet produced a
+  // byte-identical digest and the same confirm characters (round-9 finding 2).
+  const chain = await deps.wallet.getChainInfo();
+  // The EFFECTIVE options, computed before the plan so the digest covers what
+  // actually executes rather than what was requested (round-12). The import
+  // stays inside the function — laziness preserved, just earlier.
+  const { TxStatus } = await import('@aztec/stdlib/tx');
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const { wait: callerWait, from: callerFrom, ...sendOpts } = snapshot.sendOptions;
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
+  // A caller's `from` is REFUSED, not silently overwritten: forcing it
+  // after the spread meant a config naming account B produced a plan and a
+  // transaction from snapshot.from with no complaint (round-21).
+  if (callerFrom !== undefined && String(callerFrom) !== snapshot.from.toString()) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+      `sendOptions.from (${String(callerFrom)}) is not the account this command acts as ` +
+        `(${snapshot.from.toString()}); remove it, or point the config module at that account`,
+    );
+  }
+  const effectiveSendOptions = {
+    ...sendOpts,
+    from: snapshot.from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  };
 
   const allowed = padAllowedTargets(snapshot.targets.map((t) => t.address)).map((a) =>
     AztecAddress.fromStringUnsafe(a),
@@ -183,30 +193,69 @@ export async function deployQuotaFpc(
     allowed,
     allowedClasses,
     snapshot.requireUnpublishedAccounts,
+    // The deployer is locked HERE rather than lazily at send time, which is
+    // what makes the address computable before the plan. It is the confirmed
+    // sender either way — send() would lock it to exactly this value — but
+    // locking early is what lets the operator approve the ADDRESS (round-20).
+    { deployer: snapshot.from },
   );
+  // getAddress() BEFORE the plan: the salt defaults to a RANDOM Fr chosen when
+  // the instance is first computed, so building the deployment after the
+  // confirmation meant two runs of an identical plan — identical digest — could
+  // deploy to two different addresses. The instance is computed once and
+  // cached, so asking for the address here locks the salt, and the address the
+  // operator approves is the address that gets deployed (round-20).
+  const deployAddress = await deployment.getAddress();
+
+  const plan = createActionPlan('deploy-quota-fpc', {
+    l1ChainId: chain.chainId.toString(),
+    rollupVersion: chain.version.toString(),
+    contractClassId: classId,
+    address: deployAddress.toString().toLowerCase(),
+    deploymentName: snapshot.name,
+    // Canonical forms: the SAME deployment written with an uppercase address
+    // or a hex amount produced a different digest, so a rehearsed digest and
+    // the real one disagreed over nothing (round-17).
+    admin: snapshot.adminAddress.toLowerCase(),
+    maxFeeWei: BigInt(snapshot.policy.maxFeeWei).toString(),
+    maxUsesPerDay: snapshot.policy.maxUsesPerDay,
+    maxUsersPerDay: snapshot.policy.maxUsersPerDay,
+    targets: snapshot.targets.map((t) => t.address.toLowerCase()).join(','),
+    accountClasses: snapshot.accountClasses.map((c) => BigInt(c.classId).toString()).join(','),
+    requireUnpublishedAccounts: snapshot.requireUnpublishedAccounts,
+    worstCasePerDayWei: worstCasePerDayWei(snapshot.policy).toString(),
+    maxLossWei: BigInt(snapshot.maxLossWei).toString(),
+    from: snapshot.from.toString(),
+    // Binds option VALUES, not just names: plain parts by canonical value,
+    // class instances by constructor name (round-3 finding 4; round-4
+    // finding 2 — same-class internal state is the documented residual).
+    sendOptionsDigest: digestOptions(effectiveSendOptions),
+  });
+  // Deployment has no CAS to recheck; revalidation re-asserts the artifact so
+  // a rebuild between confirm and send cannot swap the class underneath.
+  await confirmAndRevalidate(plan, deps.confirm, async () => {
+    const now = await getContractClassFromArtifact(QuotaFpcContractArtifact);
+    if (now.id.toString() !== classId) return 'compiled artifact changed';
+    const nowChain = await deps.wallet.getChainInfo();
+    return nowChain.chainId.toString() === chain.chainId.toString() &&
+      nowChain.version.toString() === chain.version.toString()
+      ? undefined
+      : 'chain identity changed between confirmation and deployment';
+  });
+
   // The SNAPSHOTTED options spread FIRST: the confirmed sender is bound and
   // cannot be overridden by an unconfirmed option (finding #1). The wait is
   // floored at CHECKPOINTED finality before success is declared — the wallet
   // default (PROPOSED) can be reorged out after this returns (round-5
   // finding 1, applied to deploy as well as policy). Callers may request
   // stronger finality via sendOptions.wait; weaker is overridden.
-  const { TxStatus } = await import('@aztec/stdlib/tx');
-  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
-  const { wait: callerWait, ...sendOpts } = snapshot.sendOptions;
-  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
-  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
-  const waitForStatus =
-    requestedStatus !== undefined &&
-    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
-      ? requestedStatus
-      : TxStatus.CHECKPOINTED;
-  const { receipt } = await deployment.send({
-    ...sendOpts,
-    from: snapshot.from,
-    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
-  });
+  const { receipt, contract } = await deployment.send(effectiveSendOptions);
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     throw new Error(`deployment transaction ${receipt.txHash} did not execute successfully (status ${receipt.status})`);
   }
-  return await deployment.register();
+  // send() already returns the registered contract. The extra register() call
+  // that used to be here ran AFTER the deployment had landed, so a failure in
+  // that purely local step reported failure for a deployment that had
+  // succeeded — inviting a second one (round-20).
+  return contract;
 }

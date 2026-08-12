@@ -102,7 +102,67 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
   return { tag, prereleaseFlag };
 }
 
-// CLI: node scripts/release-policy.mjs <mode> <version> <aztecVersion> <setLatest>
+/**
+ * Which packages a dispatch may publish.
+ *
+ * A revision is inherently per-package: `<aztec>-revision.N` counts within ONE
+ * package's history, and a single `version` input cannot carry two packages'
+ * differing next numbers. So a revision names EXACTLY ONE package, and the
+ * name-qualified tag (`<pkg>-v<version>`) is what disambiguates it. Release
+ * and rehearsal keep publishing the full set by default.
+ *
+ * Returns the normalized, canonically-ordered list the workflow must use
+ * everywhere downstream — never the raw input, so ⊆ / ordering / mode gating
+ * cannot be bypassed by a job re-parsing the dispatch value itself.
+ *
+ * @param {{mode:string, packages:string, releasePackages:string}} input
+ * @returns {{packages:string[]} | {error:string}}
+ */
+export function validatePackagesSubset({ mode, packages, releasePackages }) {
+  if (!MODES.includes(mode)) return { error: `unknown mode: ${mode}` };
+  const all = String(releasePackages ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (all.length === 0) return { error: 'releasePackages is empty — RELEASE_PACKAGES must list the release-ready set' };
+
+  const requested = String(packages ?? '')
+    .trim()
+    .split(/[\s,]+/)
+    .filter(Boolean);
+
+  if (requested.length === 0) {
+    if (mode === 'revision') {
+      return {
+        error: 'revision mode requires --packages naming exactly one package (a revision number is per-package)',
+      };
+    }
+    return { packages: all };
+  }
+
+  const unknown = requested.filter((p) => !all.includes(p));
+  if (unknown.length > 0) {
+    return { error: `packages not in RELEASE_PACKAGES: ${unknown.join(', ')} (known: ${all.join(', ')})` };
+  }
+  const deduped = [...new Set(requested)];
+  if (deduped.length !== requested.length) {
+    return { error: `packages contains duplicates: ${requested.join(' ')}` };
+  }
+
+  if (mode === 'revision' && deduped.length !== 1) {
+    return {
+      error:
+        `revision mode publishes exactly ONE package (got ${deduped.length}: ${deduped.join(', ')}). ` +
+        'A shared version input cannot express differing per-package revision numbers.',
+    };
+  }
+
+  // Canonical order is load-bearing (publish order), so normalize rather than
+  // trusting the spelling on the dispatch form.
+  return { packages: all.filter((p) => deduped.includes(p)) };
+}
+
+// CLI: node scripts/release-policy.mjs <mode> <version> <aztecVersion> <setLatest> [packages] [releasePackages]
 // Prints `dist_tag=...` / `prerelease_flag=...` on stdout (for $GITHUB_OUTPUT); exit 1 on
 // any policy violation with the reason on stderr.
 //
@@ -111,7 +171,7 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
 // percent-encoded — so on a runner whose work dir contains a space the guard would be false and
 // the CLI block would silently no-op (exit 0, empty stdout → an empty dist-tag downstream).
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [mode, version, aztecVersion, setLatestRaw] = process.argv.slice(2);
+  const [mode, version, aztecVersion, setLatestRaw, packagesRaw, releasePackagesRaw] = process.argv.slice(2);
   if (setLatestRaw !== undefined && setLatestRaw !== 'true' && setLatestRaw !== 'false') {
     console.error(`set-latest must be 'true' or 'false' (got '${setLatestRaw}')`);
     process.exit(1);
@@ -126,5 +186,21 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     console.error(result.error);
     process.exit(1);
   }
-  process.stdout.write(`dist_tag=${result.tag}\nprerelease_flag=${result.prereleaseFlag}\n`);
+  let publishPackages = '';
+  if (releasePackagesRaw !== undefined) {
+    const subset = validatePackagesSubset({
+      mode,
+      packages: packagesRaw ?? '',
+      releasePackages: releasePackagesRaw,
+    });
+    if ('error' in subset) {
+      console.error(subset.error);
+      process.exit(1);
+    }
+    publishPackages = subset.packages.join(' ');
+  }
+  process.stdout.write(
+    `dist_tag=${result.tag}\nprerelease_flag=${result.prereleaseFlag}\n` +
+      (publishPackages ? `publish_packages=${publishPackages}\n` : ''),
+  );
 }

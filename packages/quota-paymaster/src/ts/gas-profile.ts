@@ -33,9 +33,15 @@ export interface GasProfile {
 }
 
 export function assertValidGasProfile(profile: GasProfile): void {
+  // Gas is serialized as UInt32 on the wire: a larger value does not error, it
+  // WRAPS (4294967296 becomes 0), which would quietly send a transaction with
+  // no gas at all. Bound it where the value is accepted.
   const positiveInt = (v: number, name: string) => {
     if (!Number.isInteger(v) || v <= 0) {
       throw new RangeError(`GasProfile.${name} must be a positive integer, got ${v}`);
+    }
+    if (v > 0xff_ff_ff_ff) {
+      throw new RangeError(`GasProfile.${name} exceeds the u32 gas field (max 4294967295), got ${v}`);
     }
   };
   positiveInt(profile.daGasLimit, 'daGasLimit');
@@ -44,6 +50,25 @@ export function assertValidGasProfile(profile: GasProfile): void {
   positiveInt(profile.teardownL2GasLimit, 'teardownL2GasLimit');
   if (!Number.isFinite(profile.feeHeadroomMultiplier) || profile.feeHeadroomMultiplier < 1) {
     throw new RangeError(`GasProfile.feeHeadroomMultiplier must be >= 1, got ${profile.feeHeadroomMultiplier}`);
+  }
+  // The multiplier is applied as scaled integer arithmetic (x1000) to keep the
+  // fee math exact. Number.MAX_VALUE is "finite" but overflows that scaling to
+  // Infinity, where BigInt() throws far from here — so bound it at the point
+  // the value is accepted.
+  if (!Number.isSafeInteger(Math.round(profile.feeHeadroomMultiplier * 1000))) {
+    throw new RangeError(`GasProfile.feeHeadroomMultiplier is too large: ${profile.feeHeadroomMultiplier}`);
+  }
+  // Teardown is reserved INSIDE the totals at v5.0.1, so a teardown limit
+  // above its total describes an envelope that cannot exist.
+  if (profile.teardownDaGasLimit > profile.daGasLimit) {
+    throw new RangeError(
+      `GasProfile.teardownDaGasLimit (${profile.teardownDaGasLimit}) exceeds daGasLimit (${profile.daGasLimit})`,
+    );
+  }
+  if (profile.teardownL2GasLimit > profile.l2GasLimit) {
+    throw new RangeError(
+      `GasProfile.teardownL2GasLimit (${profile.teardownL2GasLimit}) exceeds l2GasLimit (${profile.l2GasLimit})`,
+    );
   }
 }
 
@@ -71,10 +96,31 @@ export const DARK_FOREST_REFERENCE_GAS_PROFILE: GasProfile = {
  */
 export function sponsoredFeeFloorWei(profile: GasProfile, feePerDaGas: bigint, feePerL2Gas: bigint): bigint {
   assertValidGasProfile(profile);
-  const perTx = BigInt(profile.daGasLimit) * feePerDaGas + BigInt(profile.l2GasLimit) * feePerL2Gas;
-  // Fractional multipliers (1.5x is a natural headroom) via scaled integer
-  // math, rounding UP — flooring a headroom hands back less protection than
-  // the profile declares. BigInt(1.5) would throw.
+  // Per DIMENSION, mirroring the billing formula exactly: a client declares an
+  // integer max fee for each of DA and L2, and the contract bills
+  // `gas_limits x max_fees_per_gas`. Rounding the SUM instead understates the
+  // bound whenever either fee rounds up — with 100 DA gas at 1 wei and 1.5x,
+  // summing first permits 150 while the transaction declares 2/gas and is
+  // billed against 200, so the policy passes the drift guard and sponsorship
+  // still fails (round-5 finding 1).
+  return (
+    BigInt(profile.daGasLimit) * maxFeePerGasWithHeadroom(profile, feePerDaGas) +
+    BigInt(profile.l2GasLimit) * maxFeePerGasWithHeadroom(profile, feePerL2Gas)
+  );
+}
+
+/**
+ * The max fee per gas a client should declare for `fee` under `profile` — the
+ * SAME number the floor above budgets for. Fractional multipliers (1.5x is a
+ * natural headroom) go through scaled integer math, rounding UP: flooring a
+ * headroom hands back less protection than the profile declares, and
+ * `BigInt(1.5)` throws outright.
+ *
+ * Exported because a sponsored client has to compute this too, and any client
+ * that computes it differently than the guard can pass the policy check and
+ * still be rejected on-chain.
+ */
+export function maxFeePerGasWithHeadroom(profile: GasProfile, feePerGas: bigint): bigint {
   const scaled = BigInt(Math.ceil(profile.feeHeadroomMultiplier * 1000));
-  return (perTx * scaled + 999n) / 1000n;
+  return (feePerGas * scaled + 999n) / 1000n;
 }

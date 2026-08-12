@@ -23,7 +23,10 @@ budgeted, abuse-bounded fee sponsorship that requires no changes to their contra
 - Function-selector-level allowlisting (contract-level by design in v1; a selector-level
   revision is a future contract change ⇒ new class id ⇒ its own blueprint).
 - Contract events for policy changes (bundled into that same future revision).
-- A published CLI bin (repo-local adapter only in v1).
+- ~~A published CLI bin (repo-local adapter only in v1).~~ **Delivered in v2** (plan
+  `quota-operator-cli`): `npx @alejoamiras/quota-paymaster <deploy|policy|bridge|claim|measure>`,
+  with signer custody supplied by a user-authored config module (`defineOperatorConfig`) that
+  the CLI loads only from an explicit `--config-module` path.
 
 ## Requirements (contract — vendored, not designed here)
 

@@ -36,7 +36,10 @@ const CHECKS: Record<string, Check[]> = {
   'quota-paymaster': [
     { kind: 'import', spec: '@alejoamiras/quota-paymaster' },
     { kind: 'import', spec: '@alejoamiras/quota-paymaster/operator' },
+    { kind: 'import', spec: '@alejoamiras/quota-paymaster/operator/config' },
     { kind: 'import', spec: '@alejoamiras/quota-paymaster/artifacts/quota-fpc' },
+    { kind: 'file', spec: 'node_modules/@alejoamiras/quota-paymaster/bin/quota-paymaster.mjs' },
+    { kind: 'file', spec: 'node_modules/.bin/quota-paymaster' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/quota-paymaster/target/quota_fpc-QuotaFpc.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/quota-paymaster/known-deployments.json' },
     {
@@ -78,6 +81,41 @@ const CHECKS: Record<string, Check[]> = {
         await import('@aztec/l1-artifacts/FeeJuicePortalAbi');
         await import('@aztec/aztec.js/ethereum');
         await import('@aztec/entrypoints/encoding');
+      `,
+    },
+    {
+      // The bin is the product for operators: prove the INSTALLED shim resolves
+      // and runs its compiled entry, not just that the file shipped. --help must
+      // work with no config, no network and no optional deps.
+      kind: 'exec',
+      spec: 'installed bin: node_modules/.bin/quota-paymaster --help runs',
+      script: `
+        import { execFileSync } from 'node:child_process';
+        const out = execFileSync('./node_modules/.bin/quota-paymaster', ['--help'], { encoding: 'utf8' });
+        if (!/@alejoamiras\\/quota-paymaster/.test(out)) throw new Error('unexpected help output: ' + out);
+        if (/npx quota-paymaster\\b/.test(out)) throw new Error('help advertises the UNSCOPED npx name');
+      `,
+    },
+    {
+      // A .mjs config must load with NO loader present — that is the whole
+      // point of tsx being optional. (tsx is absent in this clean room.)
+      kind: 'exec',
+      spec: 'config module: .mjs loads with tsx ABSENT',
+      script: `
+        import { writeFileSync } from 'node:fs';
+        import { loadOperatorConfigModule, resolveOperatorContext } from '@alejoamiras/quota-paymaster/operator/config';
+        writeFileSync('probe.config.mjs',
+          "import { defineOperatorConfig } from '@alejoamiras/quota-paymaster/operator/config';\\n" +
+          "export default defineOperatorConfig(async () => ({ node: {}, wallet: {}, from: { toString: () => '0x1' } }));\\n");
+        const mod = await loadOperatorConfigModule(new URL('probe.config.mjs', 'file://' + process.cwd() + '/').pathname);
+        const ctx = await resolveOperatorContext(mod);
+        if (ctx.from.toString() !== '0x1') throw new Error('config did not resolve');
+        try {
+          await import('tsx/esm/api');
+          throw new Error('tsx unexpectedly present — this probe must run without it');
+        } catch (e) {
+          if (!/Cannot find|ERR_MODULE_NOT_FOUND/.test(String(e))) throw e;
+        }
       `,
     },
     { kind: 'absent-dir', spec: 'dist/src/ts/test' },

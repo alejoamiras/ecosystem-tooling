@@ -12,6 +12,7 @@
     "src/ts/config/**/*",
     "src/ts/client/**/*",
     "src/ts/operator/**/*",
+    "src/ts/cli/**/*",
     "src/artifacts/QuotaFpc.ts",
     "target/quota_fpc-QuotaFpc.json",
     "known-deployments.json"

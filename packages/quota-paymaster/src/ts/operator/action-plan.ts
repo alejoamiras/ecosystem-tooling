@@ -115,10 +115,20 @@ export class ActionRevalidationFailed extends Error {
   constructor(
     readonly plan: ActionPlan,
     detail: string,
+    /**
+     * How many transactions of this plan ALREADY landed. Only `measure` sends
+     * more than one, and telling its operator "nothing was sent" after send 2
+     * of 3 invites a re-run that spends the allowance and the fee juice twice
+     * (round-15).
+     */
+    readonly alreadySent = 0,
   ) {
     super(
       `chain state changed between confirmation and broadcast for ${plan.kind}: ${detail}. ` +
-        `Nothing was sent — re-read state and build a fresh plan.`,
+        (alreadySent > 0
+          ? `${alreadySent} transaction(s) of this plan ALREADY landed — re-read state before retrying, and do not ` +
+            `re-run this plan as-is.`
+          : `Nothing was sent — re-read state and build a fresh plan.`),
     );
     this.name = 'ActionRevalidationFailed';
   }

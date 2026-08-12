@@ -11,11 +11,20 @@
  * bridgeFeeJuice — NEVER via argv, which leaks through shell history and
  * process listings.
  */
+
 import { createHash } from 'node:crypto';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan, snapshotOptions } from './action-plan.js';
+import {
+  type ConfirmAction,
+  confirmAndRevalidate,
+  createActionPlan,
+  digestOptions,
+  snapshotOptions,
+} from './action-plan.js';
+import { MAX_FEE_JUICE_AMOUNT_WEI } from './bridge.js';
+import { OperatorConfigError } from './config-module.js';
 import {
   appendJournalRecord,
   BRIDGE_JOURNAL_FILE,
@@ -23,6 +32,9 @@ import {
   readJournalRecords,
   withJournalLock,
 } from './internal/journal.js';
+
+/** The L1->L2 message tree holds 2^L1_TO_L2_MSG_TREE_HEIGHT (36) leaves. */
+export const MAX_L1_TO_L2_LEAF_INDEX = (1n << 36n) - 1n;
 
 export interface ClaimDeps {
   node: AztecNode;
@@ -158,39 +170,46 @@ export async function claimFeeJuice(
   // deposit behind the claimed-set filter) are all overridden. A caller may
   // still request STRONGER finality (PROVEN/FINALIZED) or tune
   // timeout/interval (post-impl audit rounds 2-3, finding 3/2).
-  const { wait: callerWait, ...sendOpts } = snapshotOptions(sendOptions);
+  const { wait: callerWait, from: callerFrom, ...sendOpts } = snapshotOptions(sendOptions);
 
-  const recipient = AztecAddress.fromStringUnsafe(recipientStr);
-  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  const [before, info] = await Promise.all([
-    getFeeJuiceBalance(recipient, deps.node).then((b) => BigInt(b ?? 0n)),
-    deps.node.getNodeInfo(),
-  ]);
+  // Bounds the on-chain types impose: the claim amount is a u128 and the
+  // L1->L2 message tree has 2^36 leaves (L1_TO_L2_MSG_TREE_HEIGHT = 36), so a
+  // value above either describes a claim that cannot exist. Refusing here
+  // keeps it out of the plan a human is asked to approve (round-5 finding 2).
+  if (amountWei <= 0n) {
+    throw new Error('amountWei must be positive — a zero or negative deposit cannot be claimed');
+  }
+  if (messageLeafIndex < 0n) {
+    throw new Error(`messageLeafIndex ${messageLeafIndex} is negative — no such leaf exists`);
+  }
+  if (amountWei > MAX_FEE_JUICE_AMOUNT_WEI) {
+    throw new Error(`amountWei ${amountWei} exceeds the u128 the fee-juice claim accepts`);
+  }
+  if (messageLeafIndex > MAX_L1_TO_L2_LEAF_INDEX) {
+    throw new Error(`messageLeafIndex ${messageLeafIndex} is past the last leaf of the L1->L2 message tree`);
+  }
 
-  const plan = createActionPlan('claim-fee-juice', {
-    l1ChainId: info.l1ChainId,
-    rollupVersion: info.rollupVersion,
-    recipient: recipientStr,
-    amountWei: amountWei.toString(),
-    messageLeafIndex: messageLeafIndex.toString(),
-    paidForBy: from.toString(),
-    // The digest COVERS the secret without exposing it in the plan a UI shows:
-    // a hash commits to the exact preimage, so a swapped secret changes the
-    // digest, where a bare "present" boolean would not (finding #1).
-    claimSecretSha256: createHash('sha256').update(claimSecret).digest('hex'),
-  });
-  await confirmAndRevalidate(plan, deps.confirm, async () => {
-    const again = await deps.node.getNodeInfo();
-    return again.l1ChainId === info.l1ChainId && again.rollupVersion === info.rollupVersion
-      ? undefined
-      : 'chain identity changed between reads';
-  });
-
-  const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
+  // Parse the secret HERE, not inside the send: Fr's own error embeds the
+  // string it was given, so a mistyped or truncated piped secret was printed
+  // to stderr by main.ts — into terminal scrollback and CI logs, the exact
+  // exposure --secret-stdin exists to prevent. Doing it before the plan also
+  // means a typo cannot write CLAIM_SUBMITTING / CLAIM_OUTCOME_UNKNOWN for a
+  // transaction that never existed, which would make the next claim refuse
+  // until --allow-retry-after-unknown (round-12).
   const { Fr } = await import('@aztec/aztec.js/fields');
+  let claimSecretFr: InstanceType<typeof Fr>;
+  try {
+    claimSecretFr = Fr.fromString(claimSecret);
+  } catch {
+    throw new Error(
+      'claimSecret is not a valid field element (0x + up to 64 hex). ' + 'Value withheld from this message on purpose.',
+    );
+  }
+
+  // Effective options before the plan, for the same reason as deploy: the send
+  // floors waitForStatus and forces dontThrowOnRevert, so digesting the raw
+  // request advertised coverage of values this function overrides (round-12).
   const { TxStatus } = await import('@aztec/stdlib/tx');
-  // Finality floor: honor the caller's timeout/interval and any REQUEST FOR
-  // MORE finality, but never less than CHECKPOINTED, and never revert-tolerant.
   const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
   const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
   const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
@@ -199,6 +218,95 @@ export async function claimFeeJuice(
     FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
       ? requestedStatus
       : TxStatus.CHECKPOINTED;
+  // A caller's `from` is REFUSED, not silently overwritten: forcing it
+  // after the spread meant a config naming account B produced a plan and a
+  // transaction from from with no complaint (round-21).
+  if (callerFrom !== undefined && String(callerFrom) !== from.toString()) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+      `sendOptions.from (${String(callerFrom)}) is not the account this command acts as ` +
+        `(${from.toString()}); remove it, or point the config module at that account`,
+    );
+  }
+  const effectiveSendOptions = {
+    ...sendOpts,
+    from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  };
+
+  const recipient = AztecAddress.fromStringUnsafe(recipientStr);
+  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
+  const [before, info, walletChain] = await Promise.all([
+    getFeeJuiceBalance(recipient, deps.node).then((b) => BigInt(b ?? 0n)),
+    deps.node.getNodeInfo(),
+    deps.wallet.getChainInfo(),
+  ]);
+  // The plan is built from the NODE's identity, but the transaction is sent
+  // through the WALLET — a config module supplying the two independently could
+  // display chain A and execute on chain B (round-17). deploy already binds
+  // the wallet's chain; this is the same check for the wallet-sent commands.
+  if (
+    BigInt(walletChain.chainId.toString()) !== BigInt(info.l1ChainId) ||
+    BigInt(walletChain.version.toString()) !== BigInt(info.rollupVersion)
+  ) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+
+      `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
+        `${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and execute on another`,
+    );
+  }
+
+  // Anything derived from a failed send can carry the calldata — which
+  // CONTAINS the secret — so scrub both spellings out of every diagnostic
+  // before it is journaled, rethrown, or printed. The parse above closed the
+  // one leak found by review; this closes the class (round-13).
+  const redact = (text: string): string =>
+    text.split(claimSecret).join('<redacted>').split(claimSecretFr.toString()).join('<redacted>');
+
+  const plan = createActionPlan('claim-fee-juice', {
+    l1ChainId: info.l1ChainId,
+    rollupVersion: info.rollupVersion,
+    recipient: recipientStr.toLowerCase(),
+    amountWei: amountWei.toString(),
+    messageLeafIndex: messageLeafIndex.toString(),
+    paidForBy: from.toString().toLowerCase(),
+    // The key every journal record is written under: two valid hashes execute
+    // the same claim but record success against different deposits, so it must
+    // move the digest (round-16). 'untracked' when there is no journal key,
+    // rather than an absent field that reads as "not applicable".
+    journalKey: messageHash?.toLowerCase() ?? 'untracked',
+    // Where the CLAIMED record lands, for the same reason bridge binds it: a
+    // directory chosen by the environment decides whether this claim is
+    // recorded at all (round-16).
+    journalDir: deps.journal?.dirPath ?? 'none',
+    // The digest COVERS the secret without exposing it in the plan a UI shows:
+    // a hash commits to the exact preimage, so a swapped secret changes the
+    // digest, where a bare "present" boolean would not (finding #1).
+    // Hash the PARSED value: `1`, `01`, `0x1` and `0x01` are one field element
+    // and execute identically, so hashing the raw text made the digest vary
+    // without the execution varying (round-13).
+    claimSecretSha256: createHash('sha256').update(claimSecretFr.toString()).digest('hex'),
+    // The options are an EXECUTION input — they carry the fee payment method
+    // that pays for this claim — so they belong in the digest, in the exact
+    // form the send uses (rounds 8, 9 and 12 each moved this one step).
+    sendOptionsDigest: digestOptions(effectiveSendOptions),
+  });
+  await confirmAndRevalidate(plan, deps.confirm, async () => {
+    const [again, walletAgain] = await Promise.all([deps.node.getNodeInfo(), deps.wallet.getChainInfo()]);
+    if (again.l1ChainId !== info.l1ChainId || again.rollupVersion !== info.rollupVersion) {
+      return 'chain identity changed between reads';
+    }
+    // The WALLET too: it is what sends, and re-reading only the node left a
+    // wallet that switched chains during the confirmation free to send
+    // elsewhere (round-18).
+    return BigInt(walletAgain.chainId.toString()) === BigInt(info.l1ChainId) &&
+      BigInt(walletAgain.version.toString()) === BigInt(info.rollupVersion)
+      ? undefined
+      : 'the wallet changed chains between confirmation and broadcast';
+  });
+
+  const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
   // Durable attempt marker BEFORE the send (round-4 finding 3): if the wait
   // times out AFTER broadcast, the claim may still checkpoint later with
   // nothing journaled — a retry would then burn gas on an already-redeemed
@@ -227,8 +335,8 @@ export async function claimFeeJuice(
   };
   try {
     ({ receipt } = await FeeJuiceContract.at(deps.wallet)
-      .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
-      .send({ ...sendOpts, from, wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false } }));
+      .methods.claim(recipient, amountWei, claimSecretFr, messageLeafIndex)
+      .send(effectiveSendOptions));
   } catch (err) {
     // The failure may be POST-broadcast (a wait timeout): record the unknown
     // outcome durably so the ambiguity survives a process exit.
@@ -239,11 +347,13 @@ export async function claimFeeJuice(
           at: new Date().toISOString(),
           to: recipientStr,
           messageHash,
-          error: String((err as { message?: string })?.message ?? err),
+          error: redact(String((err as { message?: string })?.message ?? err)),
         });
       });
     }
-    throw err;
+    // Rethrown REDACTED: the SDK's message can quote the calldata it failed
+    // on, and that calldata contains the secret.
+    throw err instanceof Error ? new Error(redact(err.message)) : new Error(redact(String(err)));
   }
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     // Only a MINED revert is a definitive, retry-safe failure. An UNMINED
@@ -261,13 +371,13 @@ export async function claimFeeJuice(
           at: new Date().toISOString(),
           to: recipientStr,
           messageHash,
-          error: `status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}`,
+          error: redact(`status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}`),
         });
       });
     }
     throw new Error(
       `claim transaction ${receipt.txHash} did not execute successfully ` +
-        `(status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}); ` +
+        `(status ${receipt.status}${redact(receipt.error ? `: ${receipt.error}` : '')}); ` +
         (definitiveMinedRevert
           ? 'journaled as CLAIM_FAILED — the deposit remains claimable'
           : 'journaled as CLAIM_OUTCOME_UNKNOWN — verify on-chain before retrying'),

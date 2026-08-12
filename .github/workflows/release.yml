@@ -26,7 +26,7 @@ name: Release
 #
 # OIDC least privilege: the build job (no id-token) produces sha256-manifested tarballs;
 # the publish job (id-token: write, full-SHA-pinned actions, exact-pinned npm) only
-# downloads, verifies, and publishes them. Publish order: benchmark → private-fee-juice.
+# downloads, verifies, and publishes them. Publish order: benchmark → private-fee-juice → quota-paymaster.
 
 on:
   workflow_dispatch:
@@ -54,6 +54,11 @@ on:
         required: false
         type: boolean
         default: false
+      packages:
+        description: "Which packages this dispatch publishes (space/comma separated, subset of RELEASE_PACKAGES). REQUIRED in revision mode and must name EXACTLY ONE package (a revision number is per-package). Empty in release/rehearsal = all of them."
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -89,6 +94,11 @@ jobs:
       dist-tag: ${{ steps.derive.outputs.dist_tag }}
       prerelease-flag: ${{ steps.derive.outputs.prerelease_flag }}
       aztec-version: ${{ steps.derive.outputs.aztec_version }}
+      # The ONE validated, normalized publish set. Every downstream job reads
+      # THIS — never `inputs.packages` — so the subset rules (⊆, single-package
+      # revisions, canonical order) cannot be bypassed by a job re-parsing the
+      # raw dispatch value.
+      publish-packages: ${{ steps.derive.outputs.publish_packages }}
     steps:
       - uses: actions/checkout@v6
       - name: Check main branch
@@ -103,6 +113,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_MODE: ${{ inputs.mode }}
           SET_LATEST: ${{ inputs.set-latest }}
+          INPUT_PACKAGES: ${{ inputs.packages }}
         run: |
           AZTEC_VERSION=$(node -p "require('./package.json').config.aztecVersion")
           # release-policy.mjs is the ONE place the version-shape + set-latest + dist-tag
@@ -113,12 +124,18 @@ jobs:
           # per-package version equality, rehearsal-names-THIS-commit, expected-head-sha /
           # compare-against — need the live checkout and stay in the next step.)
           # A policy violation makes the helper exit 1 (reason on stderr) and this step fails.
-          POLICY=$(node scripts/release-policy.mjs "$INPUT_MODE" "$INPUT_VERSION" "$AZTEC_VERSION" "$SET_LATEST")
+          POLICY=$(node scripts/release-policy.mjs "$INPUT_MODE" "$INPUT_VERSION" "$AZTEC_VERSION" "$SET_LATEST" "$INPUT_PACKAGES" "$RELEASE_PACKAGES")
           # Defense-in-depth: the helper MUST emit a non-empty dist_tag. If it ever exits 0 with
           # empty stdout (e.g. a broken main-module guard), refuse — an empty DIST_TAG reaching
           # `npm publish --tag ""` could mis-tag a canary/revision onto latest.
           if ! printf '%s\n' "$POLICY" | grep -q '^dist_tag=.'; then
             echo "release-policy.mjs produced no dist_tag (output: '$POLICY')" >&2; exit 1
+          fi
+          # Same reasoning for the publish set: an empty value downstream would make
+          # every per-package loop iterate zero times and "succeed" having published
+          # nothing, while the arity backstop compared 0 against 0.
+          if ! printf '%s\n' "$POLICY" | grep -q '^publish_packages=.'; then
+            echo "release-policy.mjs produced no publish_packages (output: '$POLICY')" >&2; exit 1
           fi
           {
             printf '%s\n' "$POLICY"
@@ -187,7 +204,15 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           AZTEC_VERSION: ${{ steps.derive.outputs.aztec_version }}
           DIST_TAG: ${{ steps.derive.outputs.dist_tag }}
+          # From the STEP output — this job produces the value, so it cannot come
+          # from needs.validate like the downstream jobs. Without this the notes
+          # pruning below would see an empty set, conclude "subset run", and strip
+          # EVERY package from the notes while the guard loop iterated zero times.
+          PUBLISH_PACKAGES: ${{ steps.derive.outputs.publish_packages }}
         run: |
+          if [ -z "$PUBLISH_PACKAGES" ]; then
+            echo "PUBLISH_PACKAGES is empty — refusing to render notes for an unknown publish set" >&2; exit 1
+          fi
           cat > release-notes.md <<'TEMPLATE'
           Aztec ecosystem packages `__VERSION__`, targeting **Aztec `__AZTEC_VERSION__`**. All packages are published with [npm provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline that re-runs the full test matrix before publishing.
 
@@ -230,12 +255,35 @@ jobs:
           if grep -q "__" release-notes.md; then
             echo "unreplaced placeholder in notes" >&2; exit 1
           fi
+          # SUBSET runs: the template describes all three packages, but only some
+          # are being published at this version. Drop the rows and install lines
+          # of the others (advertising `bun add pkg@<version>` for a version that
+          # package does not have would send readers to a 404) and say plainly
+          # which packages this release does NOT touch.
+          if [ "$PUBLISH_PACKAGES" != "$RELEASE_PACKAGES" ]; then
+            UNCHANGED=""
+            for pkg in $RELEASE_PACKAGES; do
+              case " $PUBLISH_PACKAGES " in
+                *" $pkg "*) ;;
+                *)
+                  # Both loci for this package: its table row and its install line.
+                  sed -i "/^| \[\`@alejoamiras\/$pkg\`\]/d" release-notes.md
+                  sed -i "/^bun add \(-D \)\?@alejoamiras\/$pkg@/d" release-notes.md
+                  UNCHANGED="$UNCHANGED @alejoamiras/$pkg"
+                  ;;
+              esac
+            done
+            if [ -n "$UNCHANGED" ]; then
+              printf '\n> Only %s changed in this release. Not published at this version (unchanged, still on their previous release):%s\n' \
+                "${PUBLISH_PACKAGES// /, }" "$UNCHANGED" >> release-notes.md
+            fi
+          fi
           # Fail-closed: the notes template hardcodes package names + install commands (they
           # carry per-package prose the RELEASE_PACKAGES loops can't generate). Assert every
           # published package is actually named in the rendered notes — so a package
           # add/rename that updated RELEASE_PACKAGES but forgot this template FAILS here instead
           # of shipping a GitHub release that points users at a name that no longer exists.
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             if ! grep -q "@alejoamiras/$pkg" release-notes.md; then
               echo "release notes do not mention @alejoamiras/$pkg — update the notes template for the renamed/added package" >&2; exit 1
             fi
@@ -283,6 +331,10 @@ jobs:
     needs: [validate, private-fee-juice-checks, quota-paymaster-checks, benchmark-build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # The ONE validated publish set (see validate.outputs.publish-packages).
+      # Read via env, never inline ${{ }} in run: — same discipline as INPUT_VERSION.
+      PUBLISH_PACKAGES: ${{ needs.validate.outputs.publish-packages }}
     steps:
       - uses: actions/checkout@v6
 
@@ -332,19 +384,21 @@ jobs:
           AZTEC_VERSION: ${{ needs.validate.outputs.aztec-version }}
         run: |
           mkdir -p release-tarballs
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             (cd "packages/$pkg" && npm pack --pack-destination "$GITHUB_WORKSPACE/release-tarballs" > /dev/null)
           done
           ls -la release-tarballs/
           # Arity is itself fail-closed: symmetric edits dropping a SURVIVING package from
           # both the publish and assert loops would otherwise release silently-partially.
-          # The expected count derives from RELEASE_PACKAGES (single source), not a literal.
-          EXPECTED_COUNT=$(echo "$RELEASE_PACKAGES" | wc -w)
+          # The expected count derives from the VALIDATED PUBLISH SET (not the
+          # full release-ready list): a subset run packs fewer tarballs, and
+          # comparing against the full list would fail every subset dispatch.
+          EXPECTED_COUNT=$(echo "$PUBLISH_PACKAGES" | wc -w)
           TARBALL_COUNT=$(find release-tarballs -name '*.tgz' | wc -l)
           if [ "$TARBALL_COUNT" -ne "$EXPECTED_COUNT" ]; then
             echo "expected exactly $EXPECTED_COUNT tarballs, packed $TARBALL_COUNT" >&2; exit 1
           fi
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
             bun scripts/assert-tarball-meta.ts "$tgz" "@alejoamiras/$pkg" "$INPUT_VERSION" "$AZTEC_VERSION"
           done
@@ -357,7 +411,7 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected-head-sha }}
         run: |
           mkdir -p baseline-tarballs
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             name="@alejoamiras/$pkg"
             url=$(npm view "$name@$COMPARE_AGAINST" dist.tarball)
             integrity=$(npm view "$name@$COMPARE_AGAINST" dist.integrity)
@@ -382,6 +436,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-publish
+    env:
+      # The ONE validated publish set (see validate.outputs.publish-packages).
+      # Read via env, never inline ${{ }} in run: — same discipline as INPUT_VERSION.
+      PUBLISH_PACKAGES: ${{ needs.validate.outputs.publish-packages }}
     permissions:
       contents: read
       id-token: write
@@ -406,13 +464,44 @@ jobs:
           npm install -g npm@11.18.0
           [ "$(npm -v)" = "11.18.0" ] || { echo "npm version drift: $(npm -v)" >&2; exit 1; }
 
+      - name: Preflight — tags and releases are free BEFORE anything irreversible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # npm publish cannot be undone; tagging can fail. Checking tag/release
+          # availability AFTER publishing (where the check used to live) leaves a
+          # published version with no tag and a failed run. Check first.
+          if [ -z "$PUBLISH_PACKAGES" ]; then
+            echo "PUBLISH_PACKAGES is empty — refusing to publish nothing" >&2; exit 1
+          fi
+          if [ "$PUBLISH_PACKAGES" = "$RELEASE_PACKAGES" ]; then
+            TAGS="v$INPUT_VERSION"
+          else
+            TAGS=""
+            for pkg in $PUBLISH_PACKAGES; do TAGS="$TAGS $pkg-v$INPUT_VERSION"; done
+          fi
+          for TAG in $TAGS; do
+            peeled=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+            plain=$(git ls-remote origin "refs/tags/$TAG" | awk '$2 == "refs/tags/'"$TAG"'" {print $1}')
+            existing="${peeled:-$plain}"
+            if [ -n "$existing" ] && [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "ERROR: tag $TAG already exists at $existing, not this run's $GITHUB_SHA — refusing BEFORE publishing" >&2
+              exit 1
+            fi
+            echo "tag $TAG is free (or already ours): ok"
+          done
+
       - name: Preflight — fresh release requires absent versions; recovery requires identity + tag
         env:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
+          if [ -z "$PUBLISH_PACKAGES" ]; then
+            echo "PUBLISH_PACKAGES is empty — refusing to publish nothing" >&2; exit 1
+          fi
           published=()
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             # Retried: a lagging read right after a partial publish would misclassify a
             # recovery re-run as fresh and then die on E409 at publish.
             got=""
@@ -443,12 +532,12 @@ jobs:
             ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
           done
 
-      - name: Publish tarballs (benchmark → private-fee-juice, idempotent)
+      - name: Publish tarballs (benchmark → private-fee-juice → quota-paymaster, idempotent)
         env:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             if [ "$(npm view "@alejoamiras/$pkg@$INPUT_VERSION" version 2>/dev/null || true)" = "$INPUT_VERSION" ]; then
               # A package can become visible AFTER preflight's scan (verify-then-recheck
               # race) — never skip on visibility alone; repeat the full integrity +
@@ -480,7 +569,7 @@ jobs:
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
           fail=0
-          for pkg in $RELEASE_PACKAGES; do
+          for pkg in $PUBLISH_PACKAGES; do
             # Read-API lag after publish can exceed several minutes — retry before judging.
             got=""
             for attempt in $(seq 1 30); do
@@ -534,6 +623,10 @@ jobs:
     needs: [validate, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      # The ONE validated publish set (see validate.outputs.publish-packages).
+      # Read via env, never inline ${{ }} in run: — same discipline as INPUT_VERSION.
+      PUBLISH_PACKAGES: ${{ needs.validate.outputs.publish-packages }}
     permissions:
       contents: write
     steps:
@@ -541,32 +634,48 @@ jobs:
       - uses: actions/download-artifact@v6
         with:
           name: release-notes
-      - name: Create tag and release (idempotent — safe on recovery re-runs)
+      - name: Create tag(s) and release(s) (idempotent — safe on recovery re-runs)
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
           PRERELEASE_FLAG: ${{ needs.validate.outputs.prerelease-flag }}
         run: |
-          TAG="v$INPUT_VERSION"
-          # Annotated tags: ls-remote's plain line is the TAG OBJECT sha; the peeled
-          # ^{} line is the commit. Prefer peeled so idempotency survives either style.
-          peeled=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
-          plain=$(git ls-remote origin "refs/tags/$TAG" | awk '$2 == "refs/tags/'"$TAG"'" {print $1}')
-          existing="${peeled:-$plain}"
-          if [ -n "$existing" ]; then
-            if [ "$existing" != "$GITHUB_SHA" ]; then
-              echo "ERROR: tag $TAG exists at $existing, not at this run's $GITHUB_SHA" >&2; exit 1
+          if [ -z "$PUBLISH_PACKAGES" ]; then
+            echo "PUBLISH_PACKAGES is empty — refusing to tag nothing" >&2; exit 1
+          fi
+          # A FULL-set run keeps the historical plain tag; a SUBSET run gets one
+          # name-qualified tag per published package (the `<pkg>-v<version>`
+          # precedent set by the first-publish bootstraps). This is also what
+          # makes per-package revision numbering safe: `5.0.1-revision.1` for two
+          # different packages lives under two different tag names instead of
+          # colliding on one.
+          if [ "$PUBLISH_PACKAGES" = "$RELEASE_PACKAGES" ]; then
+            TAGS="v$INPUT_VERSION"
+          else
+            TAGS=""
+            for pkg in $PUBLISH_PACKAGES; do TAGS="$TAGS $pkg-v$INPUT_VERSION"; done
+          fi
+          for TAG in $TAGS; do
+            # Annotated tags: ls-remote's plain line is the TAG OBJECT sha; the peeled
+            # ^{} line is the commit. Prefer peeled so idempotency survives either style.
+            peeled=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+            plain=$(git ls-remote origin "refs/tags/$TAG" | awk '$2 == "refs/tags/'"$TAG"'" {print $1}')
+            existing="${peeled:-$plain}"
+            if [ -n "$existing" ]; then
+              if [ "$existing" != "$GITHUB_SHA" ]; then
+                echo "ERROR: tag $TAG exists at $existing, not at this run's $GITHUB_SHA" >&2; exit 1
+              fi
+              echo "tag $TAG already exists at this commit — ok (re-run)"
+            else
+              git tag "$TAG"
+              git push origin "$TAG"
             fi
-            echo "tag $TAG already exists at this commit — ok (re-run)"
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "release $TAG exists — updating notes (re-run)"
-            gh release edit "$TAG" --notes-file release-notes.md
-          else
-            args=(release create "$TAG" --title "$TAG" --notes-file release-notes.md)
-            [ -n "$PRERELEASE_FLAG" ] && args+=("$PRERELEASE_FLAG")
-            gh "${args[@]}"
-          fi
+            if gh release view "$TAG" > /dev/null 2>&1; then
+              echo "release $TAG exists — updating notes (re-run)"
+              gh release edit "$TAG" --notes-file release-notes.md
+            else
+              args=(release create "$TAG" --title "$TAG" --notes-file release-notes.md)
+              [ -n "$PRERELEASE_FLAG" ] && args+=("$PRERELEASE_FLAG")
+              gh "${args[@]}"
+            fi
+          done

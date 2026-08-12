@@ -26,6 +26,15 @@ function base(overrides: Record<string, unknown> = {}) {
 }
 
 describe('config validation', () => {
+  test('a wei amount written as a JSON number is refused — precision is already gone', () => {
+    // 1e21 exceeds 2^53, so JSON.parse rounded it before any of this ran;
+    // BigInt() would have accepted the rounded value as the fee ceiling.
+    expect(() =>
+      parseQuotaFpcConfig(base({ policy: { maxFeeWei: 1e21, maxUsesPerDay: 1, maxUsersPerDay: 1 } })),
+    ).toThrow(/must be a quoted string/);
+    expect(() => parseQuotaFpcConfig(base({ maxLossWei: 1e21 }))).toThrow(/must be a quoted string/);
+  });
+
   test('a sane config parses', () => {
     expect(() => parseQuotaFpcConfig(base())).not.toThrow();
   });

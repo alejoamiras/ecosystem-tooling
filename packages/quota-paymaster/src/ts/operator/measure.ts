@@ -9,7 +9,7 @@
  * The send pipeline is injected: building, proving, and sending a sponsored
  * transaction needs a wallet + client wiring that the caller (test harness,
  * CLI, app) already owns. This module owns the measurement discipline around
- * it: quota preflight, clamping, the inter-send PXE-lag wait, and honest
+ * it: quota preflight, the allowance refusal, the inter-send PXE-lag wait, and honest
  * accounting from receipts + balance deltas.
  */
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
@@ -41,17 +41,29 @@ export async function measureSponsoredFee(
   deps: MeasureDeps,
   opts: { count: number; interSendPollMs?: number; interSendTimeoutMs?: number } = { count: 2 },
 ): Promise<MeasureResult> {
+  // The public entry point validates its own count: 0 or a negative returned a
+  // SUCCESSFUL zero-send result, and 1.5 sent twice while reporting
+  // `measured: 1.5` (round-14).
+  if (!Number.isInteger(opts.count) || opts.count < 1) {
+    throw new Error(`count must be a positive integer, got ${opts.count}`);
+  }
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
-  // Preflight so re-running does not try to over-subscribe; clamp to what the
+  // Preflight so re-running does not try to over-subscribe; refuse what the
   // allowance actually permits rather than failing partway. Independent of the
   // balance read, so both go out together.
   const [beforeRaw, quota] = await Promise.all([getFeeJuiceBalance(deps.fpcAddress, deps.node), deps.readQuotaInfo()]);
   const before = BigInt(beforeRaw ?? 0n);
   const budget = quota.hasAllowance ? quota.remaining : 0;
-  const count = Math.min(opts.count, Math.max(budget, opts.count === 0 ? 0 : budget));
-  if (count < opts.count) {
-    deps.onProgress?.(`allowance permits ${count}/${opts.count} sends — measuring what is available`);
+  // REFUSE, do not clamp: a caller (and the human who approved a plan naming
+  // this count) asked for opts.count sends, and quietly performing fewer —
+  // possibly zero — while returning success is the failure mode a confirmed
+  // plan exists to prevent (round-13).
+  if (budget < opts.count) {
+    throw new Error(
+      `the allowance permits ${budget} more sponsored send(s), but ${opts.count} were requested; nothing was sent`,
+    );
   }
+  const count = opts.count;
 
   const perTransactionWei: bigint[] = [];
   for (let i = 0; i < count; i++) {
@@ -67,7 +79,19 @@ export async function measureSponsoredFee(
       const expected = quota.remaining - (i + 1);
       for (;;) {
         const now = await deps.readQuotaInfo();
-        if (now.remaining <= expected || Date.now() > deadline) break;
+        // hasAllowance too, not just the count: a PXE that has not caught up
+        // reports (false, 0), and `0 <= expected` ended the wait instantly —
+        // sending straight into the failure this loop exists to avoid. And a
+        // timeout must NOT fall through into that same doomed send; sends have
+        // already happened, so this is a failure, not a refusal (round-9).
+        if (now.hasAllowance && now.remaining <= expected) break;
+        if (Date.now() > deadline) {
+          throw new Error(
+            `the node did not report the expected allowance (<= ${expected}) within ` +
+              `${opts.interSendTimeoutMs ?? 60_000}ms after send ${i + 1}/${count}; ` +
+              `${i + 1} sponsored transaction(s) already landed. Re-read state before retrying.`,
+          );
+        }
         await new Promise((r) => setTimeout(r, opts.interSendPollMs ?? 500));
       }
     }

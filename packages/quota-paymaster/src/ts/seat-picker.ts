@@ -98,12 +98,14 @@ export async function findFreeSeat(query: SeatQuery, random: () => number = Math
 /**
  * Whether a user has already claimed their allowance for a generation.
  *
- * This is the missing half of reading allowance state. The note alone cannot
- * tell you: once the last free transaction is used the note is gone, which is
- * indistinguishable from never having subscribed. The player nullifier persists,
- * so note-absent plus nullifier-present means *spent*, while note-absent plus
- * nullifier-absent means *untouched*. Confusing the two makes the client try to
- * subscribe again and fail.
+ * This is the missing half of reading allowance state. A note read alone cannot
+ * tell you: an exhausted allowance reports `has_allowance: false`, which is
+ * indistinguishable from never having subscribed. (The note is not consumed —
+ * the contract re-inserts it every use — but a client that only asks "may I
+ * send?" cannot tell the two apart.) The player nullifier persists, so
+ * has_allowance-false plus nullifier-present means *spent*, while
+ * has_allowance-false plus nullifier-absent means *untouched*. Confusing the
+ * two makes the client try to subscribe again and fail.
  */
 export async function hasSubscribed(query: {
   node: SeatProbeNode;

@@ -23,12 +23,20 @@
       "import": "./dist/src/ts/operator/index.js",
       "types": "./dist/src/ts/operator/index.d.ts"
     },
+    "./operator/config": {
+      "import": "./dist/src/ts/operator/config.js",
+      "types": "./dist/src/ts/operator/config.d.ts"
+    },
     "./known-deployments.json": "./known-deployments.json",
     "./package.json": "./package.json"
   },
   "main": "./dist/src/ts/index.js",
   "types": "./dist/src/ts/index.d.ts",
+  "bin": {
+    "quota-paymaster": "bin/quota-paymaster.mjs"
+  },
   "files": [
+    "bin",
     "dist",
     "target",
     "!target/*.json.bak",
@@ -62,6 +70,7 @@
     "@aztec/wallets": "5.0.1",
     "@noble/hashes": "1.8.0",
     "@types/node": "25.6.0",
+    "tsx": "4.21.0",
     "typescript": "5.9.3",
     "vitest": "4.1.4"
   },
@@ -72,7 +81,17 @@
     "@aztec/ethereum": "5.0.1",
     "@aztec/foundation": "5.0.1",
     "@aztec/l1-artifacts": "5.0.1",
-    "@aztec/stdlib": "5.0.1"
+    "@aztec/stdlib": "5.0.1",
+    "@aztec/wallets": "5.0.1",
+    "tsx": "^4.19.0"
+  },
+  "peerDependenciesMeta": {
+    "@aztec/wallets": {
+      "optional": true
+    },
+    "tsx": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22.0.0"

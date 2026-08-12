@@ -16,21 +16,28 @@
  * journal and in this function's return value (process memory), which
  * claimFeeJuice can consume directly.
  */
+
+import type { ExtendedViemWalletClient } from '@aztec/ethereum/types';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
+import { OperatorConfigError } from './config-module.js';
 import { appendJournalRecord, BRIDGE_JOURNAL_FILE, type JournalHandle, withJournalLock } from './internal/journal.js';
 
 /** The L1 client surface this module needs (an @aztec/ethereum extended client). */
-export interface BridgeL1Client {
-  account: { address: string };
-  simulateContract(args: object): Promise<unknown>;
-  estimateContractGas(args: object): Promise<bigint>;
-  writeContract(args: object): Promise<`0x${string}`>;
-  waitForTransactionReceipt(args: { hash: `0x${string}` }): Promise<{
-    status: string;
-    logs: unknown[];
-  }>;
-}
+/** The fee-juice claim takes a u128 amount (verified against the 5.0.1 FeeJuice artifact). */
+export const MAX_FEE_JUICE_AMOUNT_WEI = (1n << 128n) - 1n;
+
+/**
+ * The L1 wallet a bridge needs.
+ *
+ * This is deliberately the SDK's own extended client type rather than the
+ * four methods this file calls directly: `L1FeeJuicePortalManager` requires
+ * the full extended client, so a hand-rolled object satisfying a narrower
+ * interface type-checks, passes confirmation, gets its claim secret
+ * journaled, and only THEN fails inside the portal manager (round-6 finding
+ * 6). Naming the real requirement makes that a compile error instead.
+ */
+export type BridgeL1Client = ExtendedViemWalletClient;
 
 export interface BridgeDeps {
   node: AztecNode;
@@ -87,6 +94,13 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     );
   }
   if (amountWei <= 0n) throw new Error('amountWei must be positive');
+  // FeeJuice.claim takes a u128 amount, but the L1 portal takes a uint256: an
+  // amount above the u128 range leaves L1 and can never be claimed on L2.
+  if (amountWei > MAX_FEE_JUICE_AMOUNT_WEI) {
+    throw new Error(
+      `amountWei ${amountWei} exceeds the u128 the fee-juice claim accepts — the deposit could never be claimed`,
+    );
+  }
   // The buffer controls the L1 gas limit — an execution-affecting input, so
   // it is validated AND appears in the confirmed plan (round-2 finding 6).
   // Range-bounded, not just finite: Number.MAX_VALUE is finite but the
@@ -102,7 +116,12 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
   // (Snapshotted after validation — the validators above must run before any
   // dep is touched — but before the confirm callback can observe or race it.)
-  const from = deps.l1Client.account.address;
+  // The ACCOUNT OBJECT, not just its address: the writes below re-dereferenced
+  // `deps.l1Client.account`, and viem's writeContract falls back to
+  // `client.account` read at call time — so an accessor could put address A in
+  // the confirmed plan and sign the irreversible deposit with B (round-21).
+  const account = deps.l1Client.account;
+  const from = account.address;
 
   const info = await deps.node.getNodeInfo();
   const portalAddress = info.l1ContractAddresses.feeJuicePortalAddress;
@@ -111,30 +130,68 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     throw new Error('Fee juice portal or token is not deployed on this L1');
   }
   const portalHex = portalAddress.toString() as `0x${string}`;
+  const tokenHex = tokenAddress.toString() as `0x${string}`;
+  // WHICH L1. The plan's chain id comes from the Aztec node, but the deposit
+  // is sent by the CONFIG MODULE's client — nothing tied the two together, so
+  // a client pointed at a different chain bridged there irreversibly
+  // (round-9). getChainId is on the extended client this function now names.
+  const clientChainId = await deps.l1Client.getChainId();
+  if (BigInt(clientChainId) !== BigInt(info.l1ChainId)) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+
+      `the config module's L1 client is on chain ${clientChainId}, but this Aztec node's L1 is ` +
+        `${info.l1ChainId} — the deposit would land on the wrong chain and could never be claimed`,
+    );
+  }
 
   const plan = createActionPlan('bridge-fee-juice', {
     l1ChainId: info.l1ChainId,
-    from: from,
-    to: to,
+    from: from.toLowerCase(),
+    to: to.toLowerCase(),
     amountWei: amountWei.toString(),
     portal: portalHex,
-    gasLimitBufferPercent: Math.max(gasLimitBufferPercent ?? 100, 100),
+    // WHERE THE SECRET GOES. The journal directory is the only durable copy of
+    // the claim preimage, and it can be set by an environment variable that
+    // appears nowhere on argv — so two runs targeting different directories
+    // printed identical digests, and confirming one told the operator nothing
+    // about whether the deposit would still be redeemable (round-16).
+    journalDir: deps.journal.dirPath,
+    // The token is what gets APPROVED below, and the portal manager re-reads
+    // it from the node after confirmation — so bind it and re-check it.
+    token: tokenHex,
+    l1ClientChainId: String(clientChainId),
+    // In BASIS POINTS, which is what actually scales the gas limit: two
+    // percentages that round to the same bps are the same execution and must
+    // not print as different plans (round-18).
+    gasLimitBufferBps: Math.ceil(Math.max(gasLimitBufferPercent ?? 100, 100) * 100),
     irreversible: true,
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     // Hostile-capable node discipline: re-read the portal immediately before
     // money moves; a different answer means the plan was built on sand.
     const again = await deps.node.getNodeInfo();
+    if (again.l1ContractAddresses.feeJuiceAddress.toString() !== tokenHex) {
+      return 'fee juice token address changed between reads';
+    }
+    // The L1 endpoint too, not just the Aztec node: a failover between
+    // confirmation and broadcast can land the deposit on another chain
+    // (round-10).
+    const nowClientChainId = await deps.l1Client.getChainId();
+    if (BigInt(nowClientChainId) !== BigInt(clientChainId)) {
+      return `the L1 client moved to chain ${nowClientChainId} after confirmation`;
+    }
     return again.l1ContractAddresses.feeJuicePortalAddress.toString() === portalHex &&
       again.l1ChainId === info.l1ChainId
       ? undefined
       : 'portal address or chain id changed between reads';
   });
 
-  const [{ L1FeeJuicePortalManager, generateClaimSecret }, { FeeJuicePortalAbi }, { extractEvent }, { createLogger }] =
+  const [{ generateClaimSecret }, { FeeJuicePortalAbi }, { IERC20Abi }, { extractEvent }, { createLogger }] =
     await Promise.all([
       import('@aztec/aztec.js/ethereum'),
       import('@aztec/l1-artifacts/FeeJuicePortalAbi'),
+      import('@aztec/l1-artifacts/IERC20Abi'),
       import('@aztec/ethereum/utils'),
       import('@aztec/foundation/log'),
     ]);
@@ -159,10 +216,34 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
     // Approval is a separate, reversible L1 write; the SDK's token manager
     // already knows the ERC20 quirks.
-    const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client as never, logger);
-    await portal.getTokenManager().approve(amountWei, portalHex, 'FeeJuice Portal');
+    // The approval is sent DIRECTLY, with the captured account, instead of
+    // through L1FeeJuicePortalManager's token manager. That manager re-reads
+    // `client.account` when it signs, so an accessor could approve as B while
+    // the deposit below went out as the confirmed A — and it adds nothing
+    // ERC-20-specific to lose: its `approve` is exactly this
+    // `approve(spender, amount)` call through a generic send helper (verified
+    // in the 5.0.1 source). Dropping it also removes the post-confirmation
+    // token re-read that used to need its own guard (round-22).
+    const approveHash = await deps.l1Client.writeContract({
+      address: tokenHex,
+      abi: IERC20Abi,
+      functionName: 'approve',
+      args: [portalHex, amountWei],
+      account,
+    });
+    const approveReceipt = await deps.l1Client.waitForTransactionReceipt({ hash: approveHash });
+    if (approveReceipt.status !== 'success') {
+      throw new Error(
+        `the fee-juice approval reverted (${approveHash}); nothing was deposited and the journaled secret is unused`,
+      );
+    }
+    deps.onProgress?.(`L1 approval tx ${approveHash}`);
 
-    const args = [to, amountWei, claimSecretHash.toString()] as const;
+    // The regex above proved the 0x + 64-hex shape, and an Fr always renders
+    // 0x-prefixed; viem's ABI types just cannot see that. Same narrowing idiom
+    // as portalHex — and it is only needed because the client is now typed
+    // honestly, which is the point (round-6 finding 6).
+    const args = [to as `0x${string}`, amountWei, claimSecretHash.toString() as `0x${string}`] as const;
     // Simulate first: a revert here costs nothing, whereas a reverted deposit
     // costs gas and tells us less.
     await deps.l1Client.simulateContract({
@@ -170,6 +251,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       abi: FeeJuicePortalAbi,
       functionName: 'depositToAztecPublic',
       args,
+      // Explicit, like the estimate and the write: simulating as a different
+      // account than the one that signs proves nothing.
+      account,
     });
 
     // Pad the estimate, rounding the buffer UP in basis points — flooring a
@@ -182,13 +266,15 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       abi: FeeJuicePortalAbi,
       functionName: 'depositToAztecPublic',
       args,
-      account: deps.l1Client.account,
+      account,
     });
     const hash = await deps.l1Client.writeContract({
       address: portalHex,
       abi: FeeJuicePortalAbi,
       functionName: 'depositToAztecPublic',
       args,
+      // EXPLICIT: without it viem reads client.account again at call time.
+      account,
       gas: gasEstimate + (gasEstimate * bufferBps + 9_999n) / 10_000n,
     });
     deps.onProgress?.(`L1 deposit tx ${hash}`);

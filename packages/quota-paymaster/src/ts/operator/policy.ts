@@ -8,14 +8,22 @@
  * just deploys), the balance-vs-reserve report, and chain-time pending
  * detection (never Date.now — local clocks lie).
  */
+
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { TxStatus } from '@aztec/stdlib/tx';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
-import { assertValidTargetList, padAllowedTargets, worstCasePerDayWei } from '../config/schema.js';
+import { assertValidTargetList, padAllowedTargets, U32_MAX, U128_MAX, worstCasePerDayWei } from '../config/schema.js';
 import { type GasProfile, sponsoredFeeFloorWei } from '../gas-profile.js';
-import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
+import {
+  type ConfirmAction,
+  confirmAndRevalidate,
+  createActionPlan,
+  digestOptions,
+  snapshotOptions,
+} from './action-plan.js';
+import { OperatorConfigError } from './config-module.js';
 
 export interface PolicyDeps {
   node: AztecNode;
@@ -161,7 +169,14 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
     },
     chainTimestamp,
     balanceWei,
-    sequencerReserveWei: sponsoredFeeFloorWei({ ...gasProfile, feeHeadroomMultiplier: 1 }, feePerDaGas, feePerL2Gas),
+    // The profile's OWN headroom, not a stripped 1x: admission checks the fee
+    // payer against GasSettings.getFeeLimit() = gas_limits x MAX_fees_per_gas,
+    // and the client declares those maxima with headroom applied
+    // (maxFeePerGasWithHeadroom). Reporting the 1x number understates the
+    // reserve by the multiplier, so a paymaster funded between the two reads
+    // as healthy and sponsors nothing — the exact failure this line exists to
+    // catch (round-7 finding 1).
+    sequencerReserveWei: sponsoredFeeFloorWei(gasProfile, feePerDaGas, feePerL2Gas),
     currentFees: { feePerDaGas, feePerL2Gas },
   };
 }
@@ -208,7 +223,13 @@ export interface ScheduleGuards {
  * against a narrow stall race.
  */
 export async function schedulePolicyChange(
-  deps: PolicyDeps & { confirm: ConfirmAction },
+  deps: PolicyDeps & {
+    confirm: ConfirmAction;
+    /** Merged into the send, exactly like deploy and claim do with theirs.
+     * Dropping them silently made a configured fee-payment method not apply
+     * to policy updates alone (round-9). */
+    sendOptions?: Record<string, unknown>;
+  },
   change: ScheduleChange,
   guards: ScheduleGuards,
   /** Extra abort condition checked with the CAS immediately before sending. */
@@ -246,7 +267,24 @@ export async function schedulePolicyChange(
     assertValidTargetList(requested.allowedTargets);
   }
 
-  const [state, info] = await Promise.all([readPolicyState(deps, guards.gasProfile), deps.node.getNodeInfo()]);
+  const [state, info, walletChain] = await Promise.all([
+    readPolicyState(deps, guards.gasProfile),
+    deps.node.getNodeInfo(),
+    deps.wallet.getChainInfo(),
+  ]);
+  // Same as claim: the plan describes the node's chain while the send goes
+  // through the wallet (round-17).
+  if (
+    BigInt(walletChain.chainId.toString()) !== BigInt(info.l1ChainId) ||
+    BigInt(walletChain.version.toString()) !== BigInt(info.rollupVersion)
+  ) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+
+      `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
+        `${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and execute on another`,
+    );
+  }
 
   // While a bundle is PENDING, fill-from-live is refused outright (round-3
   // finding 3): the 600s revalidation horizon below narrows the activation
@@ -276,6 +314,22 @@ export async function schedulePolicyChange(
     allowedTargets: requested.allowedTargets ?? [...state.live.allowedTargets],
   };
 
+  // The contract's own field widths, checked here because a DIRECT library
+  // caller never passed through the CLI's parsing: without this, `maxUses: 0`
+  // is planned, digested, approved by a human, and only then reverts in Noir
+  // (round-6 finding 5).
+  if (next.maxFeeWei <= 0n || next.maxFeeWei > U128_MAX) {
+    throw new Error(`maxFeeWei must be in [1, ${U128_MAX}], got ${next.maxFeeWei}`);
+  }
+  for (const [field, value] of [
+    ['maxUses', next.maxUses],
+    ['maxUsers', next.maxUsers],
+  ] as const) {
+    if (!Number.isInteger(value) || value <= 0 || value > U32_MAX) {
+      throw new Error(`${field} must be an integer in [1, ${U32_MAX}], got ${value}`);
+    }
+  }
+
   // The floor the CLIENT will actually spend against. Below it, every
   // sponsored transaction becomes unprovable — with no on-chain error.
   const floor = sponsoredFeeFloorWei(guards.gasProfile, state.currentFees.feePerDaGas, state.currentFees.feePerL2Gas);
@@ -300,11 +354,68 @@ export async function schedulePolicyChange(
     );
   }
 
+  // Snapshot before the plan digests them, so a confirm callback cannot swap
+  // the options between the digest and the send.
+  // The EFFECTIVE options: built once, digested, and sent. Digesting the raw
+  // snapshot advertised coverage of values this function then overrides — a
+  // caller's `waitForStatus: FINALIZED` or `from` changed the digest without
+  // changing what executes (round-11).
+  const { wait: callerWait, from: callerFrom, ...callerRest } = snapshotOptions(deps.sendOptions ?? {});
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  // A FLOOR, not a fixed value: deploy and claim both honor a request for
+  // MORE finality and refuse less, and forcing CHECKPOINTED here silently
+  // downgraded an operator who asked for PROVEN (round-11). The order table is
+  // duplicated from those two deliberately — hoisting it into action-plan.ts
+  // would put a static @aztec import into a module claim deliberately loads
+  // TxStatus lazily from, and the tarball probe asserts that laziness.
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
+  // A caller's `from` is REFUSED, not silently overwritten: forcing it
+  // after the spread meant a config naming account B produced a plan and a
+  // transaction from deps.from with no complaint (round-21).
+  if (callerFrom !== undefined && String(callerFrom) !== deps.from.toString()) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+      `sendOptions.from (${String(callerFrom)}) is not the account this command acts as ` +
+        `(${deps.from.toString()}); remove it, or point the config module at that account`,
+    );
+  }
+  const effectiveSendOptions = {
+    ...callerRest,
+    // `from` is not caller-overridable (the contract gates on the admin), and
+    // the caller's other wait knobs (timeout, poll interval) are honored:
+    // replacing the whole wait object dropped a raised timeout for a slow
+    // prover, so the send threw while the transaction landed and the operator
+    // re-ran, replacing their own pending bundle and restarting the 12h delay.
+    from: deps.from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  };
+  // The contract gates this call on the admin, so a non-admin `from` can only
+  // produce a reverting transaction — and it was offered for confirmation
+  // first, burning gas on a plan that could never apply (round-16).
+  if (state.admin.toLowerCase() !== deps.from.toString().toLowerCase()) {
+    throw new Error(
+      `this paymaster's admin is ${state.admin}, but the config module signs from ${deps.from.toString()}; ` +
+        `only the admin can schedule a policy change`,
+    );
+  }
+
   const expectedRevision = state.scheduled.revision;
   const plan = createActionPlan('schedule-policy-change', {
     l1ChainId: info.l1ChainId,
     rollupVersion: info.rollupVersion,
     fpc: deps.fpcAddress.toString(),
+    // WHO acts: `from` is the signer and payer, and the contract gates this
+    // call on the admin. It was the only command whose plan did not bind it,
+    // so a config module resolving `from` differently between the dry run and
+    // the --yes run produced the same digest (round-9 finding 3).
+    from: deps.from.toString().toLowerCase(),
+    sendOptionsDigest: digestOptions(effectiveSendOptions),
     expectedRevision: expectedRevision.toString(),
     maxFeeWei: next.maxFeeWei.toString(),
     maxUses: next.maxUses,
@@ -327,6 +438,16 @@ export async function schedulePolicyChange(
 
   const fpc = await QuotaFpcContract.at(deps.fpcAddress, deps.wallet);
   await confirmAndRevalidate(plan, deps.confirm, async () => {
+    // The WALLET's chain too, not just the node's: it is what sends, so
+    // re-reading only the node left a wallet that switched chains during the
+    // confirmation free to send elsewhere (round-18).
+    const walletAgain = await deps.wallet.getChainInfo();
+    if (
+      BigInt(walletAgain.chainId.toString()) !== BigInt(info.l1ChainId) ||
+      BigInt(walletAgain.version.toString()) !== BigInt(info.rollupVersion)
+    ) {
+      return 'the wallet changed chains between confirmation and broadcast';
+    }
     // The CAS the contract enforces, pre-checked with fresh eyes so a race
     // surfaces as a clean abort instead of a reverted transaction.
     const [[, , revisionNow], latestNow, infoNow] = await Promise.all([
@@ -386,7 +507,7 @@ export async function schedulePolicyChange(
     // finding 1): the wallet default (PROPOSED at 5.0.1) can be reorged out
     // AFTER this function returned a revision — the operator would believe a
     // replacement exists that doesn't. Same floor the claim path enforces.
-    .send({ from: deps.from, wait: { waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false } })
+    .send(effectiveSendOptions)
     .then(({ receipt }) => {
       if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
         throw new Error(
@@ -451,7 +572,12 @@ export async function schedulePolicyChange(
  * whether to keep the restore or schedule something else.
  */
 export async function cancelPendingPolicyChange(
-  deps: PolicyDeps & { confirm: ConfirmAction },
+  deps: PolicyDeps & {
+    confirm: ConfirmAction;
+    /** Cancel is the UNDO for a fat-fingered bundle, so it must be able to pay
+     * the same way a schedule can — it dropped these entirely (round-10). */
+    sendOptions?: Record<string, unknown>;
+  },
   guards: ScheduleGuards,
 ): Promise<{ scheduledRevision: bigint; pendingActivatedFirst: boolean | 'unknown' }> {
   const state = await readPolicyState(deps, guards.gasProfile);

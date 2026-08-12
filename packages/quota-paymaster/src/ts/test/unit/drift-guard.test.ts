@@ -18,7 +18,11 @@ import { SchnorrInitializerlessAccountContractArtifact } from '@aztec/accounts/s
 import { FunctionSelector } from '@aztec/stdlib/abi';
 import { describe, expect, test } from 'vitest';
 import { MAX_ALLOWED_ACCOUNT_CLASSES, MAX_ALLOWED_TARGETS } from '../../config/schema.js';
-import { DARK_FOREST_REFERENCE_GAS_PROFILE, sponsoredFeeFloorWei } from '../../gas-profile.js';
+import {
+  DARK_FOREST_REFERENCE_GAS_PROFILE,
+  maxFeePerGasWithHeadroom,
+  sponsoredFeeFloorWei,
+} from '../../gas-profile.js';
 import { ROLLOVER_GRACE_SECONDS, SECONDS_PER_DAY } from '../../generation.js';
 import { PLAYER_NULLIFIER_SEPARATOR, SEAT_NULLIFIER_SEPARATOR } from '../../nullifiers.js';
 import { ACCOUNT_MAX_CALLS } from '../../sandwich.js';
@@ -70,17 +74,39 @@ describe('fee-floor arithmetic', () => {
     expect(() => sponsoredFeeFloorWei(profile, 1n, 1n)).toThrow(RangeError);
   });
 
+  test('gas limits above the u32 wire field are rejected (they would WRAP to zero)', () => {
+    // 4294967296 serializes as 0 — a transaction with no gas at all, sent
+    // without any error along the way.
+    expect(() =>
+      sponsoredFeeFloorWei({ ...DARK_FOREST_REFERENCE_GAS_PROFILE, l2GasLimit: 0x1_00_00_00_00 }, 1n, 1n),
+    ).toThrow(/u32 gas field/);
+  });
+
+  test('a teardown limit above its total describes an impossible envelope', () => {
+    expect(() =>
+      sponsoredFeeFloorWei({ ...DARK_FOREST_REFERENCE_GAS_PROFILE, teardownL2GasLimit: 9_000_000 }, 1n, 1n),
+    ).toThrow(/exceeds l2GasLimit/);
+  });
+
   test('fractional headroom multipliers work and round the floor UP (review #6)', () => {
     // BigInt(1.5) throws — the floor uses scaled integer math instead.
     const profile = {
       ...DARK_FOREST_REFERENCE_GAS_PROFILE,
       daGasLimit: 1,
       l2GasLimit: 1,
+      // Teardown is reserved INSIDE the totals, so it must shrink with them —
+      // the old fixture kept the reference profile's 5000/500000 against
+      // totals of 1, an envelope that cannot exist (validation rejects it now).
+      teardownDaGasLimit: 1,
+      teardownL2GasLimit: 1,
       feeHeadroomMultiplier: 1.5,
     };
-    // perTx = 1 wei (l2 fee zero); 1.5x rounds UP to 2 — never less protection
-    // than the profile declares.
+    // The fee itself rounds up (1 -> 2/gas), THEN multiplies by the limit —
+    // the order the contract bills in. Rounding the summed total instead would
+    // budget 150 for the 100-gas case while the transaction declares 2/gas and
+    // is billed against 200.
     expect(sponsoredFeeFloorWei(profile, 1n, 0n)).toBe(2n);
-    expect(sponsoredFeeFloorWei({ ...profile, daGasLimit: 100 }, 1n, 0n)).toBe(150n);
+    expect(sponsoredFeeFloorWei({ ...profile, daGasLimit: 100 }, 1n, 0n)).toBe(200n);
+    expect(maxFeePerGasWithHeadroom(profile, 1n)).toBe(2n);
   });
 });
