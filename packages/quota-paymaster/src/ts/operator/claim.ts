@@ -187,6 +187,41 @@ export async function claimFeeJuice(
     throw new Error(`messageLeafIndex ${messageLeafIndex} is past the last leaf of the L1->L2 message tree`);
   }
 
+  // Parse the secret HERE, not inside the send: Fr's own error embeds the
+  // string it was given, so a mistyped or truncated piped secret was printed
+  // to stderr by main.ts — into terminal scrollback and CI logs, the exact
+  // exposure --secret-stdin exists to prevent. Doing it before the plan also
+  // means a typo cannot write CLAIM_SUBMITTING / CLAIM_OUTCOME_UNKNOWN for a
+  // transaction that never existed, which would make the next claim refuse
+  // until --allow-retry-after-unknown (round-12).
+  const { Fr } = await import('@aztec/aztec.js/fields');
+  let claimSecretFr: InstanceType<typeof Fr>;
+  try {
+    claimSecretFr = Fr.fromString(claimSecret);
+  } catch {
+    throw new Error(
+      'claimSecret is not a valid field element (0x + up to 64 hex). ' + 'Value withheld from this message on purpose.',
+    );
+  }
+
+  // Effective options before the plan, for the same reason as deploy: the send
+  // floors waitForStatus and forces dontThrowOnRevert, so digesting the raw
+  // request advertised coverage of values this function overrides (round-12).
+  const { TxStatus } = await import('@aztec/stdlib/tx');
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
+  const effectiveSendOptions = {
+    ...sendOpts,
+    from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  };
+
   const recipient = AztecAddress.fromStringUnsafe(recipientStr);
   const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
   const [before, info] = await Promise.all([
@@ -205,15 +240,10 @@ export async function claimFeeJuice(
     // a hash commits to the exact preimage, so a swapped secret changes the
     // digest, where a bare "present" boolean would not (finding #1).
     claimSecretSha256: createHash('sha256').update(claimSecret).digest('hex'),
-    // The options are an EXECUTION input (they carry the fee payment method
-    // that pays for this claim) and they are spread into the send below, so
-    // they belong in the digest — deploy and measure already bind theirs.
-    // Round 3 gave this function the snapshot half of the anti-mutation fix
-    // and stopped short of the digest half (round-8 finding 1).
-    // The FULL snapshot including `wait`: a caller's timeout, poll interval or
-    // stronger finality all change what executes, and digesting the bag with
-    // `wait` removed left them uncovered (round-9).
-    sendOptionsDigest: digestOptions({ ...sendOpts, wait: callerWait }),
+    // The options are an EXECUTION input — they carry the fee payment method
+    // that pays for this claim — so they belong in the digest, in the exact
+    // form the send uses (rounds 8, 9 and 12 each moved this one step).
+    sendOptionsDigest: digestOptions(effectiveSendOptions),
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {
     const again = await deps.node.getNodeInfo();
@@ -223,18 +253,6 @@ export async function claimFeeJuice(
   });
 
   const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
-  const { Fr } = await import('@aztec/aztec.js/fields');
-  const { TxStatus } = await import('@aztec/stdlib/tx');
-  // Finality floor: honor the caller's timeout/interval and any REQUEST FOR
-  // MORE finality, but never less than CHECKPOINTED, and never revert-tolerant.
-  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
-  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
-  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
-  const waitForStatus =
-    requestedStatus !== undefined &&
-    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
-      ? requestedStatus
-      : TxStatus.CHECKPOINTED;
   // Durable attempt marker BEFORE the send (round-4 finding 3): if the wait
   // times out AFTER broadcast, the claim may still checkpoint later with
   // nothing journaled — a retry would then burn gas on an already-redeemed
@@ -263,8 +281,8 @@ export async function claimFeeJuice(
   };
   try {
     ({ receipt } = await FeeJuiceContract.at(deps.wallet)
-      .methods.claim(recipient, amountWei, Fr.fromString(claimSecret), messageLeafIndex)
-      .send({ ...sendOpts, from, wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false } }));
+      .methods.claim(recipient, amountWei, claimSecretFr, messageLeafIndex)
+      .send(effectiveSendOptions));
   } catch (err) {
     // The failure may be POST-broadcast (a wait timeout): record the unknown
     // outcome durably so the ambiguity survives a process exit.

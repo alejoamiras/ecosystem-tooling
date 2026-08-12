@@ -1,5 +1,4 @@
 /** `claim` — redeem a bridged deposit. The secret comes from the journal. */
-import { createInterface } from 'node:readline/promises';
 import { MAX_FEE_JUICE_AMOUNT_WEI } from '../../operator/bridge.js';
 import { claimFeeJuice, findClaimInJournal, MAX_L1_TO_L2_LEAF_INDEX } from '../../operator/claim.js';
 import { formatFeeJuiceWei } from '../../operator/internal/format.js';
@@ -65,13 +64,18 @@ function parseBigint(raw: string, flag: string): bigint {
  */
 async function readSecretFromStdin(): Promise<string> {
   if (process.stdin.isTTY) throw new CliUsageError(TTY_REFUSAL);
-  const rl = createInterface({ input: process.stdin });
-  try {
-    const line = await rl.question('');
-    return line.trim();
-  } finally {
-    rl.close();
+  // Read the STREAM, not a line: readline's question() never resolves on EOF
+  // without a trailing newline, so `printf %s "$SECRET" | ...` — the exact
+  // invocation this command's own help prescribes — left the promise pending,
+  // the event loop drained, and the process exited 0 having done nothing,
+  // which for a claim reads as success (round-12).
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  const secret = Buffer.concat(chunks).toString('utf8').trim();
+  if (!secret) {
+    throw new CliUsageError('--secret-stdin was given nothing on stdin (the pipe was empty)');
   }
+  return secret;
 }
 
 export async function run(flags: ParsedFlags): Promise<void> {

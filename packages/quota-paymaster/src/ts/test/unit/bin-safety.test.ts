@@ -35,12 +35,15 @@ interface RunResult {
   combined: string;
 }
 
-function run(args: string[], env: Record<string, string> = {}): RunResult {
+function run(args: string[], env: Record<string, string> = {}, stdin?: string): RunResult {
   try {
     const stdout = execFileSync('bun', [CLI, ...args], {
       cwd: PKG_ROOT,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // A piped stdin when the case under test supplies one; otherwise ignored
+      // so nothing can block on a terminal that is not there.
+      stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      input: stdin,
       env: { ...process.env, ...env },
     });
     return { status: 0, stdout, stderr: '', combined: stdout };
@@ -430,6 +433,49 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     expect(result.status).toBe(2);
     expect(result.combined).toMatch(/has no `l1.client`/);
     expect(result.combined).toMatch(/dispose\(\) threw: DISPOSE_BOOM/);
+  });
+
+  test('a malformed piped secret is NEVER echoed back', () => {
+    // Fr's own error embeds the string it was given, and main.ts prints
+    // error.message — so an unguarded parse put the secret into terminal
+    // scrollback and CI logs, the exact exposure --secret-stdin prevents.
+    const secret = 'my-super-secret-claim-preimage-typo';
+    // A config that LOADS, so the claim actually reaches the parse; a poison
+    // config would make this test pass without exercising anything.
+    const path = join(PKG_ROOT, `.tmp-secret-${process.pid}.config.mjs`);
+    cleanups.push(() => rmSync(path, { force: true }));
+    writeFileSync(
+      path,
+      [
+        `import { defineOperatorConfig } from './src/ts/operator/config.js';`,
+        `import { AztecAddress } from '@aztec/aztec.js/addresses';`,
+        `export default defineOperatorConfig(async () => ({`,
+        `  node: { getNodeInfo: async () => ({ l1ChainId: 1, rollupVersion: 1 }) },`,
+        `  wallet: { getChainInfo: async () => ({ chainId: 1n, version: 1n }) },`,
+        `  from: AztecAddress.fromStringUnsafe('0x0${'a'.repeat(63)}'),`,
+        `}));`,
+      ].join('\n'),
+    );
+    const result = run(
+      [
+        'claim',
+        '--for',
+        `0x0${'1'.repeat(63)}`,
+        '--secret-stdin',
+        '--amount-wei',
+        '1',
+        '--leaf-index',
+        '0',
+        '--config-module',
+        path,
+      ],
+      {},
+      secret,
+    );
+    expect(result.combined).not.toContain(secret);
+    // ...and prove the parse was actually reached, so this cannot pass
+    // vacuously if the code path moves.
+    expect(result.combined).toMatch(/Value withheld from this message on purpose/);
   });
 
   test('a manual claim with impossible numbers is refused before the config module runs', () => {

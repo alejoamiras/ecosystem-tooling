@@ -148,6 +148,25 @@ export async function deployQuotaFpc(
   // run against a testnet NODE_URL and a --yes run against mainnet produced a
   // byte-identical digest and the same confirm characters (round-9 finding 2).
   const chain = await deps.wallet.getChainInfo();
+  // The EFFECTIVE options, computed before the plan so the digest covers what
+  // actually executes rather than what was requested (round-12). The import
+  // stays inside the function — laziness preserved, just earlier.
+  const { TxStatus } = await import('@aztec/stdlib/tx');
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const { wait: callerWait, ...sendOpts } = snapshot.sendOptions;
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
+  const effectiveSendOptions = {
+    ...sendOpts,
+    from: snapshot.from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  };
+
   const plan = createActionPlan('deploy-quota-fpc', {
     l1ChainId: chain.chainId.toString(),
     rollupVersion: chain.version.toString(),
@@ -166,7 +185,7 @@ export async function deployQuotaFpc(
     // Binds option VALUES, not just names: plain parts by canonical value,
     // class instances by constructor name (round-3 finding 4; round-4
     // finding 2 — same-class internal state is the documented residual).
-    sendOptionsDigest: digestOptions(snapshot.sendOptions),
+    sendOptionsDigest: digestOptions(effectiveSendOptions),
   });
   // Deployment has no CAS to recheck; revalidation re-asserts the artifact so
   // a rebuild between confirm and send cannot swap the class underneath.
@@ -201,21 +220,7 @@ export async function deployQuotaFpc(
   // default (PROPOSED) can be reorged out after this returns (round-5
   // finding 1, applied to deploy as well as policy). Callers may request
   // stronger finality via sendOptions.wait; weaker is overridden.
-  const { TxStatus } = await import('@aztec/stdlib/tx');
-  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
-  const { wait: callerWait, ...sendOpts } = snapshot.sendOptions;
-  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
-  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
-  const waitForStatus =
-    requestedStatus !== undefined &&
-    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
-      ? requestedStatus
-      : TxStatus.CHECKPOINTED;
-  const { receipt } = await deployment.send({
-    ...sendOpts,
-    from: snapshot.from,
-    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
-  });
+  const { receipt } = await deployment.send(effectiveSendOptions);
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     throw new Error(`deployment transaction ${receipt.txHash} did not execute successfully (status ${receipt.status})`);
   }

@@ -104,7 +104,14 @@ export async function run(flags: ParsedFlags): Promise<void> {
     isInitializer?: boolean;
   }[];
   const sendable = callable.filter(
-    (f) => (f.functionType === 'private' || f.functionType === 'public') && !f.isOnlySelf && !f.isInitializer,
+    (f) =>
+      (f.functionType === 'private' || f.functionType === 'public') &&
+      !f.isOnlySelf &&
+      !f.isInitializer &&
+      // The SDK's own public entrypoint, not an app method: it is exposed on
+      // Contract.methods, so suggesting it invites a failure after the confirm
+      // gate (round-12).
+      f.name !== 'public_dispatch',
   );
   if (!sendable.some((f) => f.name === method)) {
     const names = sendable
