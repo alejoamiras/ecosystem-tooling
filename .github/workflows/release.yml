@@ -26,7 +26,7 @@ name: Release
 #
 # OIDC least privilege: the build job (no id-token) produces sha256-manifested tarballs;
 # the publish job (id-token: write, full-SHA-pinned actions, exact-pinned npm) only
-# downloads, verifies, and publishes them. Publish order: benchmark → private-fee-juice.
+# downloads, verifies, and publishes them. Publish order: benchmark → private-fee-juice → quota-paymaster.
 
 on:
   workflow_dispatch:
@@ -532,7 +532,7 @@ jobs:
             ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
           done
 
-      - name: Publish tarballs (benchmark → private-fee-juice, idempotent)
+      - name: Publish tarballs (benchmark → private-fee-juice → quota-paymaster, idempotent)
         env:
           INPUT_VERSION: ${{ inputs.version }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}

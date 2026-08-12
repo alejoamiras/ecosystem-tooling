@@ -134,11 +134,13 @@ export async function run(flags: ParsedFlags): Promise<void> {
   }
 
   await withContext(flags, async (ctx) => {
-    // Copied ONCE: ctx is the config module's own object, and re-reading `from`
-    // after the confirm gate would let a getter return a different account than
-    // the plan named. Every sibling command copies its execution inputs into a
-    // plain deps object for exactly this reason (round-18).
-    const from = ctx.from;
+    // Copied ONCE, all of them: ctx is the config module's own object, so a
+    // getter re-read after the confirm gate could return a different account,
+    // node or wallet than the one the plan was built and checked against —
+    // including handing the capability check one PXE and the send another
+    // (round-19). Every sibling command copies its execution inputs into a
+    // plain deps object for exactly this reason.
+    const { from, node, wallet } = { from: ctx.from, node: ctx.node, wallet: ctx.wallet };
     // The gas envelope is an explicit input by design — this command exists to
     // MEASURE what a profile costs, so inventing a default would beg the question.
     const gasProfile = ctx.gasProfile ? { ...ctx.gasProfile } : undefined;
@@ -161,8 +163,8 @@ export async function run(flags: ParsedFlags): Promise<void> {
       import('@aztec/aztec.js/node'),
     ]);
 
-    const info = await ctx.node.getNodeInfo();
-    const chainTimestamp = BigInt((await ctx.node.getBlockData('latest'))?.header?.globalVariables?.timestamp ?? 0);
+    const info = await node.getNodeInfo();
+    const chainTimestamp = BigInt((await node.getBlockData('latest'))?.header?.globalVariables?.timestamp ?? 0);
     const generation = generationAt(chainTimestamp);
     const artifactClassId = (await getContractClassFromArtifact(artifact)).id.toString();
 
@@ -175,7 +177,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     // performs for the paymaster).
     const quotaArtifact = (await import('../../../artifacts/QuotaFpc.js')).QuotaFpcContractArtifact;
     const register = async (address: typeof fpcAddress, contractArtifact: unknown) => {
-      const instance = await ctx.node.getContract(address);
+      const instance = await node.getContract(address);
       if (!instance) throw new CliUsageError(`no contract deployed at ${address.toString()} on this node`);
       // registerContract does NOT check that the artifact matches the deployed
       // class, so a wrong --artifact previously surfaced during proving, after
@@ -185,13 +187,22 @@ export async function run(flags: ParsedFlags): Promise<void> {
         instance as unknown as { currentContractClassId?: { toString(): string } }
       ).currentContractClassId?.toString();
       const artifactClassId = (await getContractClassFromArtifact(contractArtifact as never)).id.toString();
-      if (deployedClassId && deployedClassId !== artifactClassId) {
+      // Absent is a REFUSAL, not a pass: failing open here would let a node
+      // wrapper that omits the field wave through the wrong artifact, which is
+      // exactly what this check exists to stop (round-19).
+      if (!deployedClassId) {
+        throw new CliUsageError(
+          `the node did not report a contract class for ${address.toString()}, so the supplied artifact cannot be ` +
+            `checked against it; refusing rather than proving against an unverified contract`,
+        );
+      }
+      if (deployedClassId !== artifactClassId) {
         throw new CliUsageError(
           `the contract at ${address.toString()} has class ${deployedClassId}, but the artifact supplied is class ` +
             `${artifactClassId} — measuring it would prove against a different contract`,
         );
       }
-      await (ctx.wallet as unknown as { registerContract(i: unknown, a: unknown): Promise<void> }).registerContract(
+      await (wallet as unknown as { registerContract(i: unknown, a: unknown): Promise<void> }).registerContract(
         instance,
         contractArtifact,
       );
@@ -199,10 +210,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
     await register(fpcAddress, quotaArtifact);
     await register(targetAddress, artifact);
 
-    const targetContract = await Contract.at(targetAddress, artifact, ctx.wallet);
-    const fpcContract = await Contract.at(fpcAddress, quotaArtifact, ctx.wallet);
+    const targetContract = await Contract.at(targetAddress, artifact, wallet);
+    const fpcContract = await Contract.at(fpcAddress, quotaArtifact, wallet);
     const alreadySubscribed = await hasSubscribed({
-      node: ctx.node as never,
+      node: node as never,
       fpcAddress,
       generation,
       player: from,
@@ -233,14 +244,17 @@ export async function run(flags: ParsedFlags): Promise<void> {
     // This command proves transactions itself, which needs the wallet's PXE —
     // a capability the Wallet interface does not promise. A conforming wallet
     // without it used to reach confirmation and then throw (round-18).
-    const pxe = (ctx.wallet as unknown as { pxe?: { proveTx?: unknown } }).pxe;
+    // Captured, not just checked: `pxe` could itself be a getter handing the
+    // capability check one object and the send another (round-19).
+    type ProvingPxe = { proveTx: (r: unknown, o: unknown) => Promise<{ toTx: () => Promise<unknown> }> };
+    const pxe = (wallet as unknown as { pxe?: Partial<ProvingPxe> }).pxe;
     if (typeof pxe?.proveTx !== 'function') {
       throw new CliUsageError(
         'measure needs a wallet exposing `pxe.proveTx` (it builds and proves the sponsored transactions itself). ' +
           'The wallet returned by your config module does not provide one.',
       );
     }
-    const walletChain = await (ctx.wallet as unknown as { getChainInfo: () => Promise<never> }).getChainInfo();
+    const walletChain = await (wallet as unknown as { getChainInfo: () => Promise<never> }).getChainInfo();
     const walletChainInfo = walletChain as unknown as {
       chainId: { toString(): string };
       version: { toString(): string };
@@ -309,12 +323,12 @@ export async function run(flags: ParsedFlags): Promise<void> {
 
     const result = await measureSponsoredFee(
       {
-        node: ctx.node,
+        node: node,
         fpcAddress,
         sendSponsored: async () => {
           let seat: number | undefined;
           if (!alreadySubscribed && sent === 0) {
-            const free = await findFreeSeat({ node: ctx.node as never, fpcAddress, generation, maxUsers });
+            const free = await findFreeSeat({ node: node as never, fpcAddress, generation, maxUsers });
             // null means the day is FULL. Coercing it to undefined would send
             // sponsor_and_execute for a player with no subscription, which the
             // contract rejects — refuse plainly instead.
@@ -328,14 +342,14 @@ export async function run(flags: ParsedFlags): Promise<void> {
           }
           const payload = await buildSandwichPayload(
             { calls, player: from, fpcAddress, generation, seat },
-            ctx.wallet as never,
+            wallet as never,
             fpcContract as never,
           );
           // The whole CONFIRMED envelope, not just the totals: teardown limits
           // and the fee headroom are part of what the operator approved, and
           // letting the SDK invent its own would measure a different envelope
           // than the one on the plan.
-          const minFees = await ctx.node.getCurrentMinFees();
+          const minFees = await node.getCurrentMinFees();
           const withHeadroom = (fee: bigint) => maxFeePerGasWithHeadroom(gasProfile, fee);
           const gasSettings = GasSettings.fallback({
             gasLimits: new Gas(gasProfile.daGasLimit, gasProfile.l2GasLimit),
@@ -346,20 +360,16 @@ export async function run(flags: ParsedFlags): Promise<void> {
             ),
           });
           const request = await new DefaultEntrypoint().createTxExecutionRequest(payload, gasSettings, walletChain);
-          const proven = await (
-            ctx.wallet as unknown as {
-              pxe: { proveTx: (r: unknown, o: unknown) => Promise<{ toTx: () => Promise<unknown> }> };
-            }
-          ).pxe.proveTx(request, { scopes: [from] });
+          const proven = await (pxe as ProvingPxe).proveTx(request, { scopes: [from] });
           const tx = await proven.toTx();
           // The plan was confirmed against a specific chain; re-read identity
           // immediately before the send so a swapped endpoint cannot receive it.
-          const nowInfo = await ctx.node.getNodeInfo();
+          const nowInfo = await node.getNodeInfo();
           if (nowInfo.l1ChainId !== info.l1ChainId || nowInfo.rollupVersion !== info.rollupVersion) {
             throw new ActionRevalidationFailed(plan, 'chain identity changed between confirmation and broadcast', sent);
           }
-          await ctx.node.sendTx(tx as never);
-          const receipt = await waitForTx(ctx.node, (tx as { getTxHash: () => never }).getTxHash());
+          await node.sendTx(tx as never);
+          const receipt = await waitForTx(node, (tx as { getTxHash: () => never }).getTxHash());
           // Counted only once the transaction actually LANDED: incrementing at
           // payload-build time made the revalidation failure report one
           // transaction already sent before the first one existed, and N

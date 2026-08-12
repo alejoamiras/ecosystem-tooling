@@ -229,7 +229,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
     // simulations while the identity shown comes from the node, so a config
     // pairing the two across chains reports one chain's policy as another's
     // (round-18).
-    const [nodeInfo, walletChain] = await Promise.all([ctx.node.getNodeInfo(), ctx.wallet.getChainInfo()]);
+    // deps FIRST, and the comparison through those captured values: comparing
+    // `ctx.node`/`ctx.wallet` and then re-reading them into deps let a getter
+    // pass the check with one pair and report state from another (round-19).
+    const deps = { node: ctx.node, wallet: ctx.wallet, from: ctx.from, fpcAddress };
+    const [nodeInfo, walletChain] = await Promise.all([deps.node.getNodeInfo(), deps.wallet.getChainInfo()]);
     if (
       BigInt(walletChain.chainId.toString()) !== BigInt(nodeInfo.l1ChainId) ||
       BigInt(walletChain.version.toString()) !== BigInt(nodeInfo.rollupVersion)
@@ -239,7 +243,6 @@ export async function run(flags: ParsedFlags): Promise<void> {
           `${nodeInfo.l1ChainId}/${nodeInfo.rollupVersion}`,
       );
     }
-    const deps = { node: ctx.node, wallet: ctx.wallet, from: ctx.from, fpcAddress };
 
     const state = await readPolicyState(deps, gasProfile);
     console.log(`\nPaymaster ${fpcAddress.toString()}`);
