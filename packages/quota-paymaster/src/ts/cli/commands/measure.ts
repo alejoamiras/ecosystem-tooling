@@ -102,6 +102,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     functionType?: string;
     isOnlySelf?: boolean;
     isInitializer?: boolean;
+    parameters?: unknown[];
   }[];
   const sendable = callable.filter(
     (f) =>
@@ -113,12 +114,23 @@ export async function run(flags: ParsedFlags): Promise<void> {
       // gate (round-12).
       f.name !== 'public_dispatch',
   );
-  if (!sendable.some((f) => f.name === method)) {
+  const chosen = sendable.find((f) => f.name === method);
+  if (!chosen) {
     const names = sendable
       .map((f) => f.name)
       .filter((n): n is string => typeof n === 'string')
       .join(', ');
     throw new CliUsageError(`--method ${method} is not a sendable function of ${artifactPath}. Available: ${names}`);
+  }
+  // Arity is decidable from the artifact already in hand: without this the
+  // wrong number of --args built a plan, a human approved its digest, and
+  // aztec.js raised the arity error INSIDE the send — exit 1 for a typo
+  // (round-16).
+  const expectedArity = chosen.parameters?.length ?? 0;
+  if (args.length !== expectedArity) {
+    throw new CliUsageError(
+      `--method ${method} takes ${expectedArity} argument(s), but --args supplied ${args.length}`,
+    );
   }
 
   await withContext(flags, async (ctx) => {
@@ -265,7 +277,6 @@ export async function run(flags: ParsedFlags): Promise<void> {
             ctx.wallet as never,
             fpcContract as never,
           );
-          sent += 1;
           // The whole CONFIRMED envelope, not just the totals: teardown limits
           // and the fee headroom are part of what the operator approved, and
           // letting the SDK invent its own would measure a different envelope
@@ -299,6 +310,13 @@ export async function run(flags: ParsedFlags): Promise<void> {
           }
           await ctx.node.sendTx(tx as never);
           const receipt = await waitForTx(ctx.node, (tx as { getTxHash: () => never }).getTxHash());
+          // Counted only once the transaction actually LANDED: incrementing at
+          // payload-build time made the revalidation failure report one
+          // transaction already sent before the first one existed, and N
+          // instead of N-1 thereafter (round-16). It also drives the "first
+          // send" seat selection and the inter-send wait, both of which want
+          // the landed count.
+          sent += 1;
           return { transactionFeeWei: BigInt((receipt as { transactionFee?: bigint })?.transactionFee ?? 0n) };
         },
         readQuotaInfo,

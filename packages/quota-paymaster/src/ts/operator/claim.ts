@@ -243,6 +243,15 @@ export async function claimFeeJuice(
     amountWei: amountWei.toString(),
     messageLeafIndex: messageLeafIndex.toString(),
     paidForBy: from.toString(),
+    // The key every journal record is written under: two valid hashes execute
+    // the same claim but record success against different deposits, so it must
+    // move the digest (round-16). 'untracked' when there is no journal key,
+    // rather than an absent field that reads as "not applicable".
+    journalKey: messageHash ?? 'untracked',
+    // Where the CLAIMED record lands, for the same reason bridge binds it: a
+    // directory chosen by the environment decides whether this claim is
+    // recorded at all (round-16).
+    journalDir: deps.journal?.dirPath ?? 'none',
     // The digest COVERS the secret without exposing it in the plan a UI shows:
     // a hash commits to the exact preimage, so a swapped secret changes the
     // digest, where a bare "present" boolean would not (finding #1).

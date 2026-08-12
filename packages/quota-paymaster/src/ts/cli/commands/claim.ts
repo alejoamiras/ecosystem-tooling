@@ -27,9 +27,14 @@ export const schema: FlagSchema = {
 
 export const usage =
   'claim --for 0x… --config-module <path> [--message-hash 0x…] [--journal-dir <path>]\n' +
-  '      [--secret-stdin --amount-wei N --leaf-index N] [--allow-retry-after-unknown] [--yes]\n' +
+  '      [--allow-retry-after-unknown] [--yes]\n' +
+  '  MANUAL mode (journal record lost): add --secret-stdin --amount-wei N --leaf-index N\n' +
+  '      --message-hash 0x…\n' +
   '  Default reads the hardened journal. A secret is NEVER accepted on argv;\n' +
-  '  --secret-stdin reads ONLY the secret from stdin.\n' +
+  '  --secret-stdin reads ONLY the secret from stdin, and manual mode REQUIRES\n' +
+  '  --message-hash: it is the key every journal record is written under, so\n' +
+  '  without it a successful claim records nothing and the next claim re-targets\n' +
+  '  the deposit it just redeemed.\n' +
   '  --allow-retry-after-unknown proceeds despite a prior attempt with no recorded\n' +
   '  outcome — verify on-chain first, it may have landed.';
 
@@ -96,13 +101,23 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // claiming a different deposit (round-15). Same shape as `policy --show`
   // silently ignoring edit flags.
   if (!flags.has('secret-stdin')) {
-    const manualOnly = ['amount-wei', 'leaf-index', 'allow-retry-after-unknown'].filter((f) => flags.has(f));
+    const manualOnly = ['amount-wei', 'leaf-index'].filter((f) => flags.has(f));
     if (manualOnly.length > 0) {
       throw new CliUsageError(
         `${manualOnly.map((f) => `--${f}`).join(', ')} only applies to a manual claim; add --secret-stdin and pipe ` +
           `the secret, or drop them to claim the deposit recorded in the journal.`,
       );
     }
+  }
+  // ...and the mirror: --allow-retry-after-unknown resolves an ambiguous prior
+  // attempt recorded in the JOURNAL, so it means nothing in manual mode. It
+  // was briefly in the list above, which made the documented recovery from
+  // CLAIM_OUTCOME_UNKNOWN impossible (round-16).
+  if (flags.has('secret-stdin') && flags.has('allow-retry-after-unknown')) {
+    throw new CliUsageError(
+      '--allow-retry-after-unknown applies to a journal claim (it clears a prior attempt with no recorded ' +
+        'outcome); a manual claim names the deposit itself, so drop one of the two.',
+    );
   }
   const manualAmounts = flags.has('secret-stdin')
     ? {

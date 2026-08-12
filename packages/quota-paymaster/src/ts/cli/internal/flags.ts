@@ -41,13 +41,6 @@ export interface ParsedFlags {
 const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 /**
- * A required flag that must be an Aztec address, refused as a USAGE error.
- *
- * `AztecAddress.fromStringUnsafe` throws a bare Error ("Invalid AztecAddress
- * length 0."), which reaches the exit-1 bucket — "something may have happened"
- * — for a typo where nothing has happened at all (round-9).
- */
-/**
  * QUOTA_JOURNAL_DIR, or undefined when it is blank.
  *
  * `?? process.env.QUOTA_JOURNAL_DIR` alone accepted `" "` — flag values are
@@ -56,9 +49,20 @@ const FIELD_MODULUS = 2188824287183927522224640574525727508854836440041603434369
  * a checkout that means claim secrets landing next to the code (round-15).
  */
 export function journalDirFromEnv(): string | undefined {
-  return process.env.QUOTA_JOURNAL_DIR?.trim() || undefined;
+  const raw = process.env.QUOTA_JOURNAL_DIR;
+  // Blank is rejected; anything else is used VERBATIM. Trimming the value
+  // itself would retarget a path that legitimately has leading or trailing
+  // whitespace to a different directory (round-16).
+  return raw?.trim() ? raw : undefined;
 }
 
+/**
+ * A required flag that must be an Aztec address, refused as a USAGE error.
+ *
+ * `AztecAddress.fromStringUnsafe` throws a bare Error ("Invalid AztecAddress
+ * length 0."), which reaches the exit-1 bucket — "something may have happened"
+ * — for a typo where nothing has happened at all (round-9).
+ */
 export function requireAddressFlag(flags: ParsedFlags, name: string): string {
   const value = flags.require(name);
   if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {

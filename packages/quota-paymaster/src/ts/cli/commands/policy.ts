@@ -173,9 +173,23 @@ export async function run(flags: ParsedFlags): Promise<void> {
   }
   for (const mode of ['cancel', 'show'] as const) {
     if (!flags.has(mode)) continue;
-    const conflicting = ['max-fee-wei', 'max-uses', 'max-users', 'add-target', 'remove-target'].filter((f) =>
-      flags.has(f),
-    );
+    // --show also silently dropped the loss bound and the accept-* overrides,
+    // which exist only to authorize an edit (round-16).
+    const editFlags =
+      mode === 'show'
+        ? [
+            'max-fee-wei',
+            'max-uses',
+            'max-users',
+            'add-target',
+            'remove-target',
+            'max-loss-wei',
+            'config',
+            'accept-below-floor',
+            'accept-above-max-loss',
+          ]
+        : ['max-fee-wei', 'max-uses', 'max-users', 'add-target', 'remove-target'];
+    const conflicting = editFlags.filter((f) => flags.has(f));
     if (conflicting.length > 0) {
       throw new CliUsageError(
         `--${mode} ${mode === 'cancel' ? 'restores the live policy' : 'only reports state'} and cannot be combined ` +

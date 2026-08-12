@@ -366,6 +366,16 @@ export async function schedulePolicyChange(
     from: deps.from,
     wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
   };
+  // The contract gates this call on the admin, so a non-admin `from` can only
+  // produce a reverting transaction — and it was offered for confirmation
+  // first, burning gas on a plan that could never apply (round-16).
+  if (state.admin.toLowerCase() !== deps.from.toString().toLowerCase()) {
+    throw new Error(
+      `this paymaster's admin is ${state.admin}, but the config module signs from ${deps.from.toString()}; ` +
+        `only the admin can schedule a policy change`,
+    );
+  }
+
   const expectedRevision = state.scheduled.revision;
   const plan = createActionPlan('schedule-policy-change', {
     l1ChainId: info.l1ChainId,

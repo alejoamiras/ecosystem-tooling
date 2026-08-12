@@ -142,6 +142,12 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     to: to,
     amountWei: amountWei.toString(),
     portal: portalHex,
+    // WHERE THE SECRET GOES. The journal directory is the only durable copy of
+    // the claim preimage, and it can be set by an environment variable that
+    // appears nowhere on argv — so two runs targeting different directories
+    // printed identical digests, and confirming one told the operator nothing
+    // about whether the deposit would still be redeemable (round-16).
+    journalDir: deps.journal.dirPath,
     // The token is what gets APPROVED below, and the portal manager re-reads
     // it from the node after confirmation — so bind it and re-check it.
     token: tokenHex,
