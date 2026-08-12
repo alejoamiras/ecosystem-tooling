@@ -8,6 +8,7 @@
  * just deploys), the balance-vs-reserve report, and chain-time pending
  * detection (never Date.now — local clocks lie).
  */
+
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
@@ -22,6 +23,7 @@ import {
   digestOptions,
   snapshotOptions,
 } from './action-plan.js';
+import { OperatorConfigError } from './config-module.js';
 
 export interface PolicyDeps {
   node: AztecNode;
@@ -276,7 +278,9 @@ export async function schedulePolicyChange(
     BigInt(walletChain.chainId.toString()) !== BigInt(info.l1ChainId) ||
     BigInt(walletChain.version.toString()) !== BigInt(info.rollupVersion)
   ) {
-    throw new Error(
+    throw new OperatorConfigError(
+      'shape-invalid',
+
       `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
         `${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and execute on another`,
     );
@@ -400,7 +404,7 @@ export async function schedulePolicyChange(
     // call on the admin. It was the only command whose plan did not bind it,
     // so a config module resolving `from` differently between the dry run and
     // the --yes run produced the same digest (round-9 finding 3).
-    from: deps.from.toString(),
+    from: deps.from.toString().toLowerCase(),
     sendOptionsDigest: digestOptions(effectiveSendOptions),
     expectedRevision: expectedRevision.toString(),
     maxFeeWei: next.maxFeeWei.toString(),
@@ -424,6 +428,16 @@ export async function schedulePolicyChange(
 
   const fpc = await QuotaFpcContract.at(deps.fpcAddress, deps.wallet);
   await confirmAndRevalidate(plan, deps.confirm, async () => {
+    // The WALLET's chain too, not just the node's: it is what sends, so
+    // re-reading only the node left a wallet that switched chains during the
+    // confirmation free to send elsewhere (round-18).
+    const walletAgain = await deps.wallet.getChainInfo();
+    if (
+      BigInt(walletAgain.chainId.toString()) !== BigInt(info.l1ChainId) ||
+      BigInt(walletAgain.version.toString()) !== BigInt(info.rollupVersion)
+    ) {
+      return 'the wallet changed chains between confirmation and broadcast';
+    }
     // The CAS the contract enforces, pre-checked with fresh eyes so a race
     // surfaces as a clean abort instead of a reverted transaction.
     const [[, , revisionNow], latestNow, infoNow] = await Promise.all([

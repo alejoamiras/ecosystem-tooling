@@ -16,9 +16,11 @@
  * journal and in this function's return value (process memory), which
  * claimFeeJuice can consume directly.
  */
+
 import type { ExtendedViemWalletClient } from '@aztec/ethereum/types';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
+import { OperatorConfigError } from './config-module.js';
 import { appendJournalRecord, BRIDGE_JOURNAL_FILE, type JournalHandle, withJournalLock } from './internal/journal.js';
 
 /** The L1 client surface this module needs (an @aztec/ethereum extended client). */
@@ -130,7 +132,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
   // (round-9). getChainId is on the extended client this function now names.
   const clientChainId = await deps.l1Client.getChainId();
   if (BigInt(clientChainId) !== BigInt(info.l1ChainId)) {
-    throw new Error(
+    throw new OperatorConfigError(
+      'shape-invalid',
+
       `the config module's L1 client is on chain ${clientChainId}, but this Aztec node's L1 is ` +
         `${info.l1ChainId} — the deposit would land on the wrong chain and could never be claimed`,
     );
@@ -138,8 +142,8 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
   const plan = createActionPlan('bridge-fee-juice', {
     l1ChainId: info.l1ChainId,
-    from: from,
-    to: to,
+    from: from.toLowerCase(),
+    to: to.toLowerCase(),
     amountWei: amountWei.toString(),
     portal: portalHex,
     // WHERE THE SECRET GOES. The journal directory is the only durable copy of
@@ -152,7 +156,10 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     // it from the node after confirmation — so bind it and re-check it.
     token: tokenHex,
     l1ClientChainId: String(clientChainId),
-    gasLimitBufferPercent: Math.max(gasLimitBufferPercent ?? 100, 100),
+    // In BASIS POINTS, which is what actually scales the gas limit: two
+    // percentages that round to the same bps are the same execution and must
+    // not print as different plans (round-18).
+    gasLimitBufferBps: Math.ceil(Math.max(gasLimitBufferPercent ?? 100, 100) * 100),
     irreversible: true,
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {

@@ -134,6 +134,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
   }
 
   await withContext(flags, async (ctx) => {
+    // Copied ONCE: ctx is the config module's own object, and re-reading `from`
+    // after the confirm gate would let a getter return a different account than
+    // the plan named. Every sibling command copies its execution inputs into a
+    // plain deps object for exactly this reason (round-18).
+    const from = ctx.from;
     // The gas envelope is an explicit input by design — this command exists to
     // MEASURE what a profile costs, so inventing a default would beg the question.
     const gasProfile = ctx.gasProfile ? { ...ctx.gasProfile } : undefined;
@@ -172,6 +177,20 @@ export async function run(flags: ParsedFlags): Promise<void> {
     const register = async (address: typeof fpcAddress, contractArtifact: unknown) => {
       const instance = await ctx.node.getContract(address);
       if (!instance) throw new CliUsageError(`no contract deployed at ${address.toString()} on this node`);
+      // registerContract does NOT check that the artifact matches the deployed
+      // class, so a wrong --artifact previously surfaced during proving, after
+      // the operator had approved a plan naming that artifact's class id
+      // (round-18).
+      const deployedClassId = (
+        instance as unknown as { currentContractClassId?: { toString(): string } }
+      ).currentContractClassId?.toString();
+      const artifactClassId = (await getContractClassFromArtifact(contractArtifact as never)).id.toString();
+      if (deployedClassId && deployedClassId !== artifactClassId) {
+        throw new CliUsageError(
+          `the contract at ${address.toString()} has class ${deployedClassId}, but the artifact supplied is class ` +
+            `${artifactClassId} — measuring it would prove against a different contract`,
+        );
+      }
       await (ctx.wallet as unknown as { registerContract(i: unknown, a: unknown): Promise<void> }).registerContract(
         instance,
         contractArtifact,
@@ -186,13 +205,13 @@ export async function run(flags: ParsedFlags): Promise<void> {
       node: ctx.node as never,
       fpcAddress,
       generation,
-      player: ctx.from,
+      player: from,
     });
     // The live policy, once: an unsubscribed player reads (false, 0), so the
     // budget for the first send is max_uses — without this the measurement
     // stops before sending anything. max_users is also the real seat range;
     // guessing it picks seats the contract rejects.
-    const livePolicyRaw = await fpcContract.methods.get_policy().simulate({ from: ctx.from });
+    const livePolicyRaw = await fpcContract.methods.get_policy().simulate({ from });
     const livePolicy = ((livePolicyRaw as { result?: unknown })?.result ?? livePolicyRaw) as {
       max_uses: number | bigint;
       max_users: number | bigint;
@@ -210,6 +229,16 @@ export async function run(flags: ParsedFlags): Promise<void> {
       calls = [await targetContract.methods[method](...args).request()].flatMap((p) => p.calls);
     } catch (error) {
       throw new CliUsageError(`--args does not match ${method}'s ABI: ${(error as Error).message}`);
+    }
+    // This command proves transactions itself, which needs the wallet's PXE —
+    // a capability the Wallet interface does not promise. A conforming wallet
+    // without it used to reach confirmation and then throw (round-18).
+    const pxe = (ctx.wallet as unknown as { pxe?: { proveTx?: unknown } }).pxe;
+    if (typeof pxe?.proveTx !== 'function') {
+      throw new CliUsageError(
+        'measure needs a wallet exposing `pxe.proveTx` (it builds and proves the sponsored transactions itself). ' +
+          'The wallet returned by your config module does not provide one.',
+      );
     }
     const walletChain = await (ctx.wallet as unknown as { getChainInfo: () => Promise<never> }).getChainInfo();
     const walletChainInfo = walletChain as unknown as {
@@ -231,7 +260,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     let sent = 0;
 
     const readQuotaInfo = async (): Promise<{ hasAllowance: boolean; remaining: number }> => {
-      const raw = await fpcContract.methods.get_quota_info(ctx.from, generation).simulate({ from: ctx.from });
+      const raw = await fpcContract.methods.get_quota_info(from, generation).simulate({ from });
       const unwrapped = (raw as { result?: unknown })?.result ?? raw;
       const [has, remaining] = unwrapped as [boolean, number | bigint];
       // Only an UNSUBSCRIBED player's first send reads as "no quota record
@@ -269,7 +298,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
       argsDigest: digestOptions({ args }),
       count,
       generation,
-      player: ctx.from.toString(),
+      player: from.toString().toLowerCase(),
       // The gas envelope determines what each send can cost, so it belongs in
       // what the operator confirms — and is snapshotted, since `ctx` is the
       // config module's own mutable object.
@@ -298,7 +327,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
             seat = free;
           }
           const payload = await buildSandwichPayload(
-            { calls, player: ctx.from, fpcAddress, generation, seat },
+            { calls, player: from, fpcAddress, generation, seat },
             ctx.wallet as never,
             fpcContract as never,
           );
@@ -321,7 +350,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
             ctx.wallet as unknown as {
               pxe: { proveTx: (r: unknown, o: unknown) => Promise<{ toTx: () => Promise<unknown> }> };
             }
-          ).pxe.proveTx(request, { scopes: [ctx.from] });
+          ).pxe.proveTx(request, { scopes: [from] });
           const tx = await proven.toTx();
           // The plan was confirmed against a specific chain; re-read identity
           // immediately before the send so a swapped endpoint cannot receive it.

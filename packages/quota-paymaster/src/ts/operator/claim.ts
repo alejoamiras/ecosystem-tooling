@@ -11,6 +11,7 @@
  * bridgeFeeJuice — NEVER via argv, which leaks through shell history and
  * process listings.
  */
+
 import { createHash } from 'node:crypto';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Wallet } from '@aztec/aztec.js/wallet';
@@ -23,6 +24,7 @@ import {
   snapshotOptions,
 } from './action-plan.js';
 import { MAX_FEE_JUICE_AMOUNT_WEI } from './bridge.js';
+import { OperatorConfigError } from './config-module.js';
 import {
   appendJournalRecord,
   BRIDGE_JOURNAL_FILE,
@@ -237,7 +239,9 @@ export async function claimFeeJuice(
     BigInt(walletChain.chainId.toString()) !== BigInt(info.l1ChainId) ||
     BigInt(walletChain.version.toString()) !== BigInt(info.rollupVersion)
   ) {
-    throw new Error(
+    throw new OperatorConfigError(
+      'shape-invalid',
+
       `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
         `${info.l1ChainId}/${info.rollupVersion} — the plan would describe one chain and execute on another`,
     );
@@ -253,15 +257,15 @@ export async function claimFeeJuice(
   const plan = createActionPlan('claim-fee-juice', {
     l1ChainId: info.l1ChainId,
     rollupVersion: info.rollupVersion,
-    recipient: recipientStr,
+    recipient: recipientStr.toLowerCase(),
     amountWei: amountWei.toString(),
     messageLeafIndex: messageLeafIndex.toString(),
-    paidForBy: from.toString(),
+    paidForBy: from.toString().toLowerCase(),
     // The key every journal record is written under: two valid hashes execute
     // the same claim but record success against different deposits, so it must
     // move the digest (round-16). 'untracked' when there is no journal key,
     // rather than an absent field that reads as "not applicable".
-    journalKey: messageHash ?? 'untracked',
+    journalKey: messageHash?.toLowerCase() ?? 'untracked',
     // Where the CLAIMED record lands, for the same reason bridge binds it: a
     // directory chosen by the environment decides whether this claim is
     // recorded at all (round-16).
@@ -279,10 +283,17 @@ export async function claimFeeJuice(
     sendOptionsDigest: digestOptions(effectiveSendOptions),
   });
   await confirmAndRevalidate(plan, deps.confirm, async () => {
-    const again = await deps.node.getNodeInfo();
-    return again.l1ChainId === info.l1ChainId && again.rollupVersion === info.rollupVersion
+    const [again, walletAgain] = await Promise.all([deps.node.getNodeInfo(), deps.wallet.getChainInfo()]);
+    if (again.l1ChainId !== info.l1ChainId || again.rollupVersion !== info.rollupVersion) {
+      return 'chain identity changed between reads';
+    }
+    // The WALLET too: it is what sends, and re-reading only the node left a
+    // wallet that switched chains during the confirmation free to send
+    // elsewhere (round-18).
+    return BigInt(walletAgain.chainId.toString()) === BigInt(info.l1ChainId) &&
+      BigInt(walletAgain.version.toString()) === BigInt(info.rollupVersion)
       ? undefined
-      : 'chain identity changed between reads';
+      : 'the wallet changed chains between confirmation and broadcast';
   });
 
   const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');

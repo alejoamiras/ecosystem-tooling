@@ -14,6 +14,9 @@
  */
 import { main } from '../src/ts/cli/main.js';
 
+// Same default-to-failure as the published launcher (round-18).
+process.exitCode = 1;
+
 main(process.argv.slice(2)).then(
   (code) => {
     process.exitCode = code;

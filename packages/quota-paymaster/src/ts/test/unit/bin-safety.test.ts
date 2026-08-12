@@ -538,6 +538,29 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     }
   });
 
+  test('a dispose() that never settles cannot report success', () => {
+    // The third instance of one root cause: a promise that never settles drains
+    // the event loop, and without a failure default the process exits 0 — here
+    // that would follow an irreversible bridge (round-18).
+    const path = join(PKG_ROOT, `.tmp-hang-${process.pid}.config.mjs`);
+    cleanups.push(() => rmSync(path, { force: true }));
+    writeFileSync(
+      path,
+      [
+        `import { defineOperatorConfig } from './src/ts/operator/config.js';`,
+        `import { AztecAddress } from '@aztec/aztec.js/addresses';`,
+        `export default defineOperatorConfig(async () => ({`,
+        `  node: { getNodeInfo: async () => ({ l1ChainId: 1, rollupVersion: 1 }) },`,
+        `  wallet: { getChainInfo: async () => ({ chainId: 1n, version: 1n }) },`,
+        `  from: AztecAddress.fromStringUnsafe('0x0${'a'.repeat(63)}'),`,
+        `  dispose: () => new Promise(() => {}),`,
+        `}));`,
+      ].join('\n'),
+    );
+    const result = run(['bridge', '--to', `0x0${'1'.repeat(63)}`, '--amount-wei', '1', '--config-module', path]);
+    expect(result.status).not.toBe(0);
+  });
+
   test('a throwing dispose() warns but does NOT become the command outcome', () => {
     // The refusal here is bridge's "no l1 in the context" (exit 2). Before the
     // fix, dispose's throw replaced it and the CLI reported exit 1 — which for

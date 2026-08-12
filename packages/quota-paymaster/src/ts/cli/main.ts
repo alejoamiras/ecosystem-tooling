@@ -102,6 +102,9 @@ export async function main(argv: string[]): Promise<number> {
 // the CLI would exit 0 having done nothing — the same trap
 // scripts/release-policy.mjs documents (round-8 finding 3).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Same default-to-failure as the launchers: a never-settling promise must
+  // not read as success (round-18).
+  process.exitCode = 1;
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

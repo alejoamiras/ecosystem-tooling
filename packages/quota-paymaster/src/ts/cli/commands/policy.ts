@@ -221,7 +221,24 @@ export async function run(flags: ParsedFlags): Promise<void> {
   }
 
   await withContext(flags, async (ctx) => {
+    // AFTER the gas-profile refusal, which is decidable without a network: the
+    // chain comparison below is the first chain read this command makes, and a
+    // missing profile must still refuse before touching anything.
     const gasProfile = gasProfileFromFlag ?? gasProfileFrom(flags, ctx.gasProfile);
+    // Even a READ must not mix chains: the state comes from the wallet's
+    // simulations while the identity shown comes from the node, so a config
+    // pairing the two across chains reports one chain's policy as another's
+    // (round-18).
+    const [nodeInfo, walletChain] = await Promise.all([ctx.node.getNodeInfo(), ctx.wallet.getChainInfo()]);
+    if (
+      BigInt(walletChain.chainId.toString()) !== BigInt(nodeInfo.l1ChainId) ||
+      BigInt(walletChain.version.toString()) !== BigInt(nodeInfo.rollupVersion)
+    ) {
+      throw new CliUsageError(
+        `the config module's wallet is on chain ${walletChain.chainId}/${walletChain.version}, but its node reports ` +
+          `${nodeInfo.l1ChainId}/${nodeInfo.rollupVersion}`,
+      );
+    }
     const deps = { node: ctx.node, wallet: ctx.wallet, from: ctx.from, fpcAddress };
 
     const state = await readPolicyState(deps, gasProfile);

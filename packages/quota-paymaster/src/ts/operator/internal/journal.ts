@@ -70,13 +70,15 @@ export function openJournalDir(requestedPath: string = DEFAULT_JOURNAL_DIR()): J
   const lexicalPath = resolve(requestedPath);
   mkdirSync(lexicalPath, { recursive: true, mode: 0o700 });
   const dirFd = openSync(lexicalPath, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  // CANONICAL, not merely absolute: resolve() is lexical, so a symlinked
-  // parent gave the same digest for two different destinations, and the
-  // symlinked and canonical spellings of ONE directory gave two different
-  // digests. The inode check ties the name in the plan to the directory
-  // actually opened (round-17).
-  const dirPath = realpathSync(lexicalPath);
+  // Inside the try, so a failure here still closes the fd (round-18).
+  let dirPath: string;
   try {
+    // CANONICAL, not merely absolute: resolve() is lexical, so a symlinked
+    // parent gave the same digest for two different destinations, and the
+    // symlinked and canonical spellings of ONE directory gave two different
+    // digests. The inode check below ties the name in the plan to the
+    // directory actually opened (round-17).
+    dirPath = realpathSync(lexicalPath);
     const st = fstatSync(dirFd);
     if (!st.isDirectory()) throw new Error(`${dirPath} is not a directory`);
     // The canonical name must BE the directory we hold open, or the plan would
