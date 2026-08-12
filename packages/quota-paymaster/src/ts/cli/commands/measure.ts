@@ -89,6 +89,18 @@ export async function run(flags: ParsedFlags): Promise<void> {
     }
   }
 
+  // The artifact is already loaded and the method name is already known, so a
+  // typo (or a utility-only function) can be refused HERE rather than after a
+  // human has approved a plan that cannot execute (round-10).
+  const callable = (artifact.functions ?? []) as { name?: string }[];
+  if (!callable.some((f) => f.name === method)) {
+    const names = callable
+      .map((f) => f.name)
+      .filter((n): n is string => typeof n === 'string')
+      .join(', ');
+    throw new CliUsageError(`--method ${method} is not a function of ${artifactPath}. Available: ${names}`);
+  }
+
   await withContext(flags, async (ctx) => {
     // The gas envelope is an explicit input by design — this command exists to
     // MEASURE what a profile costs, so inventing a default would beg the question.

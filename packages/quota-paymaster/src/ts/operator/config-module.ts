@@ -254,7 +254,16 @@ export function assertOperatorContext(context: unknown): asserts context is Oper
         'OperatorContext.l1.client.account.address must be an Ethereum address (0x + 40 hex) — bridge sends from it',
       );
     }
-    for (const method of ['simulateContract', 'estimateContractGas', 'writeContract', 'waitForTransactionReceipt']) {
+    // getChainId included: bridge compares it against the node's L1 chain id
+    // before anything moves, so a client without it dies with "not a function"
+    // at exit 1 instead of this typed refusal at exit 2 (round-10).
+    for (const method of [
+      'simulateContract',
+      'estimateContractGas',
+      'writeContract',
+      'waitForTransactionReceipt',
+      'getChainId',
+    ]) {
       if (typeof client[method] !== 'function') {
         throw new OperatorConfigError('shape-invalid', `OperatorContext.l1.client.${method} is missing`);
       }

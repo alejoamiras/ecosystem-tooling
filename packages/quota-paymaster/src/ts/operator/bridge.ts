@@ -156,6 +156,13 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     if (again.l1ContractAddresses.feeJuiceAddress.toString() !== tokenHex) {
       return 'fee juice token address changed between reads';
     }
+    // The L1 endpoint too, not just the Aztec node: a failover between
+    // confirmation and broadcast can land the deposit on another chain
+    // (round-10).
+    const nowClientChainId = await deps.l1Client.getChainId();
+    if (BigInt(nowClientChainId) !== BigInt(clientChainId)) {
+      return `the L1 client moved to chain ${nowClientChainId} after confirmation`;
+    }
     return again.l1ContractAddresses.feeJuicePortalAddress.toString() === portalHex &&
       again.l1ChainId === info.l1ChainId
       ? undefined
@@ -191,6 +198,16 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
     // Approval is a separate, reversible L1 write; the SDK's token manager
     // already knows the ERC20 quirks.
     const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client, logger);
+    // `.new()` re-reads the token from the node AFTER the revalidation above,
+    // so check what it actually resolved: approving a token the operator never
+    // confirmed is not something to discover afterwards (round-10).
+    const resolvedToken = portal.getTokenManager().tokenAddress.toString();
+    if (resolvedToken.toLowerCase() !== tokenHex.toLowerCase()) {
+      throw new Error(
+        `the portal manager resolved fee juice token ${resolvedToken}, but ${tokenHex} was confirmed — ` +
+          `refusing to approve. Nothing was sent; the journaled secret is unused.`,
+      );
+    }
     await portal.getTokenManager().approve(amountWei, portalHex, 'FeeJuice Portal');
 
     // The regex above proved the 0x + 64-hex shape, and an Fr always renders

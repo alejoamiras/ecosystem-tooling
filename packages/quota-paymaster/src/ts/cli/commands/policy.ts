@@ -216,7 +216,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     const confirm = makeConfirm(flags);
 
     if (flags.has('cancel')) {
-      const result = await cancelPendingPolicyChange({ ...deps, confirm }, guards);
+      const result = await cancelPendingPolicyChange({ ...deps, confirm, sendOptions: ctx.sendOptions }, guards);
       reportRace(result.pendingActivatedFirst, 'cancel');
       console.log(`\nPending change replaced with the live values (revision ${result.scheduledRevision}).`);
       return;

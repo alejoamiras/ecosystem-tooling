@@ -141,7 +141,15 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
     // path must clean it up — dispose() is only reachable once we RETURN.
     const cleanupOnFailure = async (wallet?: { stop: () => Promise<void> }) => {
       try {
-        await wallet?.stop();
+        // Guarded for the same reason withContext guards dispose(): a throwing
+        // stop() here would REPLACE the original cause (unreachable node, bad
+        // L1 RPC) with a cleanup error, reporting the wrong reason for the
+        // failure (round-10).
+        try {
+          await wallet?.stop();
+        } catch {
+          // The real failure is the one being rethrown below.
+        }
       } finally {
         if (deleteOnDispose) rmSync(walletDir, { recursive: true, force: true, maxRetries: 3 });
       }

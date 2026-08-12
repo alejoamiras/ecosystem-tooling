@@ -38,6 +38,8 @@ export interface ParsedFlags {
   require(name: string): string;
 }
 
+const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
 /**
  * A required flag that must be an Aztec address, refused as a USAGE error.
  *
@@ -49,6 +51,12 @@ export function requireAddressFlag(flags: ParsedFlags, name: string): string {
   const value = flags.require(name);
   if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
     throw new CliUsageError(`--${name} must be an Aztec address (0x + 64 hex), got "${value}"`);
+  }
+  // Shape is not enough: an Aztec address is a BN254 field element, and a
+  // larger 64-hex value made AztecAddress throw its own error at exit 1 —
+  // the bucket this guard exists to keep usage mistakes out of (round-10).
+  if (BigInt(value) >= FIELD_MODULUS) {
+    throw new CliUsageError(`--${name} is not a valid field element, so no Aztec address can equal it: ${value}`);
   }
   return value;
 }

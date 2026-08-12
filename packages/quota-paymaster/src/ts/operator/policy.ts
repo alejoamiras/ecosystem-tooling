@@ -337,7 +337,9 @@ export async function schedulePolicyChange(
 
   // Snapshot before the plan digests them, so a confirm callback cannot swap
   // the options between the digest and the send.
-  const sendOpts = snapshotOptions(deps.sendOptions ?? {});
+  const snapshot = snapshotOptions(deps.sendOptions ?? {});
+  const { wait: callerWait, ...sendOpts } = snapshot;
+  const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
   const expectedRevision = state.scheduled.revision;
   const plan = createActionPlan('schedule-policy-change', {
     l1ChainId: info.l1ChainId,
@@ -348,7 +350,7 @@ export async function schedulePolicyChange(
     // so a config module resolving `from` differently between the dry run and
     // the --yes run produced the same digest (round-9 finding 3).
     from: deps.from.toString(),
-    sendOptionsDigest: digestOptions(sendOpts),
+    sendOptionsDigest: digestOptions(snapshot),
     expectedRevision: expectedRevision.toString(),
     maxFeeWei: next.maxFeeWei.toString(),
     maxUses: next.maxUses,
@@ -432,10 +434,14 @@ export async function schedulePolicyChange(
     // replacement exists that doesn't. Same floor the claim path enforces.
     .send({
       ...sendOpts,
-      // from and wait come AFTER the spread: the admin identity and the
-      // finality floor are not caller-overridable.
+      // from and the finality floor come AFTER the spread and are not
+      // caller-overridable — but the caller's other wait knobs (timeout, poll
+      // interval) ARE honored, exactly as deploy and claim do. Replacing the
+      // whole wait object dropped a raised timeout for a slow prover: the
+      // send throws while the transaction lands, and the operator re-runs and
+      // replaces their own pending bundle, restarting the 12h delay.
       from: deps.from,
-      wait: { waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false },
+      wait: { ...callerWaitObj, waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false },
     })
     .then(({ receipt }) => {
       if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
@@ -501,7 +507,12 @@ export async function schedulePolicyChange(
  * whether to keep the restore or schedule something else.
  */
 export async function cancelPendingPolicyChange(
-  deps: PolicyDeps & { confirm: ConfirmAction },
+  deps: PolicyDeps & {
+    confirm: ConfirmAction;
+    /** Cancel is the UNDO for a fat-fingered bundle, so it must be able to pay
+     * the same way a schedule can — it dropped these entirely (round-10). */
+    sendOptions?: Record<string, unknown>;
+  },
   guards: ScheduleGuards,
 ): Promise<{ scheduledRevision: bigint; pendingActivatedFirst: boolean | 'unknown' }> {
   const state = await readPolicyState(deps, guards.gasProfile);

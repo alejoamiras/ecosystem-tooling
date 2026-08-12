@@ -161,6 +161,8 @@ describe('assertOperatorContext — fields the CLI actually dereferences', () =>
             estimateContractGas: async () => 0n,
             writeContract: async () => '0x',
             waitForTransactionReceipt: async () => ({ status: 'success', logs: [] }),
+            // bridge compares this against the node's L1 chain id.
+            getChainId: async () => 1,
           },
         },
         gasProfile: {
