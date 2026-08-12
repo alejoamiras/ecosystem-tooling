@@ -187,10 +187,11 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       : 'portal address or chain id changed between reads';
   });
 
-  const [{ L1FeeJuicePortalManager, generateClaimSecret }, { FeeJuicePortalAbi }, { extractEvent }, { createLogger }] =
+  const [{ generateClaimSecret }, { FeeJuicePortalAbi }, { IERC20Abi }, { extractEvent }, { createLogger }] =
     await Promise.all([
       import('@aztec/aztec.js/ethereum'),
       import('@aztec/l1-artifacts/FeeJuicePortalAbi'),
+      import('@aztec/l1-artifacts/IERC20Abi'),
       import('@aztec/ethereum/utils'),
       import('@aztec/foundation/log'),
     ]);
@@ -215,31 +216,28 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
     // Approval is a separate, reversible L1 write; the SDK's token manager
     // already knows the ERC20 quirks.
-    // The portal manager reads `client.account` ITSELF, and its token manager
-    // signs the ERC-20 approval with whatever it finds — so pinning only our
-    // own two calls left a window where the approval could be signed by B
-    // while the deposit went out as the confirmed A. Refuse rather than
-    // rewrite the approve path: the SDK's token manager knows the ERC-20
-    // quirks, and an account that changed after confirmation is not something
-    // to work around (round-21).
-    if (deps.l1Client.account?.address?.toLowerCase() !== from.toLowerCase()) {
+    // The approval is sent DIRECTLY, with the captured account, instead of
+    // through L1FeeJuicePortalManager's token manager. That manager re-reads
+    // `client.account` when it signs, so an accessor could approve as B while
+    // the deposit below went out as the confirmed A — and it adds nothing
+    // ERC-20-specific to lose: its `approve` is exactly this
+    // `approve(spender, amount)` call through a generic send helper (verified
+    // in the 5.0.1 source). Dropping it also removes the post-confirmation
+    // token re-read that used to need its own guard (round-22).
+    const approveHash = await deps.l1Client.writeContract({
+      address: tokenHex,
+      abi: IERC20Abi,
+      functionName: 'approve',
+      args: [portalHex, amountWei],
+      account,
+    });
+    const approveReceipt = await deps.l1Client.waitForTransactionReceipt({ hash: approveHash });
+    if (approveReceipt.status !== 'success') {
       throw new Error(
-        `the L1 client's account changed after confirmation (plan says ${from}); nothing was sent and the ` +
-          `journaled secret is unused`,
+        `the fee-juice approval reverted (${approveHash}); nothing was deposited and the journaled secret is unused`,
       );
     }
-    const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client, logger);
-    // `.new()` re-reads the token from the node AFTER the revalidation above,
-    // so check what it actually resolved: approving a token the operator never
-    // confirmed is not something to discover afterwards (round-10).
-    const resolvedToken = portal.getTokenManager().tokenAddress.toString();
-    if (resolvedToken.toLowerCase() !== tokenHex.toLowerCase()) {
-      throw new Error(
-        `the portal manager resolved fee juice token ${resolvedToken}, but ${tokenHex} was confirmed — ` +
-          `refusing to approve. Nothing was sent; the journaled secret is unused.`,
-      );
-    }
-    await portal.getTokenManager().approve(amountWei, portalHex, 'FeeJuice Portal');
+    deps.onProgress?.(`L1 approval tx ${approveHash}`);
 
     // The regex above proved the 0x + 64-hex shape, and an Fr always renders
     // 0x-prefixed; viem's ABI types just cannot see that. Same narrowing idiom
