@@ -42,6 +42,9 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'file', spec: 'node_modules/.bin/quota-paymaster' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/quota-paymaster/target/quota_fpc-QuotaFpc.json' },
     { kind: 'json', spec: 'node_modules/@alejoamiras/quota-paymaster/known-deployments.json' },
+    // The consumer integration guide is a SHIPPED surface: the README links it
+    // relatively, so a tarball without it gives every npm reader a dead link.
+    { kind: 'file', spec: 'node_modules/@alejoamiras/quota-paymaster/INTEGRATING.md' },
     {
       // The SDK loads its cryptography LAZILY (dynamic import of @aztec/stdlib/hash inside
       // seat-picker) — a tarball missing that runtime dep passes a plain root-import check
