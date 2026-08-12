@@ -56,7 +56,10 @@ export async function main(argv: string[]): Promise<number> {
     console.log(USAGE);
     return 0;
   }
-  const command = COMMANDS[name];
+  // hasOwn, not a plain lookup: `quota-paymaster constructor` walked the
+  // prototype chain, found Object.prototype.constructor, and exited 0 printing
+  // "undefined" instead of refusing an unknown command (round-13).
+  const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
   if (!command) {
     console.error(`unknown command ${name}\n\n${USAGE}`);
     return 2;

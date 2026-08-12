@@ -229,6 +229,13 @@ export async function claimFeeJuice(
     deps.node.getNodeInfo(),
   ]);
 
+  // Anything derived from a failed send can carry the calldata — which
+  // CONTAINS the secret — so scrub both spellings out of every diagnostic
+  // before it is journaled, rethrown, or printed. The parse above closed the
+  // one leak found by review; this closes the class (round-13).
+  const redact = (text: string): string =>
+    text.split(claimSecret).join('<redacted>').split(claimSecretFr.toString()).join('<redacted>');
+
   const plan = createActionPlan('claim-fee-juice', {
     l1ChainId: info.l1ChainId,
     rollupVersion: info.rollupVersion,
@@ -239,7 +246,10 @@ export async function claimFeeJuice(
     // The digest COVERS the secret without exposing it in the plan a UI shows:
     // a hash commits to the exact preimage, so a swapped secret changes the
     // digest, where a bare "present" boolean would not (finding #1).
-    claimSecretSha256: createHash('sha256').update(claimSecret).digest('hex'),
+    // Hash the PARSED value: `1`, `01`, `0x1` and `0x01` are one field element
+    // and execute identically, so hashing the raw text made the digest vary
+    // without the execution varying (round-13).
+    claimSecretSha256: createHash('sha256').update(claimSecretFr.toString()).digest('hex'),
     // The options are an EXECUTION input — they carry the fee payment method
     // that pays for this claim — so they belong in the digest, in the exact
     // form the send uses (rounds 8, 9 and 12 each moved this one step).
@@ -293,11 +303,13 @@ export async function claimFeeJuice(
           at: new Date().toISOString(),
           to: recipientStr,
           messageHash,
-          error: String((err as { message?: string })?.message ?? err),
+          error: redact(String((err as { message?: string })?.message ?? err)),
         });
       });
     }
-    throw err;
+    // Rethrown REDACTED: the SDK's message can quote the calldata it failed
+    // on, and that calldata contains the secret.
+    throw err instanceof Error ? new Error(redact(err.message)) : new Error(redact(String(err)));
   }
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     // Only a MINED revert is a definitive, retry-safe failure. An UNMINED
@@ -315,13 +327,13 @@ export async function claimFeeJuice(
           at: new Date().toISOString(),
           to: recipientStr,
           messageHash,
-          error: `status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}`,
+          error: redact(`status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}`),
         });
       });
     }
     throw new Error(
       `claim transaction ${receipt.txHash} did not execute successfully ` +
-        `(status ${receipt.status}${receipt.error ? `: ${receipt.error}` : ''}); ` +
+        `(status ${receipt.status}${redact(receipt.error ? `: ${receipt.error}` : '')}); ` +
         (definitiveMinedRevert
           ? 'journaled as CLAIM_FAILED — the deposit remains claimable'
           : 'journaled as CLAIM_OUTCOME_UNKNOWN — verify on-chain before retrying'),

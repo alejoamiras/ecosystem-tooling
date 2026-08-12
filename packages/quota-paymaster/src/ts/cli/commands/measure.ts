@@ -149,26 +149,9 @@ export async function run(flags: ParsedFlags): Promise<void> {
     const generation = generationAt(chainTimestamp);
     const artifactClassId = (await getContractClassFromArtifact(artifact)).id.toString();
 
-    // Everything that affects what gets executed is in the confirmed digest.
-    const plan = createActionPlan('measure-sponsored-fee', {
-      l1ChainId: info.l1ChainId,
-      rollupVersion: info.rollupVersion,
-      fpc: fpcAddress.toString(),
-      target: targetAddress.toString(),
-      targetClassId: artifactClassId,
-      method,
-      argsDigest: digestOptions({ args }),
-      count,
-      generation,
-      player: ctx.from.toString(),
-      // The gas envelope determines what each send can cost, so it belongs in
-      // what the operator confirms — and is snapshotted, since `ctx` is the
-      // config module's own mutable object.
-      gasProfileDigest: digestOptions({ ...gasProfile }),
-      spendsRealFeeJuice: true,
-    });
-    if ((await makeConfirm(flags)(plan)) !== true) throw new ActionAborted(plan);
-
+    // Registration and the live-policy read are read-only and local, and the
+    // allowance preflight below needs them — so they happen BEFORE the plan
+    // rather than between the confirm and the sends (round-13).
     // A fresh PXE knows neither contract: `.at()` alone leaves reads and proving
     // failing with "No artifact registered for contract class". Register both
     // deployed instances with their artifacts first (same step readPolicyState
@@ -205,7 +188,58 @@ export async function run(flags: ParsedFlags): Promise<void> {
     const maxUses = Number(livePolicy.max_uses);
     const maxUsers = Number(livePolicy.max_users);
 
+    // Declared before readQuotaInfo, which closes over it: the allowance
+    // preflight below runs before any send, so this must already exist.
     let sent = 0;
+
+    const readQuotaInfo = async (): Promise<{ hasAllowance: boolean; remaining: number }> => {
+      const raw = await fpcContract.methods.get_quota_info(ctx.from, generation).simulate({ from: ctx.from });
+      const unwrapped = (raw as { result?: unknown })?.result ?? raw;
+      const [has, remaining] = unwrapped as [boolean, number | bigint];
+      // Only an UNSUBSCRIBED player's first send reads as "no quota record
+      // yet"; a subscribed player reporting no allowance has genuinely
+      // exhausted the day. Without the subscription check, that player got a
+      // full-allowance budget and then a sponsor_and_execute that the contract
+      // rejects (round-7 finding 5) — and this matches the seat logic, which
+      // was already conditioned on it.
+      if (!has && sent === 0 && !alreadySubscribed) return { hasAllowance: true, remaining: maxUses };
+      return { hasAllowance: Boolean(has), remaining: Number(remaining) };
+    };
+
+    // Refuse a count the allowance cannot cover BEFORE confirming it. The
+    // library used to clamp silently after confirmation, so `--yes --count 3`
+    // against an exhausted allowance printed a plan for 3 sends, sent ZERO,
+    // and exited 0 — a confirmed plan under-delivering without saying so
+    // (round-13).
+    const preflight = await readQuotaInfo();
+    const budget = preflight.hasAllowance ? preflight.remaining : 0;
+    if (budget < count) {
+      throw new CliUsageError(
+        `the allowance permits ${budget} more sponsored send(s) for generation ${generation}, but --count ${count} ` +
+          `was requested. Re-run with --count ${budget || 1} after the daily reset, or lower --count.`,
+      );
+    }
+
+    // Everything that affects what gets executed is in the confirmed digest.
+    const plan = createActionPlan('measure-sponsored-fee', {
+      l1ChainId: info.l1ChainId,
+      rollupVersion: info.rollupVersion,
+      fpc: fpcAddress.toString(),
+      target: targetAddress.toString(),
+      targetClassId: artifactClassId,
+      method,
+      argsDigest: digestOptions({ args }),
+      count,
+      generation,
+      player: ctx.from.toString(),
+      // The gas envelope determines what each send can cost, so it belongs in
+      // what the operator confirms — and is snapshotted, since `ctx` is the
+      // config module's own mutable object.
+      gasProfileDigest: digestOptions({ ...gasProfile }),
+      spendsRealFeeJuice: true,
+    });
+    if ((await makeConfirm(flags)(plan)) !== true) throw new ActionAborted(plan);
+
     const result = await measureSponsoredFee(
       {
         node: ctx.node,
@@ -267,19 +301,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
           const receipt = await waitForTx(ctx.node, (tx as { getTxHash: () => never }).getTxHash());
           return { transactionFeeWei: BigInt((receipt as { transactionFee?: bigint })?.transactionFee ?? 0n) };
         },
-        readQuotaInfo: async () => {
-          const raw = await fpcContract.methods.get_quota_info(ctx.from, generation).simulate({ from: ctx.from });
-          const unwrapped = (raw as { result?: unknown })?.result ?? raw;
-          const [has, remaining] = unwrapped as [boolean, number | bigint];
-          // Only an UNSUBSCRIBED player's first send reads as "no quota record
-          // yet"; a subscribed player reporting no allowance has genuinely
-          // exhausted the day. Without the subscription check, that player got
-          // a full-allowance budget and then a sponsor_and_execute that the
-          // contract rejects (round-7 finding 5) — and this now matches the
-          // seat logic above, which was already conditioned on it.
-          if (!has && sent === 0 && !alreadySubscribed) return { hasAllowance: true, remaining: maxUses };
-          return { hasAllowance: Boolean(has), remaining: Number(remaining) };
-        },
+        readQuotaInfo,
         onProgress: (m) => console.log(`  ${m}`),
       },
       { count },

@@ -79,9 +79,46 @@ describe('published CLI: help and dispatch', () => {
   });
 
   test('an unknown command names itself and exits 2', () => {
-    const result = run(['withdraw']);
+    // `constructor` and `__proto__` come from Object.prototype, not from the
+    // command table: a plain lookup found them and exited 0 printing
+    // "undefined", or exited 1 on "command.run is not a function".
+    for (const name of ['withdraw', 'constructor', '__proto__', 'toString']) {
+      const result = run([name]);
+      expect(result.status, name).toBe(2);
+      expect(result.combined).toMatch(new RegExp(`unknown command ${name.replace('__', '__')}`));
+    }
+  });
+
+  test('an empty flag value is refused rather than treated as present', () => {
+    // '' is falsy, and the journal gates test truthiness — so an unset shell
+    // variable silently disabled claim bookkeeping. BigInt('') is 0n, so an
+    // empty --leaf-index silently meant leaf 0.
+    for (const args of [
+      ['claim', '--for', `0x0${'1'.repeat(63)}`, '--message-hash', ''],
+      ['claim', '--for', `0x0${'1'.repeat(63)}`, '--secret-stdin', '--amount-wei', '1', '--leaf-index', ''],
+    ]) {
+      const result = run([...args, '--config-module', poisonConfig()]);
+      expect(result.status, args.join(' ')).toBe(2);
+      expect(result.combined).toMatch(/was given an empty value/);
+      expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+    }
+  });
+
+  test('policy --show refuses edit flags instead of ignoring them', () => {
+    const result = run([
+      'policy',
+      '--fpc',
+      `0x0${'1'.repeat(63)}`,
+      '--show',
+      '--max-uses',
+      '5',
+      '--yes',
+      '--config-module',
+      poisonConfig(),
+    ]);
     expect(result.status).toBe(2);
-    expect(result.combined).toMatch(/unknown command withdraw/);
+    expect(result.combined).toMatch(/only reports state/);
+    expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
   });
 
   test('the docs never advertise the unscoped npx name (it is not this package)', () => {

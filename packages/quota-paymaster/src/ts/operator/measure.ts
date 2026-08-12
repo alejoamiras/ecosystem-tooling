@@ -48,10 +48,16 @@ export async function measureSponsoredFee(
   const [beforeRaw, quota] = await Promise.all([getFeeJuiceBalance(deps.fpcAddress, deps.node), deps.readQuotaInfo()]);
   const before = BigInt(beforeRaw ?? 0n);
   const budget = quota.hasAllowance ? quota.remaining : 0;
-  const count = Math.min(opts.count, budget);
-  if (count < opts.count) {
-    deps.onProgress?.(`allowance permits ${count}/${opts.count} sends — measuring what is available`);
+  // REFUSE, do not clamp: a caller (and the human who approved a plan naming
+  // this count) asked for opts.count sends, and quietly performing fewer —
+  // possibly zero — while returning success is the failure mode a confirmed
+  // plan exists to prevent (round-13).
+  if (budget < opts.count) {
+    throw new Error(
+      `the allowance permits ${budget} more sponsored send(s), but ${opts.count} were requested; nothing was sent`,
+    );
   }
+  const count = opts.count;
 
   const perTransactionWei: bigint[] = [];
   for (let i = 0; i < count; i++) {

@@ -93,6 +93,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // this command can never proceed, so running the operator's config module
   // first is pure cost (round-7 finding 3).
   if (manualAmounts && process.stdin.isTTY) throw new CliUsageError(TTY_REFUSAL);
+  // Read the pipe here too: an empty pipe is a usage refusal, and refusing it
+  // after withContext means the operator's config module has already run, the
+  // node has been contacted and a wallet store created for nothing (round-13).
+  const manualSecret = manualAmounts ? await readSecretFromStdin() : undefined;
 
   await withContext(flags, async (ctx) => {
     const journal = openJournalDir(flags.get('journal-dir') ?? process.env.QUOTA_JOURNAL_DIR);
@@ -107,7 +111,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
             // re-targeting it — the case the claimed-set exists to prevent
             // (round-11).
             messageHash: flags.get('message-hash'),
-            claimSecret: await readSecretFromStdin(),
+            claimSecret: manualSecret as string,
           }
         : findClaimInJournal(journal, {
             recipient,

@@ -156,15 +156,18 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // the gas-profile FILE (when supplied), target syntax, and a no-op edit.
   // --cancel schedules the LIVE values; combining it with edit flags would
   // silently execute a different mutation than the one asked for.
-  if (flags.has('cancel')) {
+  // --show has the same problem and had no guard: `policy --show --max-uses 5
+  // --yes` printed the state and exited 0 having scheduled NOTHING, with no
+  // plan and no warning (round-13).
+  for (const mode of ['cancel', 'show'] as const) {
+    if (!flags.has(mode)) continue;
     const conflicting = ['max-fee-wei', 'max-uses', 'max-users', 'add-target', 'remove-target'].filter((f) =>
       flags.has(f),
     );
     if (conflicting.length > 0) {
       throw new CliUsageError(
-        `--cancel restores the live policy and cannot be combined with edit flags (${conflicting
-          .map((f) => `--${f}`)
-          .join(', ')}). Cancel first, then schedule the change you want.`,
+        `--${mode} ${mode === 'cancel' ? 'restores the live policy' : 'only reports state'} and cannot be combined ` +
+          `with edit flags (${conflicting.map((f) => `--${f}`).join(', ')}). Run them as separate commands.`,
       );
     }
   }
