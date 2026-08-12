@@ -52,7 +52,10 @@ Secrets are never accepted on argv.`;
 
 export async function main(argv: string[]): Promise<number> {
   const [name, ...rest] = argv;
-  if (!name || name === 'help' || name === '--help' || name === '-h') {
+  // `name === undefined`, not falsy: `quota-paymaster ""` — an unset shell
+  // variable — printed usage and exited 0, so a script's `set -e` sailed past
+  // a command that never ran (round-15).
+  if (name === undefined || name === 'help' || name === '--help' || name === '-h') {
     console.log(USAGE);
     return 0;
   }

@@ -295,7 +295,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
           // immediately before the send so a swapped endpoint cannot receive it.
           const nowInfo = await ctx.node.getNodeInfo();
           if (nowInfo.l1ChainId !== info.l1ChainId || nowInfo.rollupVersion !== info.rollupVersion) {
-            throw new ActionRevalidationFailed(plan, 'chain identity changed between confirmation and broadcast');
+            throw new ActionRevalidationFailed(plan, 'chain identity changed between confirmation and broadcast', sent);
           }
           await ctx.node.sendTx(tx as never);
           const receipt = await waitForTx(ctx.node, (tx as { getTxHash: () => never }).getTxHash());

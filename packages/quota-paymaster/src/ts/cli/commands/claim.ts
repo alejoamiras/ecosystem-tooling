@@ -5,7 +5,13 @@ import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { closeJournalDir, openJournalDir } from '../../operator/internal/journal.js';
 import { makeConfirm } from '../internal/confirm.js';
 import { withContext } from '../internal/context.js';
-import { CliUsageError, type FlagSchema, type ParsedFlags, requireAddressFlag } from '../internal/flags.js';
+import {
+  CliUsageError,
+  type FlagSchema,
+  journalDirFromEnv,
+  type ParsedFlags,
+  requireAddressFlag,
+} from '../internal/flags.js';
 
 export const schema: FlagSchema = {
   for: { type: 'string' },
@@ -83,6 +89,21 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // Parse and range-check BEFORE withContext: a refusal must not have executed
   // the operator's config module, which is arbitrary code (round-6 finding 1;
   // same hoisting the other commands already do).
+  // Flags that only mean something in manual mode are REFUSED outside it,
+  // rather than parsed and dropped: `claim --for X --amount-wei N --leaf-index
+  // M` claimed whatever the journal selected instead, with a digest identical
+  // to the run that named nothing — so the confirmed plan looked right while
+  // claiming a different deposit (round-15). Same shape as `policy --show`
+  // silently ignoring edit flags.
+  if (!flags.has('secret-stdin')) {
+    const manualOnly = ['amount-wei', 'leaf-index', 'allow-retry-after-unknown'].filter((f) => flags.has(f));
+    if (manualOnly.length > 0) {
+      throw new CliUsageError(
+        `${manualOnly.map((f) => `--${f}`).join(', ')} only applies to a manual claim; add --secret-stdin and pipe ` +
+          `the secret, or drop them to claim the deposit recorded in the journal.`,
+      );
+    }
+  }
   const manualAmounts = flags.has('secret-stdin')
     ? {
         amountWei: parseBigint(flags.require('amount-wei'), 'amount-wei'),
@@ -96,21 +117,22 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // Read the pipe here too: an empty pipe is a usage refusal, and refusing it
   // after withContext means the operator's config module has already run, the
   // node has been contacted and a wallet store created for nothing (round-13).
+  // A manual claim MUST name its deposit: every journal write is gated on the
+  // message hash, so without one a successful claim recorded nothing and the
+  // next `claim --for` re-targeted the deposit it had just redeemed. A
+  // malformed one is worse — it records success under a key that is not the
+  // deposit, leaving the real one selectable again (round-15).
+  const manualMessageHash = manualAmounts ? requireAddressFlag(flags, 'message-hash') : undefined;
   const manualSecret = manualAmounts ? await readSecretFromStdin() : undefined;
 
   await withContext(flags, async (ctx) => {
-    const journal = openJournalDir(flags.get('journal-dir') ?? process.env.QUOTA_JOURNAL_DIR);
+    const journal = openJournalDir(flags.get('journal-dir') ?? journalDirFromEnv());
     try {
       const claim = manualAmounts
         ? {
             recipient,
             ...manualAmounts,
-            // Without this the journal bookkeeping is silently disabled (every
-            // write is gated on a message hash), so a successful manual claim
-            // left the deposit looking unclaimed and the NEXT claim burned gas
-            // re-targeting it — the case the claimed-set exists to prevent
-            // (round-11).
-            messageHash: flags.get('message-hash'),
+            messageHash: manualMessageHash,
             claimSecret: manualSecret as string,
           }
         : findClaimInJournal(journal, {

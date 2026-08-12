@@ -47,6 +47,18 @@ const FIELD_MODULUS = 2188824287183927522224640574525727508854836440041603434369
  * length 0."), which reaches the exit-1 bucket — "something may have happened"
  * — for a typo where nothing has happened at all (round-9).
  */
+/**
+ * QUOTA_JOURNAL_DIR, or undefined when it is blank.
+ *
+ * `?? process.env.QUOTA_JOURNAL_DIR` alone accepted `" "` — flag values are
+ * trimmed, the environment was not — and the journal then created a directory
+ * literally named " " in the CURRENT directory. For anyone running this inside
+ * a checkout that means claim secrets landing next to the code (round-15).
+ */
+export function journalDirFromEnv(): string | undefined {
+  return process.env.QUOTA_JOURNAL_DIR?.trim() || undefined;
+}
+
 export function requireAddressFlag(flags: ParsedFlags, name: string): string {
   const value = flags.require(name);
   if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {

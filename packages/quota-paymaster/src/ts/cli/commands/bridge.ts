@@ -5,7 +5,13 @@ import { formatFeeJuiceWei } from '../../operator/internal/format.js';
 import { closeJournalDir, openJournalDir } from '../../operator/internal/journal.js';
 import { makeConfirm } from '../internal/confirm.js';
 import { withContext } from '../internal/context.js';
-import { CliUsageError, type FlagSchema, type ParsedFlags, requireAddressFlag } from '../internal/flags.js';
+import {
+  CliUsageError,
+  type FlagSchema,
+  journalDirFromEnv,
+  type ParsedFlags,
+  requireAddressFlag,
+} from '../internal/flags.js';
 
 export const schema: FlagSchema = {
   to: { type: 'string' },
@@ -31,6 +37,12 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // "something may have happened" for what is purely a typo. The library keeps
   // its own check — it is a public entry point too.
   const to = requireAddressFlag(flags, 'to');
+  // Zero is refused HERE as well as in the library: it is decidable offline, so
+  // reaching the library's plain Error means the config module already ran and
+  // the exit code claimed something may have happened (round-15).
+  if (/^0x0+$/.test(to)) {
+    throw new CliUsageError('--to is the zero address; the deposit could never be claimed and is refused');
+  }
   const amountWeiFlag = flags.get('amount-wei');
   const amountFlag = flags.get('amount');
   if ((amountWeiFlag === undefined) === (amountFlag === undefined)) {
@@ -74,7 +86,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
           'set L1_RPC_URL and L1_PRIVATE_KEY in the environment (never on argv).',
       );
     }
-    const journal = openJournalDir(flags.get('journal-dir') ?? process.env.QUOTA_JOURNAL_DIR);
+    const journal = openJournalDir(flags.get('journal-dir') ?? journalDirFromEnv());
     try {
       const result = await bridgeFeeJuice(
         {

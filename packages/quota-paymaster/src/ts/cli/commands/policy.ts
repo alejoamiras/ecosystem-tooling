@@ -161,6 +161,13 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // plan and no warning (round-13).
   // ...and not each other: --show returns before the cancel runs, so the pair
   // exited 0 having cancelled nothing (round-14).
+  // --max-loss-wei and --config both supply the loss bound, and the direct
+  // value silently won — applying a different safety bound than the config the
+  // operator pointed at. The usage string already documents them as
+  // alternatives (round-15).
+  if (flags.has('max-loss-wei') && flags.has('config')) {
+    throw new CliUsageError('pass either --max-loss-wei or --config for the loss bound, not both');
+  }
   if (flags.has('show') && flags.has('cancel')) {
     throw new CliUsageError('--show and --cancel do different things; run them as separate commands');
   }
@@ -181,6 +188,13 @@ export async function run(flags: ParsedFlags): Promise<void> {
   const removeTargets = flags.list('remove-target');
   if (addTargets.length > 0) assertValidTargetList(addTargets);
   if (removeTargets.length > 0) assertValidTargetList(removeTargets);
+  // The same target in both lists is a contradiction, and addition won
+  // silently — keeping a target the same command asked to remove (round-15).
+  const removedSet = new Set(removeTargets.map((t) => t.toLowerCase()));
+  const contradictory = addTargets.filter((t) => removedSet.has(t.toLowerCase()));
+  if (contradictory.length > 0) {
+    throw new CliUsageError(`${contradictory.join(', ')} appears in both --add-target and --remove-target; pick one`);
+  }
   if (
     isEdit &&
     !flags.has('cancel') &&

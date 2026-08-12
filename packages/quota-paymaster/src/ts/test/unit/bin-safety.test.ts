@@ -106,6 +106,85 @@ describe('published CLI: help and dispatch', () => {
     }
   });
 
+  test('claim refuses manual-only flags without --secret-stdin (they were dropped silently)', () => {
+    // The digest was IDENTICAL to a run naming no amounts, so the confirmed
+    // plan looked right while the journal's deposit was claimed instead.
+    const result = run([
+      'claim',
+      '--for',
+      `0x0${'1'.repeat(63)}`,
+      '--amount-wei',
+      '999',
+      '--leaf-index',
+      '7',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/only applies to a manual claim/);
+    expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+  });
+
+  test('a manual claim must name its deposit (no hash ⇒ no journal bookkeeping)', () => {
+    const result = run([
+      'claim',
+      '--for',
+      `0x0${'1'.repeat(63)}`,
+      '--secret-stdin',
+      '--amount-wei',
+      '1',
+      '--leaf-index',
+      '0',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.combined).toMatch(/--message-hash/);
+    expect(result.combined).not.toMatch(/CONFIG_FACTORY_RAN/);
+  });
+
+  test('contradictory and ambiguous policy edits are refused', () => {
+    const target = `0x0${'3'.repeat(63)}`;
+    const both = run([
+      'policy',
+      '--fpc',
+      `0x0${'1'.repeat(63)}`,
+      '--add-target',
+      target,
+      '--remove-target',
+      target,
+      '--max-loss-wei',
+      '1',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(both.status).toBe(2);
+    expect(both.combined).toMatch(/appears in both --add-target and --remove-target/);
+
+    const twoBounds = run([
+      'policy',
+      '--fpc',
+      `0x0${'1'.repeat(63)}`,
+      '--max-uses',
+      '3',
+      '--max-loss-wei',
+      '1',
+      '--config',
+      'some.json',
+      '--config-module',
+      poisonConfig(),
+    ]);
+    expect(twoBounds.status).toBe(2);
+    expect(twoBounds.combined).toMatch(/either --max-loss-wei or --config/);
+  });
+
+  test('an empty command name is not "no command"', () => {
+    // `quota-paymaster "$CMD"` with CMD unset used to print usage and exit 0,
+    // so a script's `set -e` sailed past a command that never ran.
+    const result = run(['']);
+    expect(result.status).toBe(2);
+  });
+
   test('policy --show and --cancel together are refused (--show would win silently)', () => {
     const result = run([
       'policy',
@@ -521,6 +600,8 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
         '1',
         '--leaf-index',
         '0',
+        '--message-hash',
+        `0x0${'2'.repeat(63)}`,
         '--config-module',
         path,
       ],
