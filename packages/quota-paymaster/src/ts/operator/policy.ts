@@ -360,7 +360,7 @@ export async function schedulePolicyChange(
   // snapshot advertised coverage of values this function then overrides — a
   // caller's `waitForStatus: FINALIZED` or `from` changed the digest without
   // changing what executes (round-11).
-  const { wait: callerWait, ...callerRest } = snapshotOptions(deps.sendOptions ?? {});
+  const { wait: callerWait, from: callerFrom, ...callerRest } = snapshotOptions(deps.sendOptions ?? {});
   const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
   // A FLOOR, not a fixed value: deploy and claim both honor a request for
   // MORE finality and refuse less, and forcing CHECKPOINTED here silently
@@ -375,6 +375,16 @@ export async function schedulePolicyChange(
     FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
       ? requestedStatus
       : TxStatus.CHECKPOINTED;
+  // A caller's `from` is REFUSED, not silently overwritten: forcing it
+  // after the spread meant a config naming account B produced a plan and a
+  // transaction from deps.from with no complaint (round-21).
+  if (callerFrom !== undefined && String(callerFrom) !== deps.from.toString()) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+      `sendOptions.from (${String(callerFrom)}) is not the account this command acts as ` +
+        `(${deps.from.toString()}); remove it, or point the config module at that account`,
+    );
+  }
   const effectiveSendOptions = {
     ...callerRest,
     // `from` is not caller-overridable (the contract gates on the admin), and

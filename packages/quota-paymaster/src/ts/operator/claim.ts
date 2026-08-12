@@ -170,7 +170,7 @@ export async function claimFeeJuice(
   // deposit behind the claimed-set filter) are all overridden. A caller may
   // still request STRONGER finality (PROVEN/FINALIZED) or tune
   // timeout/interval (post-impl audit rounds 2-3, finding 3/2).
-  const { wait: callerWait, ...sendOpts } = snapshotOptions(sendOptions);
+  const { wait: callerWait, from: callerFrom, ...sendOpts } = snapshotOptions(sendOptions);
 
   // Bounds the on-chain types impose: the claim amount is a u128 and the
   // L1->L2 message tree has 2^36 leaves (L1_TO_L2_MSG_TREE_HEIGHT = 36), so a
@@ -218,6 +218,16 @@ export async function claimFeeJuice(
     FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
       ? requestedStatus
       : TxStatus.CHECKPOINTED;
+  // A caller's `from` is REFUSED, not silently overwritten: forcing it
+  // after the spread meant a config naming account B produced a plan and a
+  // transaction from from with no complaint (round-21).
+  if (callerFrom !== undefined && String(callerFrom) !== from.toString()) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+      `sendOptions.from (${String(callerFrom)}) is not the account this command acts as ` +
+        `(${from.toString()}); remove it, or point the config module at that account`,
+    );
+  }
   const effectiveSendOptions = {
     ...sendOpts,
     from,

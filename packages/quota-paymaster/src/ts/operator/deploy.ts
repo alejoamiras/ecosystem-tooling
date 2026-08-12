@@ -5,6 +5,7 @@
  * deploy → verify the tooling drives the instance → audit → canary → tranche),
  * because fee juice sent to the paymaster can never be recovered.
  */
+
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
 import type { Wallet } from '@aztec/aztec.js/wallet';
@@ -23,6 +24,7 @@ import {
   digestOptions,
   snapshotOptions,
 } from './action-plan.js';
+import { OperatorConfigError } from './config-module.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
@@ -153,7 +155,7 @@ export async function deployQuotaFpc(
   // stays inside the function — laziness preserved, just earlier.
   const { TxStatus } = await import('@aztec/stdlib/tx');
   const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
-  const { wait: callerWait, ...sendOpts } = snapshot.sendOptions;
+  const { wait: callerWait, from: callerFrom, ...sendOpts } = snapshot.sendOptions;
   const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
   const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
   const waitForStatus =
@@ -161,6 +163,16 @@ export async function deployQuotaFpc(
     FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
       ? requestedStatus
       : TxStatus.CHECKPOINTED;
+  // A caller's `from` is REFUSED, not silently overwritten: forcing it
+  // after the spread meant a config naming account B produced a plan and a
+  // transaction from snapshot.from with no complaint (round-21).
+  if (callerFrom !== undefined && String(callerFrom) !== snapshot.from.toString()) {
+    throw new OperatorConfigError(
+      'shape-invalid',
+      `sendOptions.from (${String(callerFrom)}) is not the account this command acts as ` +
+        `(${snapshot.from.toString()}); remove it, or point the config module at that account`,
+    );
+  }
   const effectiveSendOptions = {
     ...sendOpts,
     from: snapshot.from,

@@ -116,7 +116,12 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
   // (Snapshotted after validation — the validators above must run before any
   // dep is touched — but before the confirm callback can observe or race it.)
-  const from = deps.l1Client.account.address;
+  // The ACCOUNT OBJECT, not just its address: the writes below re-dereferenced
+  // `deps.l1Client.account`, and viem's writeContract falls back to
+  // `client.account` read at call time — so an accessor could put address A in
+  // the confirmed plan and sign the irreversible deposit with B (round-21).
+  const account = deps.l1Client.account;
+  const from = account.address;
 
   const info = await deps.node.getNodeInfo();
   const portalAddress = info.l1ContractAddresses.feeJuicePortalAddress;
@@ -210,6 +215,19 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
     // Approval is a separate, reversible L1 write; the SDK's token manager
     // already knows the ERC20 quirks.
+    // The portal manager reads `client.account` ITSELF, and its token manager
+    // signs the ERC-20 approval with whatever it finds — so pinning only our
+    // own two calls left a window where the approval could be signed by B
+    // while the deposit went out as the confirmed A. Refuse rather than
+    // rewrite the approve path: the SDK's token manager knows the ERC-20
+    // quirks, and an account that changed after confirmation is not something
+    // to work around (round-21).
+    if (deps.l1Client.account?.address?.toLowerCase() !== from.toLowerCase()) {
+      throw new Error(
+        `the L1 client's account changed after confirmation (plan says ${from}); nothing was sent and the ` +
+          `journaled secret is unused`,
+      );
+    }
     const portal = await L1FeeJuicePortalManager.new(deps.node, deps.l1Client, logger);
     // `.new()` re-reads the token from the node AFTER the revalidation above,
     // so check what it actually resolved: approving a token the operator never
@@ -235,6 +253,9 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       abi: FeeJuicePortalAbi,
       functionName: 'depositToAztecPublic',
       args,
+      // Explicit, like the estimate and the write: simulating as a different
+      // account than the one that signs proves nothing.
+      account,
     });
 
     // Pad the estimate, rounding the buffer UP in basis points — flooring a
@@ -247,13 +268,15 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
       abi: FeeJuicePortalAbi,
       functionName: 'depositToAztecPublic',
       args,
-      account: deps.l1Client.account,
+      account,
     });
     const hash = await deps.l1Client.writeContract({
       address: portalHex,
       abi: FeeJuicePortalAbi,
       functionName: 'depositToAztecPublic',
       args,
+      // EXPLICIT: without it viem reads client.account again at call time.
+      account,
       gas: gasEstimate + (gasEstimate * bufferBps + 9_999n) / 10_000n,
     });
     deps.onProgress?.(`L1 deposit tx ${hash}`);
