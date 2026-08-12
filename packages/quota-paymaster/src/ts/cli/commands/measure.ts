@@ -230,6 +230,16 @@ export async function run(flags: ParsedFlags): Promise<void> {
     const maxUses = Number(livePolicy.max_uses);
     const maxUsers = Number(livePolicy.max_users);
 
+    // The FEE CEILING, read once and bound into the plan: it was read inside
+    // the send, after confirmation, so two runs of an identical plan — same
+    // digest — could declare materially different maximum fees. Every send
+    // reuses this exact envelope (round-20).
+    const minFees = await node.getCurrentMinFees();
+    const withHeadroom = (fee: bigint) => maxFeePerGasWithHeadroom(gasProfile, fee);
+    const maxFeePerDaGas = withHeadroom(BigInt(minFees.feePerDaGas));
+    const maxFeePerL2Gas = withHeadroom(BigInt(minFees.feePerL2Gas));
+    const confirmedMaxFees = new GasFees(maxFeePerDaGas, maxFeePerL2Gas);
+
     // Both done BEFORE the plan: `.request()` is what validates argument TYPES
     // against the ABI (arity is checked earlier, offline), and the wallet's
     // chain identity was previously read only inside the send — after a human
@@ -317,6 +327,8 @@ export async function run(flags: ParsedFlags): Promise<void> {
       // what the operator confirms — and is snapshotted, since `ctx` is the
       // config module's own mutable object.
       gasProfileDigest: digestOptions({ ...gasProfile }),
+      maxFeePerDaGas: maxFeePerDaGas.toString(),
+      maxFeePerL2Gas: maxFeePerL2Gas.toString(),
       spendsRealFeeJuice: true,
     });
     if ((await makeConfirm(flags)(plan)) !== true) throw new ActionAborted(plan);
@@ -349,15 +361,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
           // and the fee headroom are part of what the operator approved, and
           // letting the SDK invent its own would measure a different envelope
           // than the one on the plan.
-          const minFees = await node.getCurrentMinFees();
-          const withHeadroom = (fee: bigint) => maxFeePerGasWithHeadroom(gasProfile, fee);
           const gasSettings = GasSettings.fallback({
             gasLimits: new Gas(gasProfile.daGasLimit, gasProfile.l2GasLimit),
             teardownGasLimits: new Gas(gasProfile.teardownDaGasLimit, gasProfile.teardownL2GasLimit),
-            maxFeesPerGas: new GasFees(
-              withHeadroom(BigInt(minFees.feePerDaGas)),
-              withHeadroom(BigInt(minFees.feePerL2Gas)),
-            ),
+            maxFeesPerGas: confirmedMaxFees,
           });
           const request = await new DefaultEntrypoint().createTxExecutionRequest(payload, gasSettings, walletChain);
           const proven = await (pxe as ProvingPxe).proveTx(request, { scopes: [from] });

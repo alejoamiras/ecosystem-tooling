@@ -415,7 +415,11 @@ describe('QuotaFpc integration', () => {
     await expect(sponsor(await recordCall(), third, { seat: 2, generation: generation - 1 })).rejects.toThrow(
       /not currently sponsorable/,
     );
-    await expect(sponsor(await recordCall(), third, { seat: 3, generation: generation + 1 })).rejects.toThrow(
+    // generation + 2, not + 1: the contract ACCEPTS tomorrow inside the last
+    // 600s of a day, so `+ 1` made this test fail (and burn a seat) whenever it
+    // ran between 23:50 and midnight UTC. Day-after-tomorrow is refused
+    // unconditionally; the grace window itself is covered by the warp suite.
+    await expect(sponsor(await recordCall(), third, { seat: 3, generation: generation + 2 })).rejects.toThrow(
       /not currently sponsorable/,
     );
   });

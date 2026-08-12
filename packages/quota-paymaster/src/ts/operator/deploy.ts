@@ -167,10 +167,39 @@ export async function deployQuotaFpc(
     wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
   };
 
+  const allowed = padAllowedTargets(snapshot.targets.map((t) => t.address)).map((a) =>
+    AztecAddress.fromStringUnsafe(a),
+  );
+  const allowedClasses = padAllowedAccountClasses(snapshot.accountClasses.map((c) => BigInt(c.classId)));
+
+  const deployment = QuotaFpcContract.deploy(
+    deps.wallet,
+    AztecAddress.fromStringUnsafe(snapshot.adminAddress),
+    BigInt(snapshot.policy.maxFeeWei),
+    snapshot.policy.maxUsesPerDay,
+    snapshot.policy.maxUsersPerDay,
+    allowed,
+    allowedClasses,
+    snapshot.requireUnpublishedAccounts,
+    // The deployer is locked HERE rather than lazily at send time, which is
+    // what makes the address computable before the plan. It is the confirmed
+    // sender either way — send() would lock it to exactly this value — but
+    // locking early is what lets the operator approve the ADDRESS (round-20).
+    { deployer: snapshot.from },
+  );
+  // getAddress() BEFORE the plan: the salt defaults to a RANDOM Fr chosen when
+  // the instance is first computed, so building the deployment after the
+  // confirmation meant two runs of an identical plan — identical digest — could
+  // deploy to two different addresses. The instance is computed once and
+  // cached, so asking for the address here locks the salt, and the address the
+  // operator approves is the address that gets deployed (round-20).
+  const deployAddress = await deployment.getAddress();
+
   const plan = createActionPlan('deploy-quota-fpc', {
     l1ChainId: chain.chainId.toString(),
     rollupVersion: chain.version.toString(),
     contractClassId: classId,
+    address: deployAddress.toString().toLowerCase(),
     deploymentName: snapshot.name,
     // Canonical forms: the SAME deployment written with an uppercase address
     // or a hex amount produced a different digest, so a rehearsed digest and
@@ -202,30 +231,19 @@ export async function deployQuotaFpc(
       : 'chain identity changed between confirmation and deployment';
   });
 
-  const allowed = padAllowedTargets(snapshot.targets.map((t) => t.address)).map((a) =>
-    AztecAddress.fromStringUnsafe(a),
-  );
-  const allowedClasses = padAllowedAccountClasses(snapshot.accountClasses.map((c) => BigInt(c.classId)));
-
-  const deployment = QuotaFpcContract.deploy(
-    deps.wallet,
-    AztecAddress.fromStringUnsafe(snapshot.adminAddress),
-    BigInt(snapshot.policy.maxFeeWei),
-    snapshot.policy.maxUsesPerDay,
-    snapshot.policy.maxUsersPerDay,
-    allowed,
-    allowedClasses,
-    snapshot.requireUnpublishedAccounts,
-  );
   // The SNAPSHOTTED options spread FIRST: the confirmed sender is bound and
   // cannot be overridden by an unconfirmed option (finding #1). The wait is
   // floored at CHECKPOINTED finality before success is declared — the wallet
   // default (PROPOSED) can be reorged out after this returns (round-5
   // finding 1, applied to deploy as well as policy). Callers may request
   // stronger finality via sendOptions.wait; weaker is overridden.
-  const { receipt } = await deployment.send(effectiveSendOptions);
+  const { receipt, contract } = await deployment.send(effectiveSendOptions);
   if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
     throw new Error(`deployment transaction ${receipt.txHash} did not execute successfully (status ${receipt.status})`);
   }
-  return await deployment.register();
+  // send() already returns the registered contract. The extra register() call
+  // that used to be here ran AFTER the deployment had landed, so a failure in
+  // that purely local step reported failure for a deployment that had
+  // succeeded — inviting a second one (round-20).
+  return contract;
 }
