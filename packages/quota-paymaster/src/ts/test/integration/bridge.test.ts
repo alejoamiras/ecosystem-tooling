@@ -43,6 +43,12 @@ describe('bridgeFeeJuice (live L1)', () => {
 
     const node = createAztecNodeClient(NODE_URL);
     const info = await node.getNodeInfo();
+    // ENFORCED, not just documented: this test bridges REAL fee juice and the
+    // deposit is irreversible. Pointed at a funded non-local deployment by a
+    // stray NODE_URL/L1_RPC_URL, an ordinary `bun run test:js` would send
+    // someone's money to a synthetic recipient and then delete the journaled
+    // secret with the temp dir (round-23).
+    expect(info.l1ChainId, 'this test only runs against a local anvil (chain 31337)').toBe(31337);
     const chain = createEthereumChain([L1_RPC_URL], info.l1ChainId);
     const l1Client = createExtendedL1Client(chain.rpcUrls, L1_KEY, chain.chainInfo);
 
