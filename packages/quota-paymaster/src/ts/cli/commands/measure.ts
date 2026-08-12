@@ -92,13 +92,26 @@ export async function run(flags: ParsedFlags): Promise<void> {
   // The artifact is already loaded and the method name is already known, so a
   // typo (or a utility-only function) can be refused HERE rather than after a
   // human has approved a plan that cannot execute (round-10).
-  const callable = (artifact.functions ?? []) as { name?: string }[];
-  if (!callable.some((f) => f.name === method)) {
-    const names = callable
+  // BOTH arrays: loadContractArtifact splits ordinary public methods out into
+  // `nonDispatchPublicFunctions`, so checking `functions` alone rejected valid
+  // public targets while accepting utility functions, which are not
+  // transactions at all (round-11). isOnlySelf functions can only be called by
+  // the contract itself, and an initializer is not a measurable action.
+  const callable = [...(artifact.functions ?? []), ...(artifact.nonDispatchPublicFunctions ?? [])] as {
+    name?: string;
+    functionType?: string;
+    isOnlySelf?: boolean;
+    isInitializer?: boolean;
+  }[];
+  const sendable = callable.filter(
+    (f) => (f.functionType === 'private' || f.functionType === 'public') && !f.isOnlySelf && !f.isInitializer,
+  );
+  if (!sendable.some((f) => f.name === method)) {
+    const names = sendable
       .map((f) => f.name)
       .filter((n): n is string => typeof n === 'string')
       .join(', ');
-    throw new CliUsageError(`--method ${method} is not a function of ${artifactPath}. Available: ${names}`);
+    throw new CliUsageError(`--method ${method} is not a sendable function of ${artifactPath}. Available: ${names}`);
   }
 
   await withContext(flags, async (ctx) => {

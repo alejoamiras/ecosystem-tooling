@@ -97,6 +97,12 @@ export async function run(flags: ParsedFlags): Promise<void> {
         ? {
             recipient,
             ...manualAmounts,
+            // Without this the journal bookkeeping is silently disabled (every
+            // write is gated on a message hash), so a successful manual claim
+            // left the deposit looking unclaimed and the NEXT claim burned gas
+            // re-targeting it — the case the claimed-set exists to prevent
+            // (round-11).
+            messageHash: flags.get('message-hash'),
             claimSecret: await readSecretFromStdin(),
           }
         : findClaimInJournal(journal, {

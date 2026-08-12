@@ -337,9 +337,35 @@ export async function schedulePolicyChange(
 
   // Snapshot before the plan digests them, so a confirm callback cannot swap
   // the options between the digest and the send.
-  const snapshot = snapshotOptions(deps.sendOptions ?? {});
-  const { wait: callerWait, ...sendOpts } = snapshot;
+  // The EFFECTIVE options: built once, digested, and sent. Digesting the raw
+  // snapshot advertised coverage of values this function then overrides — a
+  // caller's `waitForStatus: FINALIZED` or `from` changed the digest without
+  // changing what executes (round-11).
+  const { wait: callerWait, ...callerRest } = snapshotOptions(deps.sendOptions ?? {});
   const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
+  // A FLOOR, not a fixed value: deploy and claim both honor a request for
+  // MORE finality and refuse less, and forcing CHECKPOINTED here silently
+  // downgraded an operator who asked for PROVEN (round-11). The order table is
+  // duplicated from those two deliberately — hoisting it into action-plan.ts
+  // would put a static @aztec import into a module claim deliberately loads
+  // TxStatus lazily from, and the tarball probe asserts that laziness.
+  const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
+  const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
+  const waitForStatus =
+    requestedStatus !== undefined &&
+    FINALITY_ORDER.indexOf(requestedStatus) > FINALITY_ORDER.indexOf(TxStatus.CHECKPOINTED)
+      ? requestedStatus
+      : TxStatus.CHECKPOINTED;
+  const effectiveSendOptions = {
+    ...callerRest,
+    // `from` is not caller-overridable (the contract gates on the admin), and
+    // the caller's other wait knobs (timeout, poll interval) are honored:
+    // replacing the whole wait object dropped a raised timeout for a slow
+    // prover, so the send threw while the transaction landed and the operator
+    // re-ran, replacing their own pending bundle and restarting the 12h delay.
+    from: deps.from,
+    wait: { ...callerWaitObj, waitForStatus, dontThrowOnRevert: false },
+  };
   const expectedRevision = state.scheduled.revision;
   const plan = createActionPlan('schedule-policy-change', {
     l1ChainId: info.l1ChainId,
@@ -350,7 +376,7 @@ export async function schedulePolicyChange(
     // so a config module resolving `from` differently between the dry run and
     // the --yes run produced the same digest (round-9 finding 3).
     from: deps.from.toString(),
-    sendOptionsDigest: digestOptions(snapshot),
+    sendOptionsDigest: digestOptions(effectiveSendOptions),
     expectedRevision: expectedRevision.toString(),
     maxFeeWei: next.maxFeeWei.toString(),
     maxUses: next.maxUses,
@@ -432,17 +458,7 @@ export async function schedulePolicyChange(
     // finding 1): the wallet default (PROPOSED at 5.0.1) can be reorged out
     // AFTER this function returned a revision — the operator would believe a
     // replacement exists that doesn't. Same floor the claim path enforces.
-    .send({
-      ...sendOpts,
-      // from and the finality floor come AFTER the spread and are not
-      // caller-overridable — but the caller's other wait knobs (timeout, poll
-      // interval) ARE honored, exactly as deploy and claim do. Replacing the
-      // whole wait object dropped a raised timeout for a slow prover: the
-      // send throws while the transaction lands, and the operator re-runs and
-      // replaces their own pending bundle, restarting the 12h delay.
-      from: deps.from,
-      wait: { ...callerWaitObj, waitForStatus: TxStatus.CHECKPOINTED, dontThrowOnRevert: false },
-    })
+    .send(effectiveSendOptions)
     .then(({ receipt }) => {
       if (!receipt.isMined() || !receipt.hasExecutionSucceeded()) {
         throw new Error(
