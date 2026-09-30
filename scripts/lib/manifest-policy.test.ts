@@ -56,6 +56,9 @@ describe('aliases are judged by target', () => {
     expect(errs({ dependencies: { helper: 'npm:@aztec-labs/stdlib' } })[0]).toMatch(/aliases @aztec-labs\/stdlib@,/);
     expect(errs({ dependencies: { helper: 'npm:@aztec/stdlib@' } })[0]).toMatch(/legacy @aztec\/stdlib/);
     expect(errs({ devDependencies: { viem: 'npm:@aztec/viem' } })[0]).toMatch(/expected an exact version/);
+    // npm accepts the protocol in any case.
+    expect(errs({ dependencies: { helper: 'NPM:@aztec/stdlib@5.0.1' } })[0]).toMatch(/legacy @aztec\/stdlib/);
+    expect(errs({ dependencies: { helper: 'Npm:@aztec-labs/stdlib' } })[0]).toMatch(/aliases @aztec-labs\/stdlib@,/);
   });
 
   test('the viem alias must be exact', () => {

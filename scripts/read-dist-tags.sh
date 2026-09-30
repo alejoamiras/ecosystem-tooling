@@ -9,7 +9,8 @@ set -euo pipefail
 # Not `npm view <pkg> dist-tags.<tag>`: that resolves the package through its `latest`
 # version first, so with `latest` absent it prints nothing even when <tag> exists — and an
 # empty read is exactly what a forward-only or unchanged-latest check must never mistake for
-# "no tag". Any HTTP, JSON or shape failure exits non-zero.
+# "no tag". Any HTTP, JSON or shape failure — a tag value that is not a version included —
+# exits non-zero (scripts/lib/dist-tags.mjs).
 
 pkg="${1:?usage: read-dist-tags.sh <@scope/name> [tag]}"
 tag="${2:-}"
@@ -27,19 +28,4 @@ doc="$(curl --proto '=https' --tlsv1.2 -sSfL \
   -H 'Accept: application/vnd.npm.install-v1+json' \
   "$registry/${pkg/\//%2F}")"
 
-printf '%s' "$doc" | node -e '
-const [tag] = process.argv.slice(1);
-let doc;
-try {
-  doc = JSON.parse(require("fs").readFileSync(0, "utf8"));
-} catch {
-  console.error("read-dist-tags: registry response is not JSON");
-  process.exit(1);
-}
-const tags = doc["dist-tags"];
-if (tags === null || typeof tags !== "object" || Array.isArray(tags)) {
-  console.error("read-dist-tags: no dist-tags object in the packument");
-  process.exit(1);
-}
-process.stdout.write(tag ? String(tags[tag] ?? "") : JSON.stringify(tags));
-' "$tag"
+printf '%s' "$doc" | node "$(dirname "$0")/lib/dist-tags.mjs" "$tag"

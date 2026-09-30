@@ -1,6 +1,7 @@
 import {
   ALLOWED_LEGACY_ALIAS,
   EXACT_SEMVER,
+  isAliasSpec,
   isLegacyName,
   isLockstepName,
   LEGACY_SCOPE,
@@ -56,7 +57,7 @@ export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] 
         errors.push(`${at} is ${spec}, expected exactly aztecVersion ${aztecVersion}`);
         continue;
       }
-      if (!spec.startsWith('npm:')) continue;
+      if (!isAliasSpec(spec)) continue;
       const alias = parseAlias(spec);
       if (!alias) {
         errors.push(`${at}: unparseable npm: alias ${spec}`);

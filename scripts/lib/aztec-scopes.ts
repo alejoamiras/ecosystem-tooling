@@ -31,9 +31,12 @@ export const isLegacyName = (name: string): boolean => name.startsWith(LEGACY_SC
  * see it and refuse it, not skip it.
  */
 export function parseAlias(spec: string): { target: string; version: string } | undefined {
-  const m = /^npm:((?:@[^/@]+\/)?[^@]+)(?:@(.*))?$/.exec(spec);
+  const m = /^npm:((?:@[^/@]+\/)?[^@]+)(?:@(.*))?$/i.exec(spec);
   return m?.[1] ? { target: m[1], version: m[2] ?? '' } : undefined;
 }
+
+/** npm reads the alias protocol case-insensitively (`NPM:` works), so every check must too. */
+export const isAliasSpec = (spec: string): boolean => /^npm:/i.test(spec);
 
 const normalizeGit = (url: string): string => url.replace(/\/+$/, '');
 
@@ -72,7 +75,7 @@ export function closureEdge(
   const diverged = (name: string, version: string) => ({
     error: `${parent} depends on ${name}@${version}, which the lockstep ${target} does not satisfy — upstream versions diverged; extend the tooling before bumping`,
   });
-  if (spec.startsWith('npm:')) {
+  if (isAliasSpec(spec)) {
     const alias = parseAlias(spec);
     if (!alias) return { error: `${parent}: unparseable alias ${dep}@${spec}` };
     if (isLockstepName(alias.target)) {

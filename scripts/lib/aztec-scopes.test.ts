@@ -45,6 +45,7 @@ describe('closureEdge', () => {
     expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js@5.0.1', T)).toEqual(diverged);
     expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js', T)).toEqual(diverged);
     expect(closureEdge('p', 'viem', 'npm:@aztec/viem', T)).toEqual({ error: expect.stringMatching(/not an exact/) });
+    expect(closureEdge('p', 'bb', 'NPM:@aztec-foundation/bb.js@5.0.1', T)).toEqual(diverged);
   });
 });
 
