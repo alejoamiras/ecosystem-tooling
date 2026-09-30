@@ -174,7 +174,7 @@ export async function fundWithFeeJuice(
     await new Promise((r) => setTimeout(r, 1500));
   }
 
-  await FeeJuiceContract.at(wallet)
+  await FeeJuiceContract.withWallet(wallet)
     .methods.claim(recipient, claim.claimAmount, Fr.fromString(claim.claimSecret.toString()), claim.messageLeafIndex)
     .send({ from: claimFrom });
 }

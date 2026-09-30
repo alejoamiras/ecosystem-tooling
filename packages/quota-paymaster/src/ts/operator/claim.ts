@@ -334,7 +334,7 @@ export async function claimFeeJuice(
     error?: string;
   };
   try {
-    ({ receipt } = await FeeJuiceContract.at(deps.wallet)
+    ({ receipt } = await FeeJuiceContract.withWallet(deps.wallet)
       .methods.claim(recipient, amountWei, claimSecretFr, messageLeafIndex)
       .send(effectiveSendOptions));
   } catch (err) {

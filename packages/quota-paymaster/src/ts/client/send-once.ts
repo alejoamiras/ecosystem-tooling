@@ -98,7 +98,7 @@ export interface SendOnceContext {
  * classifiers' answers to mean anything.
  */
 export function createSendOnceContext(nodeUrl: string): SendOnceContext {
-  const node = createAztecNodeClient(nodeUrl, {}, makeFetch([], false));
+  const node = createAztecNodeClient(nodeUrl, { fetch: makeFetch([], false) });
   /** Errors this context's own send path threw — the classifiers' evidence. */
   const branded = new WeakSet<object>();
 

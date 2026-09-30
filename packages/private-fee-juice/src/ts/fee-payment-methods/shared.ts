@@ -31,7 +31,6 @@ export class FPCFeePaymentMethod implements FeePaymentMethod {
           hideMsgSender: false,
           isStatic: false,
           args: [],
-          returnTypes: [],
         }),
       ],
       [],

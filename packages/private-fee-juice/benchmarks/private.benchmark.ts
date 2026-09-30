@@ -9,9 +9,8 @@ import { Barretenberg } from '@aztec-foundation/bb.js';
 import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
 import { Fr } from '@aztec-labs/aztec.js/fields';
 import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec-labs/aztec.js/node';
-import { FeeJuiceContract } from '@aztec-labs/noir-contracts.js/FeeJuice';
+import { FeeJuiceContract } from '@aztec-labs/aztec.js/protocol';
 import type { SimpleTokenContract } from '@aztec-labs/noir-contracts.js/SimpleToken';
-import { ProtocolContractAddress } from '@aztec-labs/protocol-contracts';
 import { getPXEConfig } from '@aztec-labs/pxe/config';
 import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
 import { registerInitialLocalNetworkAccountsInWallet } from '@aztec-labs/wallets/testing';
@@ -119,7 +118,7 @@ export default class PrivateFPCBenchmark extends Benchmark {
       { loggerName: 'benchmark:private-bridge-balance' },
     );
 
-    const feeJuice = FeeJuiceContract.at(ProtocolContractAddress.FeeJuice, wallet);
+    const feeJuice = FeeJuiceContract.withWallet(wallet);
     await feeJuice.methods
       .claim(privateFpc.address, claimAmount, secretForBalance, leafIndexForBalance)
       .send({ from: deployer });

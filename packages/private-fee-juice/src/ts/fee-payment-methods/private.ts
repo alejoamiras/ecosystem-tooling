@@ -52,7 +52,6 @@ export class PrivateMintAndPayFeePaymentMethod implements FeePaymentMethod {
           hideMsgSender: false,
           isStatic: false,
           args: [this.fpcAddress.toField(), new Fr(this.amount), this.secret, this.leafIndex],
-          returnTypes: [],
         }),
         FunctionCall.from({
           name: 'mint_and_pay_fee',
@@ -62,7 +61,6 @@ export class PrivateMintAndPayFeePaymentMethod implements FeePaymentMethod {
           hideMsgSender: false,
           isStatic: false,
           args: [new Fr(this.amount), this.salt, this.leafIndex],
-          returnTypes: [],
         }),
       ],
       [],

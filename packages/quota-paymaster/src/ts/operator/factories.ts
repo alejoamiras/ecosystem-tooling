@@ -95,7 +95,7 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
       throw new OperatorConfigError(
         'loader-missing',
         'schnorrAccountFromEnv needs the optional "@aztec-labs/wallets" peer dependency. ' +
-          'Install @aztec-labs/wallets@5.0.1, or write your own factory returning { node, wallet, from }.',
+          'Install @aztec-labs/wallets at the same exact version as your other @aztec-labs/* packages, or write your own factory returning { node, wallet, from }.',
         { cause },
       );
     }
