@@ -6,7 +6,7 @@ name: Release
 #
 # Modes (plan aztec-5-stable D2v3/D16):
 #   release   — the real thing. version must equal config.aztecVersion AND every package
-#               version; REQUIRES expected-head-sha (== GITHUB_SHA) and compare-against
+#               version (X.Y.Z → `latest`; X.Y.Z-rc.N → `rc`, never `latest`); REQUIRES expected-head-sha (== GITHUB_SHA) and compare-against
 #               (== the 0.0.0-canary.g<sha> rehearsal of this exact commit).
 #   rehearsal — full-pipeline dry run. version must be 0.0.0-canary.g<short-sha of HEAD>;
 #               package manifests are overlaid to that version before pack (peers stay at
@@ -20,7 +20,7 @@ name: Release
 #               publish-time `--tag latest`, OIDC-authorized; a second tag would need manual OTP).
 #
 # Fail-closed backstop in ALL modes: every packed tarball's embedded manifest is asserted
-# (name, version == input, @aztec/* peers == aztecVersion, internal pins == input) —
+# (name, version == input, Aztec pins per scripts/lib/manifest-policy.ts, internal pins == input) —
 # `npm publish <tarball>` publishes what is IN the tarball, so a mis-configured dispatch
 # dies here instead of publishing the committed version under the wrong label.
 #
@@ -32,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions; rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
+        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions (X.Y.Z, or X.Y.Z-rc.N which publishes under `rc`); rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
         required: true
         type: string
       mode:
@@ -532,9 +532,20 @@ jobs:
             ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
           done
 
+      - name: Record the `latest` baseline (asserted unchanged after a non-latest publish)
+        run: |
+          mkdir -p latest-before
+          for pkg in $PUBLISH_PACKAGES; do
+            # A failed read must fail the step: an empty baseline would make the post-publish
+            # comparison vacuous.
+            npm view "@alejoamiras/$pkg" dist-tags.latest > "latest-before/$pkg"
+            echo "@alejoamiras/$pkg latest before publish: $(cat "latest-before/$pkg")"
+          done
+
       - name: Publish tarballs (benchmark → private-fee-juice → quota-paymaster, idempotent)
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_MODE: ${{ inputs.mode }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
           for pkg in $PUBLISH_PACKAGES; do
@@ -555,6 +566,15 @@ jobs:
               ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
               echo "@alejoamiras/$pkg@$INPUT_VERSION already published, dist-tag '$DIST_TAG' correct — skipping (integrity + identity + tag re-verified at skip time)"
               continue
+            fi
+            # Forward-only prerelease tags: a re-run of an old rc run keeps its original SHA and
+            # passes every binding, so without this it could drag `rc` back behind a newer rc.
+            # Canaries are sha-named and unordered by design; `latest` is guarded separately.
+            if [ "$DIST_TAG" != "latest" ] && [ "$INPUT_MODE" != "rehearsal" ]; then
+              current=$(npm view "@alejoamiras/$pkg" "dist-tags.$DIST_TAG")
+              if [ -n "$current" ]; then
+                node scripts/release-policy.mjs --forward "$current" "$INPUT_VERSION"
+              fi
             fi
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
             # ./ prefix is load-bearing: without it npm's spec parser reads
@@ -595,6 +615,18 @@ jobs:
               echo "ERROR: dist-tag $DIST_TAG for $pkg is '$tagged', expected $INPUT_VERSION" >&2; fail=1
             fi
             latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
+            # Read from the same response that already shows DIST_TAG propagated, so a lagging
+            # view cannot pass for an unchanged one. The stateless check also catches a move
+            # made by an earlier run that this recovery run would otherwise accept.
+            if [ "$DIST_TAG" != "latest" ]; then
+              if [ "$latest" = "$INPUT_VERSION" ]; then
+                echo "ERROR: latest for $pkg is $INPUT_VERSION, which was published under '$DIST_TAG' — surface for the manual OTP runbook" >&2; fail=1
+              fi
+              before=$(cat "latest-before/$pkg")
+              if [ "$latest" != "$before" ]; then
+                echo "ERROR: latest for $pkg moved during this run ($before -> $latest)" >&2; fail=1
+              fi
+            fi
             case "$latest" in
               0.0.0-*)
                 # canary.yml's old hygiene assert, kept in ALL modes: a first-publish can

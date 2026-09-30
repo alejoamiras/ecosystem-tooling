@@ -187,3 +187,11 @@ test('the notes renderer reads the publish set from its OWN job step, not from n
   );
   assert.match(renderStep, /PUBLISH_PACKAGES is empty/, 'the render step must fail closed on an empty set');
 });
+
+test('a non-latest publish can neither move `latest` nor drag a prerelease tag backwards', () => {
+  // Removing either guard leaves every other check green, so pin their presence.
+  assert.match(releaseYml, /npm view "@alejoamiras\/\$pkg" dist-tags\.latest > "latest-before\/\$pkg"/);
+  assert.match(releaseYml, /node scripts\/release-policy\.mjs --forward "\$current" "\$INPUT_VERSION"/);
+  assert.match(releaseYml, /if \[ "\$latest" = "\$INPUT_VERSION" \]; then/, 'stateless latest != input check');
+  assert.match(releaseYml, /if \[ "\$latest" != "\$before" \]; then/, 'per-run latest-unchanged check');
+});

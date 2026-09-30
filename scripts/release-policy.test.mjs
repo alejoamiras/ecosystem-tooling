@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { computeReleasePolicy, validatePackagesSubset } from './release-policy.mjs';
+import { compareSemver, computeReleasePolicy, validatePackagesSubset } from './release-policy.mjs';
 
 const AZTEC = '5.0.1';
 const ok = (input) => {
@@ -106,6 +106,46 @@ test('reject: release mode with a prerelease version', () => {
     err({ mode: 'release', version: '5.0.1-revision.1', aztecVersion: AZTEC, setLatest: false }),
     /release mode: version must be a plain X\.Y\.Z/,
   );
+});
+
+test('matrix: an rc release equal to aztecVersion -> rc tag, prerelease flag', () => {
+  assert.deepEqual(ok({ mode: 'release', version: '6.0.0-rc.1', aztecVersion: '6.0.0-rc.1', setLatest: false }), {
+    tag: 'rc',
+    prereleaseFlag: '--prerelease',
+  });
+});
+
+test('reject: an rc release that is not the lockstep aztecVersion', () => {
+  assert.match(
+    err({ mode: 'release', version: '6.0.0-rc.2', aztecVersion: '6.0.0-rc.1', setLatest: false }),
+    /release mode: input 6\.0\.0-rc\.2 != config\.aztecVersion 6\.0\.0-rc\.1/,
+  );
+  assert.match(
+    err({ mode: 'release', version: '6.0.0-rc.0', aztecVersion: '6.0.0-rc.0', setLatest: false }),
+    /plain X\.Y\.Z/,
+  );
+});
+
+test('reject: a revision while aztecVersion is an rc, whatever the version spelling', () => {
+  for (const version of ['6.0.0-rc.1-revision.1', '6.0.0-revision.1']) {
+    assert.match(
+      err({ mode: 'revision', version, aztecVersion: '6.0.0-rc.1', setLatest: false }),
+      /revisions of an rc are not supported/,
+    );
+  }
+});
+
+test('compareSemver: full precedence, including rc ordering across majors', () => {
+  const cases = [
+    ['5.0.0-rc.2', '6.0.0-rc.1', -1],
+    ['6.0.0-rc.2', '6.0.0-rc.1', 1],
+    ['6.0.0-rc.10', '6.0.0-rc.9', 1],
+    ['6.0.0', '6.0.0-rc.9', 1],
+    ['6.0.0-rc.1', '6.0.0-rc.1', 0],
+    ['5.0.1-revision.2', '5.0.1-revision.10', -1],
+  ];
+  for (const [a, b, want] of cases) assert.equal(compareSemver(a, b), want, `${a} vs ${b}`);
+  assert.throws(() => compareSemver('6.0.0-rc.1', ''), /not a comparable semver/);
 });
 
 test('reject: malformed semver', () => {
