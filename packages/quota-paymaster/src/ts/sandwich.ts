@@ -13,11 +13,11 @@
  *          -> verifies the user's signature over the payload
  *          -> runs the calls, so the app sees the USER
  */
-import { Fr } from '@aztec/foundation/curves/bn254';
-import type { FunctionCall } from '@aztec/stdlib/abi';
-import type { AuthWitness } from '@aztec/stdlib/auth-witness';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { ExecutionPayload } from '@aztec/stdlib/tx';
+import { Fr } from '@aztec-labs/foundation/curves/bn254';
+import type { FunctionCall } from '@aztec-labs/stdlib/abi';
+import type { AuthWitness } from '@aztec-labs/stdlib/auth-witness';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import { ExecutionPayload } from '@aztec-labs/stdlib/tx';
 
 /** Account entrypoint's `fee_payment_method`: another contract pays. */
 export const FEE_PAYMENT_EXTERNAL = 0;
@@ -71,7 +71,7 @@ export async function buildSandwichPayload(
     throw new Error(`A transaction carries at most ${ACCOUNT_MAX_CALLS} calls, got ${request.calls.length}`);
   }
 
-  const { EncodedAppEntrypointCalls } = await import('@aztec/entrypoints/encoding');
+  const { EncodedAppEntrypointCalls } = await import('@aztec-labs/entrypoints/encoding');
   const encodedCalls = await EncodedAppEntrypointCalls.create(request.calls, txNonce);
 
   // The user signs the payload itself — the paymaster can pay for it but can

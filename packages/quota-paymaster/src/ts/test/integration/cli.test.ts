@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { FpcTestTargetContract } from '../../../artifacts/FpcTestTarget.js';
 import type { QuotaFpcContract } from '../../../artifacts/QuotaFpc.js';
 import { type Ctx, connect, evidence, fundWithFeeJuice, NODE_URL } from '../harness.js';
-import { deployOwnFpc } from '../suite-helpers.js';
+import { activate, deployOwnFpc, freshDayIfShort } from '../suite-helpers.js';
 
 const PKG_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const CLI = join(PKG_ROOT, 'src/ts/cli/main.ts');
@@ -58,16 +58,17 @@ describe('published CLI (live network)', () => {
     const targetDeploy = FpcTestTargetContract.deploy(ctx.wallet);
     await targetDeploy.send({ from: player });
     target = await targetDeploy.register();
+    const poke = () => target.methods.ping().send({ from: player });
     fpc = await deployOwnFpc(ctx, target, player);
-    await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, () =>
-      target.methods.ping().send({ from: player }),
-    );
+    await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, poke);
+    await activate(ctx, [fpc], poke);
+    await freshDayIfShort(ctx, poke);
 
     // A real config module: the same shape an operator writes, using this
     // network's pre-registered accounts instead of env-supplied keys.
     //
     // It lives INSIDE the package, not in the OS temp dir, because a config
-    // module's own bare imports (@aztec/*) resolve from the CONFIG'S location
+    // module's own bare imports (@aztec-labs/*) resolve from the CONFIG'S location
     // — the split-resolution the Phase-1 spike documented. A config in /tmp
     // resolves against the global cache and fails; an operator's real config
     // sits in their project, where its deps resolve. The test must model that.
@@ -78,9 +79,9 @@ describe('published CLI (live network)', () => {
       configModulePath,
       `import { defineOperatorConfig } from '${join(PKG_ROOT, 'src/ts/operator/config.ts')}';\n` +
         `export default defineOperatorConfig(async () => {\n` +
-        `  const { createAztecNodeClient, waitForNode } = await import('@aztec/aztec.js/node');\n` +
-        `  const { EmbeddedWallet } = await import('@aztec/wallets/embedded');\n` +
-        `  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec/wallets/testing');\n` +
+        `  const { createAztecNodeClient, waitForNode } = await import('@aztec-labs/aztec.js/node');\n` +
+        `  const { EmbeddedWallet } = await import('@aztec-labs/wallets/embedded');\n` +
+        `  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec-labs/wallets/testing');\n` +
         `  const node = createAztecNodeClient(${JSON.stringify(NODE_URL)});\n` +
         `  await waitForNode(node);\n` +
         `  const wallet = await EmbeddedWallet.create(node, { ephemeral: true });\n` +
@@ -153,12 +154,12 @@ describe('published CLI (live network)', () => {
   }, 300_000);
 
   test('deploy runs end to end through the bin and a config module', async () => {
-    // The class id must be the REAL one from the installed @aztec/accounts:
+    // The class id must be the REAL one from the installed @aztec-labs/accounts:
     // for a KNOWN class name a mismatched id always refuses (and should —
     // it would ship an allowlist that rejects every real account).
     // --allow-unverified-account-classes only covers UNKNOWN names.
-    const { getContractClassFromArtifact } = await import('@aztec/aztec.js/contracts');
-    const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec/accounts/schnorr');
+    const { getContractClassFromArtifact } = await import('@aztec-labs/aztec.js/contracts');
+    const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec-labs/accounts/schnorr');
     const classId = (await getContractClassFromArtifact(SchnorrInitializerlessAccountContractArtifact)).id.toString();
 
     const configPath = join(dirname(configModulePath), 'deploy.json');
@@ -177,8 +178,30 @@ describe('published CLI (live network)', () => {
     const result = cli(['deploy', '--config', configPath, '--config-module', configModulePath, '--yes']);
     evidence('cli/deploy', result.out.slice(-400));
     expect(result.status).toBe(0);
-    expect(result.out).toMatch(/QUOTA_FPC_CONTRACT_ADDRESS=0x[0-9a-f]{64}/i);
+    const deployed = result.out.match(/QUOTA_FPC_CONTRACT_ADDRESS=(0x[0-9a-f]{64})/i)?.[1];
+    expect(deployed).toBeDefined();
+    expect(result.out).toMatch(/Sponsorship activates at chain t=\d+ \(~1h\)/);
     expect(result.out).toMatch(/Fund LAST/);
+
+    // Fresh, so still in its bootstrap hour: measure refuses before planning
+    // anything, naming when it activates.
+    const inert = cli([
+      'measure',
+      '--fpc',
+      deployed as string,
+      '--target',
+      target.address.toString(),
+      '--artifact',
+      join(PKG_ROOT, 'target/fpc_test_target-FpcTestTarget.json'),
+      '--method',
+      'record',
+      '--config-module',
+      configModulePath,
+    ]);
+    evidence('cli/measure-inert', inert.out.slice(-300));
+    expect(inert.status).toBe(2);
+    expect(inert.out).toMatch(/policy not active until chain t=\d+/);
+    expect(inert.out).not.toMatch(/Action plan/);
   }, 600_000);
 
   test('measure spends real quota and reports two agreeing accountings', () => {

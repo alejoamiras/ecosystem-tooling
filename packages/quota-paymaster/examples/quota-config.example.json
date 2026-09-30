@@ -16,7 +16,7 @@
   ],
   "allowedAccountClasses": [
     {
-      "$comment": "Compute from YOUR installed @aztec/accounts (the deploy tooling recomputes and refuses a mismatch). Only initializerless account classes are compatible with requireUnpublishedAccounts.",
+      "$comment": "Compute from YOUR installed @aztec-labs/accounts (the deploy tooling recomputes and refuses a mismatch). Only initializerless account classes are compatible with requireUnpublishedAccounts.",
       "name": "SchnorrInitializerlessAccount",
       "classId": "env:QUOTA_EXAMPLE_ACCOUNT_CLASS_ID"
     }

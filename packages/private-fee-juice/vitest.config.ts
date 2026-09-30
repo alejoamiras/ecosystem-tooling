@@ -32,7 +32,7 @@ export default defineConfig({
     // Use new API to inline dependencies through Vite's transform pipeline
     server: {
       deps: {
-        inline: [/@aztec/, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
+        inline: [/@aztec(-labs|-foundation)?\//, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
       },
     },
   },

@@ -37,9 +37,9 @@ afterAll(() => {
 
 describe('bridgeFeeJuice (live L1)', () => {
   test('approves and deposits as the confirmed account, journaling around the L1 write', async () => {
-    const { createAztecNodeClient } = await import('@aztec/aztec.js/node');
-    const { createEthereumChain } = await import('@aztec/ethereum/chain');
-    const { createExtendedL1Client } = await import('@aztec/ethereum/client');
+    const { createAztecNodeClient } = await import('@aztec-labs/aztec.js/node');
+    const { createEthereumChain } = await import('@aztec-labs/ethereum/chain');
+    const { createExtendedL1Client } = await import('@aztec-labs/ethereum/client');
 
     const node = createAztecNodeClient(NODE_URL);
     const info = await node.getNodeInfo();

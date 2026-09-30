@@ -12,8 +12,8 @@
  * it: quota preflight, the allowance refusal, the inter-send PXE-lag wait, and honest
  * accounting from receipts + balance deltas.
  */
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import type { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
 
 export interface MeasureDeps {
   node: AztecNode;
@@ -47,7 +47,7 @@ export async function measureSponsoredFee(
   if (!Number.isInteger(opts.count) || opts.count < 1) {
     throw new Error(`count must be a positive integer, got ${opts.count}`);
   }
-  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
+  const { getFeeJuiceBalance } = await import('@aztec-labs/aztec.js/utils');
   // Preflight so re-running does not try to over-subscribe; refuse what the
   // allowance actually permits rather than failing partway. Independent of the
   // balance read, so both go out together.

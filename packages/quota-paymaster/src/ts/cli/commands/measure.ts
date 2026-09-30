@@ -43,7 +43,7 @@ export const usage =
   '  SPENDS real fee juice and consumes daily allowance. Without --yes: plan only.';
 
 export async function run(flags: ParsedFlags): Promise<void> {
-  const { AztecAddress } = await import('@aztec/aztec.js/addresses');
+  const { AztecAddress } = await import('@aztec-labs/aztec.js/addresses');
   const fpcAddress = AztecAddress.fromStringUnsafe(requireAddressFlag(flags, 'fpc'));
   const targetAddress = AztecAddress.fromStringUnsafe(requireAddressFlag(flags, 'target'));
   const artifactPath = flags.require('artifact');
@@ -78,7 +78,7 @@ export async function run(flags: ParsedFlags): Promise<void> {
     } catch {
       throw new CliUsageError(`cannot read --artifact ${artifactPath} as JSON`);
     }
-    const { loadContractArtifact } = await import('@aztec/aztec.js/abi');
+    const { loadContractArtifact } = await import('@aztec-labs/aztec.js/abi');
     try {
       artifact = loadContractArtifact(raw as never);
     } catch (error) {
@@ -157,10 +157,10 @@ export async function run(flags: ParsedFlags): Promise<void> {
       { Gas, GasFees, GasSettings },
       { waitForTx },
     ] = await Promise.all([
-      import('@aztec/aztec.js/contracts'),
-      import('@aztec/entrypoints/default'),
-      import('@aztec/stdlib/gas'),
-      import('@aztec/aztec.js/node'),
+      import('@aztec-labs/aztec.js/contracts'),
+      import('@aztec-labs/entrypoints/default'),
+      import('@aztec-labs/stdlib/gas'),
+      import('@aztec-labs/aztec.js/node'),
     ]);
 
     const info = await node.getNodeInfo();
@@ -229,6 +229,15 @@ export async function run(flags: ParsedFlags): Promise<void> {
     };
     const maxUses = Number(livePolicy.max_uses);
     const maxUsers = Number(livePolicy.max_users);
+    // A fresh deployment's first hour: the all-zero policy sponsors nothing, and a zero
+    // max_users is not a seat range at all.
+    if (maxUsers === 0) {
+      const scheduled = await fpcContract.methods.get_scheduled_settings().simulate({ from });
+      const [, activatesAt] = ((scheduled as { result?: unknown }).result ?? scheduled) as [unknown, bigint, bigint];
+      throw new CliUsageError(
+        `policy not active until chain t=${activatesAt} — nothing can be sponsored or measured yet`,
+      );
+    }
 
     // The FEE CEILING, read once and bound into the plan: it was read inside
     // the send, after confirmation, so two runs of an identical plan — same

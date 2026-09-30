@@ -3,7 +3,8 @@
  * raises under a live policy, seat eviction, and the UTC-midnight crossing
  * (mandatory gap-closer). Every test here warps the chain — which is global
  * and irreversible — so this file runs ONLY on the disposable network the
- * globalSetup provisions, and each policy test deploys its own paymaster.
+ * globalSetup provisions, and each policy test deploys its own paymaster and
+ * activates it past the first-hour bootstrap before touching its policy.
  */
 import { beforeAll, describe, expect, test } from 'vitest';
 import { FpcTestTargetContract } from '../../../artifacts/FpcTestTarget.js';
@@ -18,17 +19,22 @@ import {
   fundWithFeeJuice,
   sendFromPaymaster,
   warpChainBy,
+  warpChainTo,
   warpChainToDayStart,
 } from '../harness.js';
 import {
+  activate,
+  activatesAt,
   allowanceOf,
   bundleFrom,
   callsOf,
   currentRevision,
   deployOwnFpc,
+  MAX_FEE,
   MAX_USERS,
   MAX_USES,
   unwrap,
+  ZERO,
 } from '../suite-helpers.js';
 
 const DAY = 86_400;
@@ -38,11 +44,17 @@ const ACTIVATION = 43_260; // 12h + a minute
 describe('QuotaFpc time-travel', () => {
   let ctx: Ctx;
   let target: FpcTestTargetContract;
-  let player: import('@aztec/stdlib/aztec-address').AztecAddress;
-  let other: import('@aztec/stdlib/aztec-address').AztecAddress;
+  let player: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
+  let other: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
 
   const poke = () => target.methods.ping().send({ from: player });
   const recordCall = () => callsOf(target.methods.record());
+
+  async function deployActive(overrides: { maxUses?: number } = {}) {
+    const own = await deployOwnFpc(ctx, target, player, overrides);
+    await activate(ctx, [own], poke);
+    return own;
+  }
 
   async function fund(fpc: QuotaFpcContract) {
     await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, poke);
@@ -50,7 +62,7 @@ describe('QuotaFpc time-travel', () => {
 
   async function sponsorOn(
     fpc: QuotaFpcContract,
-    from: import('@aztec/stdlib/aztec-address').AztecAddress,
+    from: import('@aztec-labs/stdlib/aztec-address').AztecAddress,
     opts: { seat?: number; generation: number },
   ) {
     const payload = await buildSandwichPayload(
@@ -84,7 +96,7 @@ describe('QuotaFpc time-travel', () => {
    * dies the moment the day rolls.
    */
   test('a subscription taken in the grace window survives midnight; the old day dies', async () => {
-    const own = await deployOwnFpc(ctx, target, player);
+    const own = await deployActive();
     await fund(own);
 
     // Deterministic footing: start a fresh day, then walk to the grace window.
@@ -123,7 +135,7 @@ describe('QuotaFpc time-travel', () => {
    * not just visible through a getter.
    */
   test('a change is inert before its activation time and binds after', async () => {
-    const own = await deployOwnFpc(ctx, target, player);
+    const own = await deployActive();
     const rev = await currentRevision(own, player);
 
     await own.methods.schedule_settings(await bundleFrom(own, { maxUsers: 7 }), rev).send({ from: player });
@@ -153,7 +165,7 @@ describe('QuotaFpc time-travel', () => {
    * spending under a later, higher fee ceiling and the loss bound is false.
    */
   test('a reduction clamps allowances already issued', async () => {
-    const own = await deployOwnFpc(ctx, target, player);
+    const own = await deployActive();
     await fund(own);
 
     await warpChainToDayStart(ctx.node, poke);
@@ -180,7 +192,7 @@ describe('QuotaFpc time-travel', () => {
     // player is if their terminal note was retained. Deleting terminal notes
     // silently turns every raise into a change that helps only players who
     // did not need it.
-    const own = await deployOwnFpc(ctx, target, player, { maxUses: 1 });
+    const own = await deployActive({ maxUses: 1 });
     await fund(own);
 
     await warpChainToDayStart(ctx.node, poke);
@@ -209,7 +221,7 @@ describe('QuotaFpc time-travel', () => {
    * telling an evicted player "today is full" would be false.
    */
   test('a player-cap cut evicts a seat already claimed above it', async () => {
-    const own = await deployOwnFpc(ctx, target, player);
+    const own = await deployActive();
     await fund(own);
     await warpChainToDayStart(ctx.node, poke);
     const gen = generationAt(await chainTimestamp(ctx.node));
@@ -224,5 +236,41 @@ describe('QuotaFpc time-travel', () => {
 
     await expect(sponsorOn(own, evicted, { generation: gen })).rejects.toThrow(/seat no longer within capacity/i);
     evidence('seat-clamp', 'a player-cap cut evicted a seat claimed above it');
+  });
+
+  /**
+   * A change scheduled during the bootstrap hour replaces the constructor's
+   * bundle before it ever went live, so the all-zero policy stays in force
+   * past the original deadline, until the replacement's own activation.
+   */
+  test('a replacement scheduled during bootstrap keeps the policy inert until it activates', async () => {
+    const own = await deployOwnFpc(ctx, target, player);
+    const initialDeadline = await activatesAt(own, player);
+    const scheduledFrom = await chainTimestamp(ctx.node);
+    expect(scheduledFrom).toBeLessThan(initialDeadline);
+
+    // Built explicitly: bundleFrom reads the live policy, all zeros right now.
+    const replacement = {
+      max_fee: MAX_FEE,
+      max_uses: MAX_USES,
+      max_users: 7,
+      allowed_targets: [target.address, ...Array(11).fill(ZERO)],
+    };
+    await own.methods.schedule_settings(replacement, await currentRevision(own, player)).send({ from: player });
+    const replacementAt = await activatesAt(own, player);
+    expect(replacementAt - scheduledFrom).toBeGreaterThanOrEqual(43_200n);
+
+    await warpChainTo(ctx.node, Number(initialDeadline) + 60, poke);
+    const stillInert = unwrap(await own.methods.get_policy().simulate({ from: player }));
+    expect(Number(stillInert.max_users ?? stillInert[2])).toBe(0);
+
+    await warpChainTo(ctx.node, Number(replacementAt) + 1, poke);
+    const live = unwrap(await own.methods.get_policy().simulate({ from: player }));
+    expect(Number(live.max_users ?? live[2])).toBe(7);
+    expect(Number(live.max_uses ?? live[1])).toBe(MAX_USES);
+    evidence('bootstrap-replacement', {
+      initialDeadline: initialDeadline.toString(),
+      replacementAt: replacementAt.toString(),
+    });
   });
 });

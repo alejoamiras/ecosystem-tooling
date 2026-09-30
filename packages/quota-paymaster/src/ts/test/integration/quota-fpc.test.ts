@@ -6,12 +6,15 @@
  * full upgrade-attack path, and a transaction that simulates fine and then
  * reverts at INCLUSION.
  *
- * SAFE against a shared local network: nothing here warps the chain. The
- * time-travel cases live in ../warp (their own disposable network).
+ * Runs on its own disposable network. Every instance is inert for its first
+ * hour, so `beforeAll` deploys all of them, warps past activation ONCE, and
+ * only then derives the generation. No test warps; the time-travel cases live
+ * in ../warp.
  */
 import { beforeAll, describe, expect, test } from 'vitest';
 import { FpcTestTargetContract } from '../../../artifacts/FpcTestTarget.js';
 import { QuotaFpcContract } from '../../../artifacts/QuotaFpc.js';
+import { resolveFeeSource } from '../../allowance.js';
 import { generationAt } from '../../generation.js';
 import { computePlayerNullifier, computeSeatNullifier } from '../../nullifiers.js';
 import { buildSandwichPayload } from '../../sandwich.js';
@@ -25,12 +28,14 @@ import {
   sendFromPaymaster,
 } from '../harness.js';
 import {
+  activate,
+  activatesAt,
   allowanceOf,
-  awaitPolicyReadable,
   bundleFrom,
   callsOf,
   currentRevision,
   deployOwnFpc,
+  freshDayIfShort,
   initializerlessClassId,
   MAX_FEE,
   MAX_USERS,
@@ -44,10 +49,14 @@ import {
 describe('QuotaFpc integration', () => {
   let ctx: Ctx;
   let fpc: QuotaFpcContract;
+  let wrongClassFpc: QuotaFpcContract;
+  let lowCeiling: QuotaFpcContract;
+  let publishedFpc: QuotaFpcContract;
+  let inertFpc: QuotaFpcContract;
   let target: FpcTestTargetContract;
   let decoy: FpcTestTargetContract;
-  let player: import('@aztec/stdlib/aztec-address').AztecAddress;
-  let other: import('@aztec/stdlib/aztec-address').AztecAddress;
+  let player: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
+  let other: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
   let generation: number;
   let suite: Suite;
 
@@ -55,7 +64,7 @@ describe('QuotaFpc integration', () => {
   const sponsor = (
     // biome-ignore lint/suspicious/noExplicitAny: FunctionCall arrays from interactions
     calls: any[],
-    from: import('@aztec/stdlib/aztec-address').AztecAddress,
+    from: import('@aztec-labs/stdlib/aztec-address').AztecAddress,
     opts: { seat?: number; generation?: number } = {},
   ) => sponsorVia(suite, calls, from, opts);
 
@@ -63,13 +72,13 @@ describe('QuotaFpc integration', () => {
     ctx = await connect();
     player = ctx.addresses[0];
     other = ctx.addresses[1];
-    generation = generationAt(await chainTimestamp(ctx.node));
 
     const targetDeploy = FpcTestTargetContract.deploy(ctx.wallet);
     await targetDeploy.send({ from: player });
     target = await targetDeploy.register();
+    const poke = () => target.methods.ping().send({ from: player });
 
-    const { Fr } = await import('@aztec/foundation/curves/bn254');
+    const { Fr } = await import('@aztec-labs/foundation/curves/bn254');
     const decoyDeploy = FpcTestTargetContract.deploy(ctx.wallet, {
       salt: Fr.random(),
       // biome-ignore lint/suspicious/noExplicitAny: deploy options are version-loose
@@ -77,24 +86,23 @@ describe('QuotaFpc integration', () => {
     await decoyDeploy.send({ from: player });
     decoy = await decoyDeploy.register();
 
-    const allowed = [target.address, ...Array(11).fill(ZERO)];
-    const allowedClasses = [await initializerlessClassId(), 0n, 0n, 0n];
-    const fpcDeploy = QuotaFpcContract.deploy(
-      ctx.wallet,
-      player, // admin
-      MAX_FEE,
-      MAX_USES,
-      MAX_USERS,
-      allowed,
-      allowedClasses,
-      true,
-    );
-    await fpcDeploy.send({ from: player });
-    fpc = await fpcDeploy.register();
-
-    await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, () =>
-      target.methods.ping().send({ from: player }),
-    );
+    // Every instance a test sponsors through, deployed before the one
+    // activation warp.
+    fpc = await deployOwnFpc(ctx, target, player);
+    wrongClassFpc = await deployOwnFpc(ctx, target, player, { accountClasses: [0x1234n, 0n, 0n, 0n] });
+    lowCeiling = await deployOwnFpc(ctx, target, player, { maxFeeWei: 1n });
+    publishedFpc = await deployOwnFpc(ctx, target, player);
+    // An unfunded paymaster is rejected by the NODE for fee-payer balance, which
+    // would mask whether a private assert fired; the other two fail in private
+    // setup, before any balance is consulted.
+    for (const funded of [fpc, publishedFpc]) {
+      await fundWithFeeJuice(ctx.node, ctx.wallet, funded.address, 10n ** 21n, player, poke);
+    }
+    await activate(ctx, [fpc, wrongClassFpc, lowCeiling, publishedFpc], poke);
+    await freshDayIfShort(ctx, poke);
+    generation = generationAt(await chainTimestamp(ctx.node));
+    // After the warp, so it stays inert for the first test, which reads it.
+    inertFpc = await deployOwnFpc(ctx, target, player);
     suite = { ctx, fpc, target, generationOf: () => generation };
 
     evidence('setup', {
@@ -103,6 +111,54 @@ describe('QuotaFpc integration', () => {
       generation,
       fpcFeeJuice: (await feeJuiceOf(ctx.node, fpc.address)).toString(),
     });
+  });
+
+  /**
+   * The bootstrap hour. aztec-nr enforces a 3600s minimum delay on every
+   * DelayedPublicMutable write, the constructor's included, so a fresh
+   * paymaster reads an all-zero policy until then. That is fail-closed (an
+   * all-zero allowlist admits no target) and the SDK names it.
+   */
+  test('a fresh instance is inert for its first hour; an activated one is live', async () => {
+    const inert = unwrap(await inertFpc.methods.get_policy().simulate({ from: player }));
+    expect(BigInt(inert.max_fee ?? inert[0])).toBe(0n);
+    expect(Number(inert.max_uses ?? inert[1])).toBe(0);
+    expect(Number(inert.max_users ?? inert[2])).toBe(0);
+    const at = await activatesAt(inertFpc, player);
+    expect(at).toBeGreaterThan(await chainTimestamp(ctx.node));
+
+    for (const seat of [0, undefined]) {
+      const entrypoint = seat === undefined ? 'sponsor_and_execute' : 'subscribe_and_execute';
+      await expect(sponsorVia(suite, await recordCall(), player, { fpc: inertFpc, seat })).rejects.toThrow(
+        /non-allowlisted/,
+      );
+      evidence('bootstrap', `${entrypoint} refused while inert (activates at chain t=${at})`);
+    }
+
+    const source = await resolveFeeSource({
+      state: { generation, subscribed: false, remaining: 0, syncing: false },
+      chainTimestampSeconds: await chainTimestamp(ctx.node),
+      onSyncing: 'wait',
+      findFreeSeat: async () => {
+        throw new Error('an inert policy must never reach the seat lookup');
+      },
+      ownBalance: 0n,
+      minSelfPayBalance: 1n,
+      paymasterBalance: 10n ** 21n,
+      minPaymasterBalance: 1n,
+      policyActive: Number(inert.max_users ?? inert[2]) > 0,
+    });
+    expect(source).toEqual({ kind: 'blocked', reason: 'policy-inactive' });
+
+    const policy = unwrap(await fpc.methods.get_policy().simulate({ from: player }));
+    expect(Number(policy.max_uses ?? policy[1])).toBe(MAX_USES);
+    expect(Number(policy.max_users ?? policy[2])).toBe(MAX_USERS);
+    expect(BigInt(policy.max_fee ?? policy[0])).toBe(MAX_FEE);
+
+    const targets = unwrap(await fpc.methods.get_allowed_targets().simulate({ from: player }));
+    // biome-ignore lint/suspicious/noExplicitAny: simulate() array items are version-loose
+    const live = targets.map((t: any) => t.toString()).filter((t: string) => !/^0x0+$/.test(t));
+    expect(live).toContain(target.address.toString());
   });
 
   test('constructor rejects a policy that cannot work', async () => {
@@ -132,24 +188,6 @@ describe('QuotaFpc integration', () => {
         from: player,
       }),
     ).rejects.toThrow(/at least one allowed account class/);
-  });
-
-  /**
-   * The bootstrap trap. `DelayedPublicMutable` routes every write through the
-   * current delay, including the constructor's — so if the delay were declared
-   * as 12h, the paymaster would read an all-zero policy (silently, not as an
-   * error) and sponsor nothing for its first 12 hours.
-   */
-  test('settings are live at the first post-deploy anchor, not 12h later', async () => {
-    const policy = unwrap(await fpc.methods.get_policy().simulate({ from: player }));
-    expect(Number(policy.max_uses ?? policy[1])).toBe(MAX_USES);
-    expect(Number(policy.max_users ?? policy[2])).toBe(MAX_USERS);
-    expect(BigInt(policy.max_fee ?? policy[0])).toBe(MAX_FEE);
-
-    const targets = unwrap(await fpc.methods.get_allowed_targets().simulate({ from: player }));
-    // biome-ignore lint/suspicious/noExplicitAny: simulate() array items are version-loose
-    const live = targets.map((t: any) => t.toString()).filter((t: string) => !/^0x0+$/.test(t));
-    expect(live).toContain(target.address.toString());
   });
 
   test('only the admin can schedule a change', async () => {
@@ -188,22 +226,7 @@ describe('QuotaFpc integration', () => {
   test('a player whose account class is not allowlisted cannot be sponsored', async () => {
     // A paymaster that allowlists some OTHER class: the harness player's real
     // initializerless account is then exactly the attacker shape C1 described.
-    // The transaction must not even prove (no funding needed: the assert fires
-    // in private setup).
-    const strangerClasses = [0x1234n, 0n, 0n, 0n];
-    const wrongClassDeploy = QuotaFpcContract.deploy(
-      ctx.wallet,
-      player,
-      MAX_FEE,
-      MAX_USES,
-      MAX_USERS,
-      [target.address, ...Array(11).fill(ZERO)],
-      strangerClasses,
-      true,
-    );
-    await wrongClassDeploy.send({ from: player });
-    const wrongClassFpc = await awaitPolicyReadable(await wrongClassDeploy.register(), player);
-
+    // The transaction must not even prove.
     const payload = await buildSandwichPayload(
       { calls: await recordCall(), player, fpcAddress: wrongClassFpc.address, generation, seat: 0 },
       ctx.wallet,
@@ -226,12 +249,12 @@ describe('QuotaFpc integration', () => {
    * then prove sponsorship refuses it.
    */
   test('a published account that scheduled an upgrade is refused despite an allowlisted class', async () => {
-    const { publishInstance, publishContractClass } = await import('@aztec/aztec.js/deployment');
-    const { Fr, Fq } = await import('@aztec/foundation/curves/bn254');
+    const { publishInstance, publishContractClass } = await import('@aztec-labs/aztec.js/deployment');
+    const { Fr, Fq } = await import('@aztec-labs/foundation/curves/bn254');
     const { SchnorrAccountContractArtifact, SchnorrInitializerlessAccountContractArtifact } = await import(
-      '@aztec/accounts/schnorr'
+      '@aztec-labs/accounts/schnorr'
     );
-    const { getContractClassFromArtifact } = await import('@aztec/aztec.js/contracts');
+    const { getContractClassFromArtifact } = await import('@aztec-labs/aztec.js/contracts');
 
     // Publishing an instance requires its class to be publicly registered.
     // Publication is permanent, so both publishes are conditional: a re-run
@@ -284,24 +307,15 @@ describe('QuotaFpc integration', () => {
     await fundWithFeeJuice(ctx.node, ctx.wallet, victim, 10n ** 21n, player, () =>
       target.methods.ping().send({ from: player }),
     );
-    const { ContractInstanceRegistryContract } = await import('@aztec/aztec.js/protocol');
+    const { ContractInstanceRegistryContract } = await import('@aztec-labs/aztec.js/protocol');
     await ContractInstanceRegistryContract.at(ctx.wallet).methods.update(hostileClass.id).send({ from: victim });
     evidence('upgrade-scheduled', {
       victim: victim.toString(),
       toward: hostileClass.id.toString(),
     });
 
-    // Standard test paymaster (allowlists the blessed initializerless class),
-    // so only the unpublished requirement can reject the victim — exactly the
-    // property under test.
-    const publishedFpc = await deployOwnFpc(ctx, target, player);
-
-    // Fund it. An unfunded paymaster is rejected by the NODE for fee-payer
-    // balance — which would mask whether the private assert fired at all.
-    await fundWithFeeJuice(ctx.node, ctx.wallet, publishedFpc.address, 10n ** 21n, player, () =>
-      target.methods.ping().send({ from: player }),
-    );
-
+    // publishedFpc allowlists the blessed initializerless class, so only the
+    // unpublished requirement can reject the victim — the property under test.
     const payload = await buildSandwichPayload(
       { calls: await recordCall(), player: victim, fpcAddress: publishedFpc.address, generation, seat: 0 },
       ctx.wallet,
@@ -326,9 +340,6 @@ describe('QuotaFpc integration', () => {
    * point, so the test goes underneath it).
    */
   test('the fee ceiling makes an over-budget transaction unprovable', async () => {
-    const lowCeiling = await deployOwnFpc(ctx, target, player, { maxFeeWei: 1n }); // one-wei ceiling
-    // No funding needed: the ceiling assert fires in private setup, before any
-    // balance is consulted.
     const payload = await buildSandwichPayload(
       { calls: await recordCall(), player, fpcAddress: lowCeiling.address, generation, seat: 0 },
       ctx.wallet,

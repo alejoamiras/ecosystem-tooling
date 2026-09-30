@@ -1,8 +1,8 @@
 // =============================================================================
 // Policy machinery through the REAL entrypoints: constructor bootstrap order,
 // bundle sanity on both write paths, admin gate, CAS, the 12h delay, and
-// pending-change replacement. Timestamp control per aztec-nr v5.0.1 TXE
-// (forward-only: set_next_block_timestamp / advance_next_block_timestamp_by).
+// pending-change replacement. TXE time is forward-only
+// (set_next_block_timestamp / advance_next_block_timestamp_by).
 // =============================================================================
 
 use crate::QuotaFpc;
@@ -12,7 +12,8 @@ use aztec::{
 };
 
 use super::utils::{
-    make_bundle, setup, test_classes, TEST_MAX_FEE, TEST_MAX_USERS, TEST_MAX_USES, test_targets,
+    BOOTSTRAP_SECONDS, make_bundle, setup, setup_inert, test_classes, TEST_MAX_FEE, TEST_MAX_USERS,
+    TEST_MAX_USES, test_targets,
 };
 
 global UPDATE_DELAY_SECONDS: u64 = 43200;
@@ -23,13 +24,28 @@ unconstrained fn read_policy(env: TestEnvironment, fpc: AztecAddress) -> [Field;
 }
 
 #[test]
-unconstrained fn bootstrap_policy_is_live_immediately() {
-    // THE bootstrap-order invariant (handoff pitfall #2): the constructor
-    // writes the bundle at delay 0 and only then raises the delay, so the
-    // policy must be in force in the very next block — an all-zero read here
-    // means the write-then-raise order regressed and every fresh deploy
-    // silently sponsors nothing for 12 hours.
-    let (env, fpc, _admin) = setup();
+unconstrained fn bootstrap_policy_is_inert_until_the_initial_delay() {
+    // THE bootstrap-order invariant: the constructor writes the bundle through
+    // the 1h minimum delay and only then raises it to 12h. Until the write
+    // lands the policy reads all-zero, which admits no target (fail-closed);
+    // swapped, the bundle would still be all-zero after the first hour.
+    let (mut env, fpc, admin) = setup_inert();
+    assert_eq(read_policy(env, fpc), [0, 0, 0]);
+    assert_eq(
+        env.execute_utility(QuotaFpc::at(fpc).get_allowed_targets()),
+        [AztecAddress::zero(); 12],
+    );
+    // The immutable half is live from the start.
+    assert_eq(env.execute_utility(QuotaFpc::at(fpc).get_allowed_account_classes()), test_classes());
+
+    let (_bundle, activates_at, _revision) =
+        env.call_public(admin, QuotaFpc::at(fpc).get_scheduled_settings());
+    env.set_next_block_timestamp(activates_at - 1);
+    env.mine_block();
+    assert_eq(read_policy(env, fpc), [0, 0, 0]);
+
+    env.advance_next_block_timestamp_by(2);
+    env.mine_block();
     let got = read_policy(env, fpc);
     assert_eq(got[0], TEST_MAX_FEE as Field);
     assert_eq(got[1], TEST_MAX_USES as Field);
@@ -37,13 +53,36 @@ unconstrained fn bootstrap_policy_is_live_immediately() {
 }
 
 #[test]
-unconstrained fn allowed_targets_and_classes_are_live_immediately() {
+unconstrained fn allowed_targets_are_live_after_the_initial_delay() {
     let (env, fpc, _admin) = setup();
     let targets = env.execute_utility(QuotaFpc::at(fpc).get_allowed_targets());
     assert_eq(targets[0], test_targets()[0]);
     assert_eq(targets[1], test_targets()[1]);
-    let classes = env.execute_utility(QuotaFpc::at(fpc).get_allowed_account_classes());
-    assert_eq(classes[0], test_classes()[0]);
+}
+
+#[test]
+unconstrained fn schedule_during_bootstrap_replaces_initial_policy() {
+    // A change included before the initial write lands replaces it: the value
+    // current at scheduling time is all-zero, so zeros persist past the first
+    // hour until the replacement's own 12h activation.
+    let (mut env, fpc, admin) = setup_inert();
+    let replacement = make_bundle(
+        TEST_MAX_FEE * 2,
+        TEST_MAX_USES + 1,
+        TEST_MAX_USERS,
+        test_targets(),
+    );
+    env.call_public(admin, QuotaFpc::at(fpc).schedule_settings(replacement, 0));
+
+    env.advance_next_block_timestamp_by(BOOTSTRAP_SECONDS + 1);
+    env.mine_block();
+    assert_eq(read_policy(env, fpc), [0, 0, 0]);
+
+    env.advance_next_block_timestamp_by(UPDATE_DELAY_SECONDS - BOOTSTRAP_SECONDS);
+    env.mine_block();
+    let after = read_policy(env, fpc);
+    assert_eq(after[0], (TEST_MAX_FEE * 2) as Field);
+    assert_eq(after[1], (TEST_MAX_USES + 1) as Field);
 }
 
 #[test(should_fail_with = "admin must not be the zero address")]

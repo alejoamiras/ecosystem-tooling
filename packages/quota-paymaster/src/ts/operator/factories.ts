@@ -82,20 +82,20 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
     for (const name of REQUIRED_KEY_VARS) requireEnv(env, name);
 
     const [{ Fr, Fq }, { createAztecNodeClient, waitForNode }] = await Promise.all([
-      import('@aztec/aztec.js/fields'),
-      import('@aztec/aztec.js/node'),
+      import('@aztec-labs/aztec.js/fields'),
+      import('@aztec-labs/aztec.js/node'),
     ]);
 
     let EmbeddedWallet: {
       create: (node: unknown, opts: Record<string, unknown>) => Promise<Record<string, unknown>>;
     };
     try {
-      ({ EmbeddedWallet } = (await import('@aztec/wallets/embedded')) as never);
+      ({ EmbeddedWallet } = (await import('@aztec-labs/wallets/embedded')) as never);
     } catch (cause) {
       throw new OperatorConfigError(
         'loader-missing',
-        'schnorrAccountFromEnv needs the optional "@aztec/wallets" peer dependency. ' +
-          'Install @aztec/wallets@5.0.1, or write your own factory returning { node, wallet, from }.',
+        'schnorrAccountFromEnv needs the optional "@aztec-labs/wallets" peer dependency. ' +
+          'Install @aztec-labs/wallets at the same exact version as your other @aztec-labs/* packages, or write your own factory returning { node, wallet, from }.',
         { cause },
       );
     }
@@ -110,7 +110,7 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
     // corrupted env before it can act on a chain.
     const expectedAddress = env.ACCOUNT_ADDRESS?.trim();
     if (expectedAddress) {
-      const { getSchnorrInitializerlessAccountContractAddress } = await import('@aztec/accounts/schnorr');
+      const { getSchnorrInitializerlessAccountContractAddress } = await import('@aztec-labs/accounts/schnorr');
       const derived = await getSchnorrInitializerlessAccountContractAddress(signingKey, salt, secretKey);
       if (derived.toString().toLowerCase() !== expectedAddress.toLowerCase()) {
         throw new OperatorConfigError(
@@ -180,8 +180,8 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
         // Same construction the repo-local CLI already uses for bridging.
         const [info, { createEthereumChain }, { createExtendedL1Client }] = await Promise.all([
           node.getNodeInfo(),
-          import('@aztec/ethereum/chain'),
-          import('@aztec/ethereum/client'),
+          import('@aztec-labs/ethereum/chain'),
+          import('@aztec-labs/ethereum/client'),
         ]);
         const chain = createEthereumChain([l1RpcUrl], info.l1ChainId);
         // No cast: createExtendedL1Client returns exactly the client type

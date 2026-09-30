@@ -1,5 +1,5 @@
-import { FeeJuiceContractArtifact } from '@aztec/noir-contracts.js/FeeJuice';
-import { FunctionSelector } from '@aztec/stdlib/abi';
+import { FeeJuiceArtifact } from '@aztec-labs/protocol-contracts/fee-juice';
+import { type ContractArtifact, FunctionSelector } from '@aztec-labs/stdlib/abi';
 import { describe, expect, it } from 'vitest';
 import { PrivateFPCContractArtifact } from '../../artifacts/PrivateFPC.js';
 
@@ -11,8 +11,8 @@ import { PrivateFPCContractArtifact } from '../../artifacts/PrivateFPC.js';
  * as a runtime selector mismatch. This test pins each hardcoded string to the ABI it
  * mirrors — plan aztec-5-stable phase 3.5 (audit finding F-9).
  */
-const CASES: Array<{ artifact: typeof FeeJuiceContractArtifact; fn: string; signature: string }> = [
-  { artifact: FeeJuiceContractArtifact, fn: 'claim', signature: 'claim((Field),u128,Field,Field)' },
+const CASES: Array<{ artifact: ContractArtifact; fn: string; signature: string }> = [
+  { artifact: FeeJuiceArtifact, fn: 'claim', signature: 'claim((Field),u128,Field,Field)' },
   {
     artifact: PrivateFPCContractArtifact,
     fn: 'mint_and_pay_fee',

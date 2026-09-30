@@ -83,7 +83,7 @@ Two Noir packages (workspace defined in root `Nargo.toml`):
   - Library methods: `derive_bridge_secret`, `get_bridge_gas_msg_hash`, `compute_feejuice_claim_nullifier`
 - **`fpc_lib`** — Shared Noir library (`get_max_gas_cost`), imported by `private_contract`
 
-The sponsored **application** contract that tests and benchmarks exercise is NOT local: it is the stock upstream `@aztec/noir-contracts.js` `SimpleToken` (a devDependency; the FPC sponsors `mint_privately` on it). This replaced the previously-bundled local `counter_contract`, which was deleted — a stock contract needs no maintained Noir crate and never ships to consumers.
+The sponsored **application** contract that tests and benchmarks exercise is NOT local: it is the stock upstream `@aztec-labs/noir-contracts.js` `SimpleToken` (a devDependency; the FPC sponsors `mint_privately` on it). This replaced the previously-bundled local `counter_contract`, which was deleted — a stock contract needs no maintained Noir crate and never ships to consumers.
 
 ### TypeScript SDK (`src/ts/`)
 
@@ -95,7 +95,7 @@ Published as `@alejoamiras/private-fee-juice` with export paths:
 
 ### Test Setup
 
-- **Integration tests** (`vitest.config.ts`) — Requires a running Aztec local network (start manually before running). 200s timeouts. Single fork, no parallelism. Must inline `/@aztec/`, `/@noble/`, `/@scure/`, `/viem/` in `server.deps`.
+- **Integration tests** (`vitest.config.ts`) — Requires a running Aztec local network (start manually before running). 200s timeouts. Single fork, no parallelism. Must inline `/@aztec(-labs|-foundation)?\//`, `/@noble/`, `/@scure/`, `/viem/` in `server.deps`.
 
 ### Deployment
 

@@ -5,11 +5,11 @@
  * `npm pack --dry-run` exits 0 even when forbidden files are present, so this script
  * parses the pack manifest and FAILS if a `counter`- or `artifactRegistry`-matching path
  * leaks into the tarball. The local Counter crate was removed entirely (its test/benchmark
- * role now belongs to the stock upstream `@aztec/noir-contracts.js` SimpleToken, which is a
+ * role now belongs to the stock upstream `@aztec-labs/noir-contracts.js` SimpleToken, which is a
  * devDependency and never built into our `target/`), so these patterns are now regression
  * tripwires: if either name ever reappears in a build output, it must not ship. It then
  * packs a real tarball, extracts it, and EXECUTES an import of every published export
- * subpath (resolving @aztec/* peers from the package's own node_modules) so a broken export
+ * subpath (resolving Aztec peers from the package's own node_modules) so a broken export
  * map fails here, not for a consumer.
  *
  * Run after `bun run clean && bun run build`. Exit 0 = tarball is clean and all exports load.
@@ -58,7 +58,7 @@ try {
   const tgz = execFileSync('npm', ['pack', '--pack-destination', workDir], { cwd: pkgRoot }).toString().trim();
   execFileSync('tar', ['-xzf', join(workDir, tgz), '-C', workDir]);
   const extracted = join(workDir, 'package'); // npm tarballs extract under package/
-  // Resolve @aztec/* peers by pointing the extracted package at the repo's installed deps.
+  // Resolve Aztec peers by pointing the extracted package at the repo's installed deps.
   const nm = join(extracted, 'node_modules');
   if (!existsSync(nm)) symlinkSync(join(pkgRoot, 'node_modules'), nm, 'dir');
 

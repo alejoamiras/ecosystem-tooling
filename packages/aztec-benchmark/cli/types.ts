@@ -1,7 +1,7 @@
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
-import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import type { Wallet } from '@aztec/aztec.js/wallet';
+import type { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { ContractFunctionInteractionCallIntent } from '@aztec-labs/aztec.js/authorization';
+import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 import type { SystemInfo } from './systemInfo.js';
 
 export type { SystemInfo } from './systemInfo.js';

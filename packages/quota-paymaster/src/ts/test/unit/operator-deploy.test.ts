@@ -3,12 +3,15 @@
  * exist to catch version drift, so testing them against mocks would be
  * circular.
  */
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
+import { getContractClassFromArtifact } from '@aztec-labs/aztec.js/contracts';
 import { describe, expect, test } from 'vitest';
-import { assertArtifactIsChainVerifiedClass, verifyAccountClassIds } from '../../operator/deploy.js';
+import rootPackage from '../../../../../../package.json' with { type: 'json' };
+import knownDeployments from '../../../../known-deployments.json' with { type: 'json' };
+import { assertArtifactIsLineageClass, verifyAccountClassIds } from '../../operator/deploy.js';
+import { selectAnchor } from '../../operator/lineage.js';
 
 async function realInitializerlessClassId(): Promise<string> {
-  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec/accounts/schnorr');
+  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec-labs/accounts/schnorr');
   const { id } = await getContractClassFromArtifact(SchnorrInitializerlessAccountContractArtifact);
   return id.toString();
 }
@@ -20,7 +23,7 @@ describe('verifyAccountClassIds', () => {
     expect(result).toEqual({ verified: 1, unverified: 0 });
   });
 
-  test('a stale id (different @aztec/accounts version) is refused with the expected id named', async () => {
+  test('a stale id (different @aztec-labs/accounts version) is refused with the expected id named', async () => {
     await expect(verifyAccountClassIds([{ name: 'SchnorrInitializerlessAccount', classId: '0x1234' }])).rejects.toThrow(
       /does not match the installed/,
     );
@@ -43,9 +46,13 @@ describe('verifyAccountClassIds', () => {
 });
 
 describe('deploy lineage guard', () => {
-  test('the compiled artifact IS the chain-verified class (deploys refuse otherwise)', async () => {
+  test('the compiled artifact is the reviewed class for this Aztec version, and says it is only pinned', async () => {
     // Same anchor verify:lineage enforces; deployQuotaFpc re-asserts it so an
     // operator cannot deploy a locally drifted artifact.
-    await expect(assertArtifactIsChainVerifiedClass()).resolves.toMatch(/^0x115cfdfd/);
+    const { aztecVersion } = rootPackage.config;
+    await expect(assertArtifactIsLineageClass()).resolves.toEqual({
+      ...selectAnchor(knownDeployments, aztecVersion),
+      chainVerified: false,
+    });
   });
 });

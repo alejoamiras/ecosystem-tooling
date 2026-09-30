@@ -1,8 +1,8 @@
 import fs from 'node:fs';
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
-import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import type { Wallet } from '@aztec/aztec.js/wallet';
+import type { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { ContractFunctionInteractionCallIntent } from '@aztec-labs/aztec.js/authorization';
+import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 import { getSystemInfo } from './systemInfo.js';
 import type { Gas, GasLimits, NamedBenchmarkedInteraction, ProfileReport, ProfileResult } from './types.js';
 

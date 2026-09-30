@@ -14,8 +14,8 @@
  * 3. GasProfile: fee-floor arithmetic mirrors the contract's billing formula.
  */
 import { readFileSync } from 'node:fs';
-import { SchnorrInitializerlessAccountContractArtifact } from '@aztec/accounts/schnorr';
-import { FunctionSelector } from '@aztec/stdlib/abi';
+import { SchnorrInitializerlessAccountContractArtifact } from '@aztec-labs/accounts/schnorr';
+import { FunctionSelector } from '@aztec-labs/stdlib/abi';
 import { describe, expect, test } from 'vitest';
 import { MAX_ALLOWED_ACCOUNT_CLASSES, MAX_ALLOWED_TARGETS } from '../../config/schema.js';
 import {
@@ -54,7 +54,7 @@ describe('account-entrypoint selector golden', () => {
     expect(entrypoint, 'the account artifact must have an entrypoint function').toBeDefined();
     const selector = await FunctionSelector.fromNameAndParameters(entrypoint?.name ?? '', entrypoint?.parameters ?? []);
     // Same golden the TXE suite asserts for the contract's comptime signature
-    // string. If @aztec/accounts changes the entrypoint ABI, this fails; if
+    // string. If @aztec-labs/accounts changes the entrypoint ABI, this fails; if
     // someone edits the contract's string, the TXE test fails.
     expect(selector.toString()).toBe('0x9d57a239');
   });

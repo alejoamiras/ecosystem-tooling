@@ -6,7 +6,7 @@ name: Release
 #
 # Modes (plan aztec-5-stable D2v3/D16):
 #   release   — the real thing. version must equal config.aztecVersion AND every package
-#               version; REQUIRES expected-head-sha (== GITHUB_SHA) and compare-against
+#               version (X.Y.Z → `latest`; X.Y.Z-rc.N → `rc`, never `latest`); REQUIRES expected-head-sha (== GITHUB_SHA) and compare-against
 #               (== the 0.0.0-canary.g<sha> rehearsal of this exact commit).
 #   rehearsal — full-pipeline dry run. version must be 0.0.0-canary.g<short-sha of HEAD>;
 #               package manifests are overlaid to that version before pack (peers stay at
@@ -20,7 +20,7 @@ name: Release
 #               publish-time `--tag latest`, OIDC-authorized; a second tag would need manual OTP).
 #
 # Fail-closed backstop in ALL modes: every packed tarball's embedded manifest is asserted
-# (name, version == input, @aztec/* peers == aztecVersion, internal pins == input) —
+# (name, version == input, Aztec pins per scripts/lib/manifest-policy.ts, internal pins == input) —
 # `npm publish <tarball>` publishes what is IN the tarball, so a mis-configured dispatch
 # dies here instead of publishing the committed version under the wrong label.
 #
@@ -32,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions; rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
+        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions (X.Y.Z, or X.Y.Z-rc.N which publishes under `rc`); rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
         required: true
         type: string
       mode:
@@ -197,6 +197,8 @@ jobs:
             fi
           fi
           echo "Bindings OK: mode $INPUT_MODE, version $INPUT_VERSION, HEAD $GITHUB_SHA"
+      # The Nargo lock verifier parses manifests with Bun.TOML.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Verify Nargo git refs against committed lock
         run: ./scripts/verify-nargo-refs.sh
       - name: Render release notes (pre-publish — fails fast, reused verbatim by tag-release)
@@ -226,7 +228,7 @@ jobs:
 
           ## 🚀 Install
 
-          Use `__VERSION__` with an Aztec `__AZTEC_VERSION__` node/sandbox — `@aztec/*` peer dependencies install automatically. This release is also available under the `__DIST_TAG__` dist-tag.
+          Use `__VERSION__` with an Aztec `__AZTEC_VERSION__` node/sandbox — the `@aztec-labs/*` / `@aztec-foundation/*` peer dependencies install automatically. This release is also available under the `__DIST_TAG__` dist-tag.
 
           ```bash
           bun add @alejoamiras/private-fee-juice@__VERSION__
@@ -240,11 +242,14 @@ jobs:
 
           The Aztec Foundation now owns and publishes aztec-standards as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (repo: [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). `@alejoamiras/aztec-standards` is retired and will receive no further releases — migrate to the Foundation package.
 
-          ## ⚠️ Compatibility notes at 5.0.1
+          ## ⚠️ Compatibility notes at 6.0.0-rc.1
 
-          - No package-local API changes in `private-fee-juice` or `aztec-benchmark` in the initial 5.0.1 release. (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 5.0.1, not your fix.)
-          - Upstream Aztec `5.0.1` includes two breaking changes enforced through the exact `@aztec/*` peers: the fee payer must be set in the non-revertible phase ([#24479](https://github.com/AztecProtocol/aztec-packages/pull/24479)), and note-history validation helpers are re-siloed/renamed ([#24644](https://github.com/AztecProtocol/aztec-packages/pull/24644)).
-          - **The canonical PrivateFPC address CHANGED at 5.0.1** (recompiled bytecode): the 5.0.1 canonical address is `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0`. The 5.0.0 address `0x257aa8701e8801b2c03a6b03cdf385c4fa9200efda1dc41f94a905980efc86e9` is STALE for 5.0.1 — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
+          - **Release candidate, opt-in.** Published under the `rc` dist-tag; `latest` stays on the Aztec 5 releases. Install the exact version above (or `@rc`). (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 6.0.0-rc.1, not your fix.)
+          - **Breaking: new npm scopes.** Aztec 6 moved `@aztec/*` to `@aztec-labs/*`, with `bb.js` and `l1-artifacts` under `@aztec-foundation/*` (`viem` stays `npm:@aztec/viem`). Every package's peers are exact `6.0.0-rc.1` pins on the new scopes — move your own imports with the install.
+          - **The canonical PrivateFPC address CHANGED at 6.0.0-rc.1** (recompiled bytecode): `0x0b3bc795b5c077b57920d590ecc163af18705554abf7164cb0f8c52850943c08`. The 5.0.1 address `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0` is STALE for Aztec 6 — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
+          - **quota-paymaster: new class id and a one-hour bootstrap.** Compiled against Aztec 6, QuotaFpc's class id is `0x22dd37644f0b2d9873ed029f2350d7a3e47d31a2c7b2d8bf107bb1f651504dc2` — a locally reviewed pin, not chain-verified; the Aztec 5 mainnet deployment is untouched. aztec-nr 6 enforces a 3600s minimum delay on the constructor's policy write, so a fresh deployment reads an all-zero policy and sponsors nothing for its first hour. `resolveFeeSource` takes `policyActive` and returns the `policy-inactive` reason; the operator CLI prints the activation time and refuses to measure before it.
+          - **quota-paymaster: breaking export rename.** `assertArtifactIsChainVerifiedClass` is now `assertArtifactIsLineageClass`, which accepts only the class reviewed for this package's Aztec version (`currentAztecVersion` in `known-deployments.json`), refuses a stale artifact from an earlier version, and reports whether that class is chain-verified.
+          - No other package-local API changes in `private-fee-juice` or `aztec-benchmark`.
 
           ## 📚 Docs & migration
 
@@ -308,6 +313,8 @@ jobs:
     with:
       package-dir: packages/quota-paymaster
       min-txe-tests: 20
+      # Integration and warp suites each boot their own disposable network.
+      shared-network: false
       run-warp-tests: true
 
   benchmark-build:
@@ -532,9 +539,24 @@ jobs:
             ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
           done
 
+      - name: Record the `latest` baseline (asserted unchanged after a non-latest publish)
+        run: |
+          mkdir -p latest-before
+          for pkg in $PUBLISH_PACKAGES; do
+            # Every package here already has a `latest`. A failed or empty read must fail the
+            # step: an empty baseline makes the post-publish comparison vacuous.
+            latest=$(./scripts/read-dist-tags.sh "@alejoamiras/$pkg" latest)
+            if [ -z "$latest" ]; then
+              echo "ERROR: @alejoamiras/$pkg has no latest dist-tag — surface for the manual OTP runbook" >&2; exit 1
+            fi
+            printf '%s' "$latest" > "latest-before/$pkg"
+            echo "@alejoamiras/$pkg latest before publish: $latest"
+          done
+
       - name: Publish tarballs (benchmark → private-fee-juice → quota-paymaster, idempotent)
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_MODE: ${{ inputs.mode }}
           DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
         run: |
           for pkg in $PUBLISH_PACKAGES; do
@@ -555,6 +577,15 @@ jobs:
               ./scripts/verify-dist-tag.sh "@alejoamiras/$pkg" "$INPUT_VERSION" "$DIST_TAG"
               echo "@alejoamiras/$pkg@$INPUT_VERSION already published, dist-tag '$DIST_TAG' correct — skipping (integrity + identity + tag re-verified at skip time)"
               continue
+            fi
+            # Forward-only prerelease tags: a re-run of an old rc run keeps its original SHA and
+            # passes every binding, so without this it could drag `rc` back behind a newer rc.
+            # Canaries are sha-named and unordered by design; `latest` is guarded separately.
+            if [ "$DIST_TAG" != "latest" ] && [ "$INPUT_MODE" != "rehearsal" ]; then
+              current=$(./scripts/read-dist-tags.sh "@alejoamiras/$pkg" "$DIST_TAG")
+              if [ -n "$current" ]; then
+                node scripts/release-policy.mjs --forward "$current" "$INPUT_VERSION"
+              fi
             fi
             tgz=$(ls release-tarballs/alejoamiras-"${pkg}"-*.tgz)
             # ./ prefix is load-bearing: without it npm's spec parser reads
@@ -585,7 +616,7 @@ jobs:
             # (documented >10 min) — retry dist-tags/integrity before judging.
             tagged=""
             for _ in $(seq 1 15); do
-              tags=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null || echo '{}')
+              tags=$(./scripts/read-dist-tags.sh "@alejoamiras/$pkg" 2>/dev/null || echo '{}')
               tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
               [ "$tagged" = "$INPUT_VERSION" ] && break
               sleep 20
@@ -595,6 +626,18 @@ jobs:
               echo "ERROR: dist-tag $DIST_TAG for $pkg is '$tagged', expected $INPUT_VERSION" >&2; fail=1
             fi
             latest=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).latest ?? ''")
+            # Read from the same response that already shows DIST_TAG propagated, so a lagging
+            # view cannot pass for an unchanged one. The stateless check also catches a move
+            # made by an earlier run that this recovery run would otherwise accept.
+            if [ "$DIST_TAG" != "latest" ]; then
+              if [ "$latest" = "$INPUT_VERSION" ]; then
+                echo "ERROR: latest for $pkg is $INPUT_VERSION, which was published under '$DIST_TAG' — surface for the manual OTP runbook" >&2; fail=1
+              fi
+              before=$(cat "latest-before/$pkg")
+              if [ "$latest" != "$before" ]; then
+                echo "ERROR: latest for $pkg moved during this run ($before -> $latest)" >&2; fail=1
+              fi
+            fi
             case "$latest" in
               0.0.0-*)
                 # canary.yml's old hygiene assert, kept in ALL modes: a first-publish can

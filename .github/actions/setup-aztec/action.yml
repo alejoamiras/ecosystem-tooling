@@ -22,7 +22,7 @@ inputs:
     required: false
     default: '.'
   foundry-version:
-    description: Foundry toolchain version (pinned; matches upstream aztec-packages' own pin at v5.0.0)
+    description: Foundry toolchain version (pinned; matches the upstream installer's versions manifest, still 1.4.1 at 6.0.0-rc.1)
     required: false
     default: 'v1.4.1'
 
@@ -67,7 +67,7 @@ runs:
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "AZTEC_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-    - uses: foundry-rs/foundry-toolchain@c7450ba673e133f5ee30098b3b54f444d3a2ca2d # v1
+    - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
       with:
         version: ${{ inputs.foundry-version }}
 

@@ -2,11 +2,11 @@
  * Shared helpers for the integration and warp suites. Kept out of the test
  * files so both suites drive the contract through IDENTICAL code paths.
  */
-import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
 import type { FpcTestTargetContract } from '../../artifacts/FpcTestTarget.js';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
 import { buildSandwichPayload } from '../sandwich.js';
-import { type Ctx, sendFromPaymaster } from './harness.js';
+import { type Ctx, chainTimestamp, sendFromPaymaster, warpChainTo, warpChainToDayStart } from './harness.js';
 
 export const ZERO = AztecAddress.fromStringUnsafe(`0x${'0'.repeat(64)}`);
 export const MAX_FEE = 10n ** 20n;
@@ -17,12 +17,12 @@ export const MAX_USERS = 40;
  * The harness accounts are schnorr_initializerless — the same class the
  * embedded wallet deploys in production — so allowlisting it proves the REAL
  * positive path. Computed from the installed artifact rather than hardcoded,
- * exactly as the deploy library does, so an @aztec/accounts bump cannot
+ * exactly as the deploy library does, so an @aztec-labs/accounts bump cannot
  * silently break the suite.
  */
 export async function initializerlessClassId(): Promise<bigint> {
-  const { getContractClassFromArtifact } = await import('@aztec/aztec.js/contracts');
-  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec/accounts/schnorr');
+  const { getContractClassFromArtifact } = await import('@aztec-labs/aztec.js/contracts');
+  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec-labs/accounts/schnorr');
   const { id } = await getContractClassFromArtifact(SchnorrInitializerlessAccountContractArtifact);
   return id.toBigInt();
 }
@@ -116,12 +116,13 @@ export async function sponsorVia(
 
 /**
  * A paymaster of a test's own, for cases that mutate policy or warp the chain.
+ * It is inert until {@link activate}d.
  */
 export async function deployOwnFpc(
   ctx: Ctx,
   target: FpcTestTargetContract,
   admin: AztecAddress,
-  overrides: { maxUses?: number; maxFeeWei?: bigint } = {},
+  overrides: { maxUses?: number; maxFeeWei?: bigint; accountClasses?: bigint[] } = {},
 ): Promise<QuotaFpcContract> {
   const deploy = QuotaFpcContract.deploy(
     ctx.wallet,
@@ -130,10 +131,49 @@ export async function deployOwnFpc(
     overrides.maxUses ?? MAX_USES,
     MAX_USERS,
     [target.address, ...Array(11).fill(ZERO)],
-    [await initializerlessClassId(), 0n, 0n, 0n],
+    overrides.accountClasses ?? [await initializerlessClassId(), 0n, 0n, 0n],
     true,
   );
   await deploy.send({ from: admin });
   const instance = await deploy.register();
   return awaitPolicyReadable(instance, admin);
+}
+
+/** When the constructor's bundle goes live: `get_scheduled_settings().1`. */
+export async function activatesAt(fpc: QuotaFpcContract, from: AztecAddress): Promise<bigint> {
+  const [, at] = unwrap(await fpc.methods.get_scheduled_settings().simulate({ from }));
+  return BigInt(at);
+}
+
+/**
+ * Warps past every instance's first-hour bootstrap, then waits until each one
+ * reads its live policy. Deploy everything a file needs BEFORE calling this:
+ * an instance deployed after it stays inert for another hour.
+ */
+export async function activate(ctx: Ctx, fpcs: QuotaFpcContract[], poke: () => Promise<unknown>): Promise<void> {
+  const from = ctx.addresses[0] as AztecAddress;
+  const deadlines = await Promise.all(fpcs.map((fpc) => activatesAt(fpc, from)));
+  const target = deadlines.reduce((a, b) => (a > b ? a : b)) + 1n;
+  if ((await chainTimestamp(ctx.node)) < target) await warpChainTo(ctx.node, Number(target), poke);
+  const deadline = Date.now() + 120_000;
+  for (const fpc of fpcs) {
+    for (;;) {
+      const policy = unwrap(await fpc.methods.get_policy().simulate({ from }));
+      if (Number(policy.max_users ?? policy[2]) > 0) break;
+      if (Date.now() > deadline) throw new Error(`${fpc.address} still inert after the activation warp`);
+      await poke();
+    }
+  }
+}
+
+/**
+ * Rolls to the next UTC day start only when fewer than `minHours` remain, so a
+ * file's generation cannot expire mid-run without paying a 24h warp every time.
+ * Returns the chain time after any warp.
+ */
+export async function freshDayIfShort(ctx: Ctx, poke: () => Promise<unknown>, minHours = 6): Promise<bigint> {
+  const DAY = 86_400n;
+  const now = await chainTimestamp(ctx.node);
+  if (DAY - (now % DAY) >= BigInt(minHours * 3600)) return now;
+  return warpChainToDayStart(ctx.node, poke);
 }

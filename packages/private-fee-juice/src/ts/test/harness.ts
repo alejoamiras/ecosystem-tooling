@@ -1,22 +1,21 @@
-import { L1FeeJuicePortalManager } from '@aztec/aztec.js/ethereum';
-import { Fr } from '@aztec/aztec.js/fields';
-import { isL1ToL2MessageReady } from '@aztec/aztec.js/messaging';
-import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import { createExtendedL1Client } from '@aztec/ethereum/client';
-import { EthCheatCodes, RollupCheatCodes } from '@aztec/ethereum/test';
-import { extractEvent } from '@aztec/ethereum/utils';
-import { poseidon2HashBytes, poseidon2HashWithSeparator } from '@aztec/foundation/crypto/sync';
-import { createLogger } from '@aztec/foundation/log';
-import { DateProvider } from '@aztec/foundation/timer';
-import { FeeJuicePortalAbi } from '@aztec/l1-artifacts/FeeJuicePortalAbi';
-import { FeeJuiceContract } from '@aztec/noir-contracts.js/FeeJuice';
-import { ProtocolContractAddress } from '@aztec/protocol-contracts';
-import { getPXEConfig } from '@aztec/pxe/config';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { computeSecretHash } from '@aztec/stdlib/hash';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
+import { FeeJuicePortalAbi } from '@aztec-foundation/l1-artifacts/FeeJuicePortalAbi';
+import { L1FeeJuicePortalManager } from '@aztec-labs/aztec.js/ethereum';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import { isL1ToL2MessageReady } from '@aztec-labs/aztec.js/messaging';
+import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec-labs/aztec.js/node';
+import { FeeJuiceContract } from '@aztec-labs/aztec.js/protocol';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import { createExtendedL1Client } from '@aztec-labs/ethereum/client';
+import { EthCheatCodes, RollupCheatCodes } from '@aztec-labs/ethereum/test';
+import { extractEvent } from '@aztec-labs/ethereum/utils';
+import { poseidon2HashBytes, poseidon2HashWithSeparator } from '@aztec-labs/foundation/crypto/sync';
+import { createLogger } from '@aztec-labs/foundation/log';
+import { DateProvider } from '@aztec-labs/foundation/timer';
+import { getPXEConfig } from '@aztec-labs/pxe/config';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import { computeSecretHash } from '@aztec-labs/stdlib/hash';
+import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
+import { registerInitialLocalNetworkAccountsInWallet } from '@aztec-labs/wallets/testing';
 import { getContract } from 'viem';
 
 export const LOCAL_AZTEC_NODE_URL = process.env.NODE_URL ?? 'http://localhost:8080';
@@ -69,7 +68,7 @@ export type FundFeeJuiceFromL1Options = {
  * This is the standard way to fund FPCs with the native fee token.
  */
 export async function fundL2AddressWithFeeJuiceFromL1(
-  aztecNode: Pick<AztecNode, 'getL1ToL2MessageCheckpoint' | 'getBlockData'>,
+  aztecNode: Pick<AztecNode, 'getL1ToL2MessageIndex' | 'getBlockData'>,
   wallet: Wallet,
   recipient: AztecAddress,
   opts: FundFeeJuiceFromL1Options,
@@ -98,12 +97,12 @@ export async function fundL2AddressWithFeeJuiceFromL1(
     throw new Error(`L1->L2 message not yet ingested by node for FeeJuice deposit: ${claim.messageHash}`);
   }
 
-  const feeJuice = FeeJuiceContract.at(ProtocolContractAddress.FeeJuice, wallet);
+  const feeJuice = FeeJuiceContract.withWallet(wallet);
   await feeJuice.methods
     .claim(recipient, claim.claimAmount, claim.claimSecret, new Fr(claim.messageLeafIndex))
     .send({ from: opts.claimTxSender });
 
-  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
+  const { getFeeJuiceBalance } = await import('@aztec-labs/aztec.js/utils');
   const balance = await getFeeJuiceBalance(recipient, aztecNode as any);
   return { balance };
 }
@@ -147,7 +146,7 @@ export type BridgeForMintResult = {
  * @param opts          Optional L1 RPC URL, mnemonic, poll settings, logger name
  */
 export async function bridgeForMint(
-  aztecNode: Pick<AztecNode, 'getL1ToL2MessageCheckpoint' | 'getBlockData' | 'getNodeInfo'>,
+  aztecNode: Pick<AztecNode, 'getL1ToL2MessageIndex' | 'getBlockData' | 'getNodeInfo'>,
   fpcAddress: AztecAddress,
   claimer: AztecAddress,
   salt: Fr,

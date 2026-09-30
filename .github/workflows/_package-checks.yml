@@ -12,7 +12,14 @@ on:
         type: boolean
         default: true
       run-js-tests:
-        description: Run the vitest suite against a local network
+        description: Run the package's `test:js` script
+        type: boolean
+        default: true
+      shared-network:
+        description: >-
+          Start the job's shared `aztec start --local-network` before `test:js`.
+          Off for a package whose suites all self-provision a disposable
+          network — a second idle node only competes for the runner's memory.
         type: boolean
         default: true
       runner:
@@ -70,7 +77,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-aztec
         with:
-          start-local-network: 'true'
+          start-local-network: ${{ inputs.shared-network && 'true' || 'false' }}
           run-compile: 'true'
           run-codegen: 'true'
           working-directory: ${{ inputs.package-dir }}
@@ -79,15 +86,17 @@ jobs:
       - name: Typecheck (full surface — src, tests, benchmarks, scripts)
         working-directory: ${{ inputs.package-dir }}
         run: bun run typecheck
-      - name: Run vitest suite (PTY-wrapped)
+      - name: Run the package's test:js (PTY-wrapped)
         working-directory: ${{ inputs.package-dir }}
-        run: script -e -c "NODE_NO_WARNINGS=1 bunx vitest run" /dev/null
+        # The package script, not a bare `vitest run`: each package owns which
+        # configs its suite spans (quota-paymaster: unit, then integration).
+        run: script -e -c "NODE_NO_WARNINGS=1 bun run test:js" /dev/null
       - name: Run time-travel suite (self-provisioned disposable network)
         if: inputs.run-warp-tests
         working-directory: ${{ inputs.package-dir }}
-        # Deliberately AFTER the main suite, and a hardcoded script name: the
-        # warp config boots its own network on ephemeral ports and tears it
-        # down by owned pgid, so the job's shared network is never warped.
+        # A hardcoded script name: the warp config boots its own network on
+        # ephemeral ports and tears it down by owned pgid, so a shared network
+        # is never warped.
         run: script -e -c "NODE_NO_WARNINGS=1 bun run test:warp" /dev/null
       - name: Verify published package surface (packaging + canonical gates)
         working-directory: ${{ inputs.package-dir }}

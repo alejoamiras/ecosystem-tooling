@@ -1,6 +1,6 @@
 # Quota Paymaster — Product Requirements
 
-**Target Aztec Version**: 5.0.1
+**Target Aztec Version**: 6.0.0-rc.1
 
 ## Problem Statement
 
@@ -30,9 +30,11 @@ budgeted, abuse-bounded fee sponsorship that requires no changes to their contra
 
 ## Requirements (contract — vendored, not designed here)
 
-The contract is byte-verbatim from the mainnet-proven Dark Forest deployment (class id
-`0x115cfdfd…62fc`, chain-verified; see `known-deployments.json` for provenance and the
-enumerated, class-id-neutral deviations). Its behavioral requirements are pinned by tests
+The contract is vendored from the mainnet-proven Dark Forest deployment (Aztec 5.0.1, class
+id `0x115cfdfd…62fc`, chain-verified). From Aztec 6 it carries one reviewed behavioral edit:
+aztec-nr's 3600s minimum delay makes the bootstrap delay 1h, so a fresh deployment is inert
+for its first hour. `known-deployments.json` enumerates every deviation and pins each Aztec
+version's compiled class id (only 5.0.1's is chain-verified). Its behavioral requirements are pinned by tests
 rather than restated: see the Test Coverage Matrix.
 
 ## Requirements (SDK / operator)
@@ -69,16 +71,18 @@ rather than restated: see the Test Coverage Matrix.
 
 On every lockstep bump (`bun scripts/bump-aztec.ts`):
 
-1. `verify:lineage` MUST fail (new toolchain ⇒ recompiled artifact). Recompile; if the class
-   id changed, that is a REAL divergence from the live deployment — record the new id and
-   its consequences (a redeploy strands the old instance's balance) before proceeding.
+1. `verify:lineage` MUST fail: no anchor exists for the new `config.aztecVersion`. Recompile,
+   review the new class id and its consequences (live instances are not upgraded; moving to
+   the new class means a redeploy, which strands the old instance's balance), then record it
+   under `compiled[<version>]` with `verifiedAgainstChain: false`.
 2. Re-verify teardown-gas billing semantics against the new `gas_settings.ts` (the fee
-   ceiling mirrors `getFeeLimit()`, which does NOT add teardown at 5.0.1).
+   ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0-rc.1).
 3. Recompute account class ids (`verifyAccountClassIds` refuses stale configs) — an
-   `@aztec/accounts` bump changes them and requires paymaster redeploys.
+   `@aztec-labs/accounts` bump changes them and requires paymaster redeploys.
 
 ## Version History
 
 | Version | Date | Notes |
 |---|---|---|
 | 5.0.1 | 2026-08-05 | Extraction from dark-forest-aztec (worktree-quota-fpc @ f1943d8); chain-verified lineage; §6 gaps closed |
+| 6.0.0-rc.1 | 2026-09-30 | Aztec 6 (`@aztec-labs/*` scopes); 1h bootstrap delay; per-version lineage anchors; `policy-inactive` fee-source reason |

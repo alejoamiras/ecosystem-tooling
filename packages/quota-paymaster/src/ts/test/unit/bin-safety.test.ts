@@ -548,7 +548,7 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
       path,
       [
         `import { defineOperatorConfig } from './src/ts/operator/config.js';`,
-        `import { AztecAddress } from '@aztec/aztec.js/addresses';`,
+        `import { AztecAddress } from '@aztec-labs/aztec.js/addresses';`,
         `export default defineOperatorConfig(async () => ({`,
         `  node: { getNodeInfo: async () => ({ l1ChainId: 1, rollupVersion: 1 }) },`,
         `  wallet: { getChainInfo: async () => ({ chainId: 1n, version: 1n }) },`,
@@ -567,7 +567,7 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
     // a SUCCESSFUL bridge would mean printing success and then failing, an
     // invitation to deposit twice.
     // INSIDE the package: a config module's own imports resolve from ITS
-    // location, so one written to a temp dir cannot resolve @aztec/*.
+    // location, so one written to a temp dir cannot resolve @aztec-labs/*.
     const path = join(PKG_ROOT, `.tmp-dispose-${process.pid}.config.mjs`);
     cleanups.push(() => rmSync(path, { force: true }));
     // The context must VALIDATE, so that the refusal happens inside
@@ -576,7 +576,7 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
       path,
       [
         `import { defineOperatorConfig } from './src/ts/operator/config.js';`,
-        `import { AztecAddress } from '@aztec/aztec.js/addresses';`,
+        `import { AztecAddress } from '@aztec-labs/aztec.js/addresses';`,
         `export default defineOperatorConfig(async () => ({`,
         `  node: { getNodeInfo: async () => ({ l1ChainId: 1, rollupVersion: 1 }) },`,
         `  wallet: { getChainInfo: async () => ({ chainId: 1n, version: 1n }) },`,
@@ -605,7 +605,7 @@ describe('published CLI: malformed input is a REFUSAL, not a crash', () => {
       path,
       [
         `import { defineOperatorConfig } from './src/ts/operator/config.js';`,
-        `import { AztecAddress } from '@aztec/aztec.js/addresses';`,
+        `import { AztecAddress } from '@aztec-labs/aztec.js/addresses';`,
         `export default defineOperatorConfig(async () => ({`,
         `  node: { getNodeInfo: async () => ({ l1ChainId: 1, rollupVersion: 1 }) },`,
         `  wallet: { getChainInfo: async () => ({ chainId: 1n, version: 1n }) },`,

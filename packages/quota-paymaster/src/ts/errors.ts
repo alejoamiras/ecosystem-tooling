@@ -25,7 +25,9 @@ export type QuotaUnavailableReason =
   /** This call targets a contract the paymaster does not sponsor. */
   | 'not-sponsored'
   /** Sponsorship was narrowed and this user's seat fell outside the new cap. */
-  | 'seat-revoked';
+  | 'seat-revoked'
+  /** The paymaster's policy has not taken effect yet (a fresh deployment's first hour). */
+  | 'policy-inactive';
 
 /**
  * Instances constructed by THIS module — populated in the constructor, so a

@@ -7,7 +7,7 @@
  * functions, so the integration suite compares them against a live node; here
  * we pin the pure-TS behaviour and the domain separators.
  */
-import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
 import { describe, expect, test } from 'vitest';
 import {
   computePlayerNullifier,

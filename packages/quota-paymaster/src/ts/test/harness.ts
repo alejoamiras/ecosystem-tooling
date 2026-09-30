@@ -4,16 +4,16 @@
  *
  * Network endpoints follow the repo convention: NODE_URL (default
  * http://localhost:8080) and L1_RPC_URL (default http://127.0.0.1:8545). The
- * warp suite OVERRIDES both via its self-provisioned network's env.
+ * integration and warp configs OVERRIDE both via their disposable network's env.
  */
-import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec/aztec.js/node';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
-import { DefaultEntrypoint } from '@aztec/entrypoints/default';
-import { Fr } from '@aztec/foundation/curves/bn254';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { Gas, GasSettings } from '@aztec/stdlib/gas';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import type { ExecutionPayload } from '@aztec/stdlib/tx';
+import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec-labs/aztec.js/node';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
+import { DefaultEntrypoint } from '@aztec-labs/entrypoints/default';
+import { Fr } from '@aztec-labs/foundation/curves/bn254';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import { Gas, GasSettings } from '@aztec-labs/stdlib/gas';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
+import type { ExecutionPayload } from '@aztec-labs/stdlib/tx';
 
 export const NODE_URL = process.env.NODE_URL ?? 'http://localhost:8080';
 export const L1_RPC_URL = process.env.L1_RPC_URL ?? 'http://127.0.0.1:8545';
@@ -30,14 +30,14 @@ export const TEARDOWN_GAS_LIMITS = new Gas(5_000, 500_000);
 
 export interface Ctx {
   node: AztecNode;
-  // biome-ignore lint/suspicious/noExplicitAny: EmbeddedWallet's full surface is not typed against the Wallet interface at 5.0.1
+  // biome-ignore lint/suspicious/noExplicitAny: EmbeddedWallet's full surface is not typed against the Wallet interface
   wallet: any;
   addresses: AztecAddress[];
 }
 
 export async function connect(): Promise<Ctx> {
-  const { EmbeddedWallet } = await import('@aztec/wallets/embedded');
-  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec/wallets/testing');
+  const { EmbeddedWallet } = await import('@aztec-labs/wallets/embedded');
+  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec-labs/wallets/testing');
 
   const node = createAztecNodeClient(NODE_URL);
   await waitForNode(node);
@@ -56,8 +56,7 @@ export async function chainTimestamp(node: AztecNode): Promise<bigint> {
 /**
  * Moves the chain to just after the next UTC midnight. Allowance notes are
  * keyed to a generation (a UTC day), so warp tests start a fresh day to be
- * deterministic rather than clock-dependent. WARP SUITE ONLY: warping is
- * global and irreversible; never point this at a shared network.
+ * deterministic rather than clock-dependent.
  */
 export async function warpChainToDayStart(node: AztecNode, poke?: () => Promise<unknown>): Promise<bigint> {
   const DAY = 86_400n;
@@ -68,21 +67,36 @@ export async function warpChainToDayStart(node: AztecNode, poke?: () => Promise<
 }
 
 async function debugClient() {
-  const { createAztecNodeDebugClient } = await import('@aztec/stdlib/interfaces/client');
+  const { createAztecNodeDebugClient } = await import('@aztec-labs/stdlib/interfaces/client');
   // biome-ignore lint/suspicious/noExplicitAny: the debug client's warp surface is untyped
   return createAztecNodeDebugClient(NODE_URL) as any;
 }
 
-async function warpChainTo(node: AztecNode, target: number, poke?: () => Promise<unknown>) {
+/**
+ * Warping is global and irreversible, so it is refused unless NODE_URL is the
+ * disposable network this vitest run's globalSetup booted and owns.
+ */
+function assertDisposable(): void {
+  if (!process.env.DISPOSABLE_NODE_URL || process.env.DISPOSABLE_NODE_URL !== NODE_URL) {
+    throw new Error(`refusing to warp ${NODE_URL}: not this run's disposable network`);
+  }
+}
+
+export async function warpChainTo(node: AztecNode, target: number, poke?: () => Promise<unknown>) {
+  assertDisposable();
   const debug = await debugClient();
   await debug.warpL2TimeAtLeastTo(target);
   // The warp moves the clock, but a block still has to be built for the new
   // time to be observable — an idle local chain produces none on its own.
-  if (poke) await poke();
+  if (!poke) return;
+  await poke();
+  const after = await chainTimestamp(node);
+  if (after < BigInt(target)) throw new Error(`Warp did not take: chain at ${after}, expected at least ${target}`);
 }
 
-/** Fast-forwards the local chain by at least `seconds`. WARP SUITE ONLY. */
+/** Fast-forwards the local chain by at least `seconds`. */
 export async function warpChainBy(node: AztecNode, seconds: number, poke?: () => Promise<unknown>): Promise<bigint> {
+  assertDisposable();
   const before = await chainTimestamp(node);
   const debug = await debugClient();
   if (typeof debug.warpL2TimeAtLeastBy !== 'function') {
@@ -144,12 +158,12 @@ export async function fundWithFeeJuice(
   claimFrom: AztecAddress,
   poke?: () => Promise<unknown>,
 ) {
-  const { L1FeeJuicePortalManager } = await import('@aztec/aztec.js/ethereum');
-  const { createEthereumChain } = await import('@aztec/ethereum/chain');
-  const { createExtendedL1Client } = await import('@aztec/ethereum/client');
-  const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
-  const { createLogger } = await import('@aztec/foundation/log');
-  const { isL1ToL2MessageReady } = await import('@aztec/aztec.js/messaging');
+  const { L1FeeJuicePortalManager } = await import('@aztec-labs/aztec.js/ethereum');
+  const { createEthereumChain } = await import('@aztec-labs/ethereum/chain');
+  const { createExtendedL1Client } = await import('@aztec-labs/ethereum/client');
+  const { FeeJuiceContract } = await import('@aztec-labs/aztec.js/protocol');
+  const { createLogger } = await import('@aztec-labs/foundation/log');
+  const { isL1ToL2MessageReady } = await import('@aztec-labs/aztec.js/messaging');
 
   const info = await node.getNodeInfo();
   // TEST-ONLY, LOCAL-ONLY: anvil's well-known first default key, guarded by
@@ -174,7 +188,7 @@ export async function fundWithFeeJuice(
     await new Promise((r) => setTimeout(r, 1500));
   }
 
-  await FeeJuiceContract.at(wallet)
+  await FeeJuiceContract.withWallet(wallet)
     .methods.claim(recipient, claim.claimAmount, Fr.fromString(claim.claimSecret.toString()), claim.messageLeafIndex)
     .send({ from: claimFrom });
 }

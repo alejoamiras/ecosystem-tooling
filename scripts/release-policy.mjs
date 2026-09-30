@@ -13,16 +13,19 @@
 //   | mode      | version              | set-latest | publish tag |
 //   |-----------|----------------------|------------|-------------|
 //   | release   | X.Y.Z (== aztec)     | false      | latest      |
+//   | release   | X.Y.Z-rc.N (== aztec)| false      | rc          |
 //   | rehearsal | 0.0.0-canary.g<sha>  | false      | canary      |
 //   | revision  | <aztec>-revision.N   | false      | revision    |
 //   | revision  | <aztec>-revision.N   | true       | latest      |
 //   | non-revision (release/rehearsal) with set-latest=true  ->  REJECT
+//   | revision on a prerelease aztecVersion (6.0.0-rc.1-revision.N)  ->  REJECT
 
 import { pathToFileURL } from 'node:url';
 
 const MODES = ['release', 'rehearsal', 'revision'];
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$/;
 const CANARY_RE = /^0\.0\.0-canary\.g[0-9a-f]{7,40}$/;
+const RC_RE = /^[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$/;
 const NPM_TAG_RE = /^[a-z][a-z0-9-]*$/;
 
 function escapeRe(s) {
@@ -37,11 +40,19 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
   if (!MODES.includes(mode)) {
     return { error: `unknown mode: ${mode} (expected one of ${MODES.join(', ')})` };
   }
-  if (typeof version !== 'string' || !SEMVER_RE.test(version)) {
-    return { error: `invalid semver input: ${version}` };
-  }
   if (typeof aztecVersion !== 'string' || !SEMVER_RE.test(aztecVersion)) {
     return { error: `invalid aztecVersion: ${aztecVersion}` };
+  }
+  // Checked before the version shape so the rule is explicit rather than an accident of
+  // SEMVER_RE (whose prerelease class has no '-', so `<rc>-revision.N` never parses anyway).
+  // Ship the next rc instead: a revision sorts below its base and `@rc` would never reach it.
+  if (mode === 'revision' && aztecVersion.includes('-')) {
+    return {
+      error: `revision mode: aztecVersion ${aztecVersion} is a prerelease — revisions of an rc are not supported`,
+    };
+  }
+  if (typeof version !== 'string' || !SEMVER_RE.test(version)) {
+    return { error: `invalid semver input: ${version}` };
   }
   if (typeof setLatest !== 'boolean') {
     return { error: `setLatest must be a boolean (got ${typeof setLatest})` };
@@ -52,8 +63,8 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
   // Per-mode version shape.
   switch (mode) {
     case 'release':
-      if (hasPre) {
-        return { error: `release mode: version must be a plain X.Y.Z (got prerelease ${version})` };
+      if (hasPre && !RC_RE.test(version)) {
+        return { error: `release mode: version must be a plain X.Y.Z or X.Y.Z-rc.N (got prerelease ${version})` };
       }
       if (version !== aztecVersion) {
         return { error: `release mode: input ${version} != config.aztecVersion ${aztecVersion}` };
@@ -162,6 +173,42 @@ export function validatePackagesSubset({ mode, packages, releasePackages }) {
   return { packages: all.filter((p) => deduped.includes(p)) };
 }
 
+/**
+ * SemVer 2.0 precedence for the X.Y.Z[-pre] shapes SEMVER_RE admits (no build metadata).
+ * Throws on anything else: a comparator that guesses would turn a malformed registry value
+ * into a pass on the forward-only tag check.
+ *
+ * @returns {-1 | 0 | 1}
+ */
+export function compareSemver(a, b) {
+  for (const v of [a, b]) {
+    if (typeof v !== 'string' || !SEMVER_RE.test(v)) throw new Error(`not a comparable semver: ${v}`);
+  }
+  const split = (v) => {
+    const dash = v.indexOf('-');
+    const core = (dash === -1 ? v : v.slice(0, dash)).split('.').map(Number);
+    return { core, pre: dash === -1 ? [] : v.slice(dash + 1).split('.') };
+  };
+  const sign = (n) => (n < 0 ? -1 : n > 0 ? 1 : 0);
+  const x = split(a);
+  const y = split(b);
+  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return sign(x.core[i] - y.core[i]);
+  // A release outranks every prerelease of the same core.
+  if (x.pre.length === 0 || y.pre.length === 0) return sign(y.pre.length - x.pre.length);
+  for (let i = 0; i < Math.min(x.pre.length, y.pre.length); i++) {
+    const [p, q] = [x.pre[i], y.pre[i]];
+    if (p === q) continue;
+    const [pn, qn] = [/^[0-9]+$/.test(p), /^[0-9]+$/.test(q)];
+    if (pn && qn) return sign(Number(p) - Number(q));
+    if (pn !== qn) return pn ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return sign(x.pre.length - y.pre.length);
+}
+
+// CLI: node scripts/release-policy.mjs --forward <current> <candidate>
+// Exit 0 iff candidate > current; used before re-pointing an existing prerelease dist-tag.
+//
 // CLI: node scripts/release-policy.mjs <mode> <version> <aztecVersion> <setLatest> [packages] [releasePackages]
 // Prints `dist_tag=...` / `prerelease_flag=...` on stdout (for $GITHUB_OUTPUT); exit 1 on
 // any policy violation with the reason on stderr.
@@ -170,7 +217,22 @@ export function validatePackagesSubset({ mode, packages, releasePackages }) {
 // literal space (or other URL-encodable char) in the checkout path, while import.meta.url is
 // percent-encoded — so on a runner whose work dir contains a space the guard would be false and
 // the CLI block would silently no-op (exit 0, empty stdout → an empty dist-tag downstream).
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain && process.argv[2] === '--forward') {
+  const [current, candidate] = process.argv.slice(3);
+  let order;
+  try {
+    order = compareSemver(candidate, current);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+  if (order !== 1) {
+    console.error(`${candidate} is not newer than ${current} — refusing to move the tag backwards or sideways`);
+    process.exit(1);
+  }
+  process.stdout.write(`forward: ${current} -> ${candidate}\n`);
+} else if (isMain) {
   const [mode, version, aztecVersion, setLatestRaw, packagesRaw, releasePackagesRaw] = process.argv.slice(2);
   if (setLatestRaw !== undefined && setLatestRaw !== 'true' && setLatestRaw !== 'false') {
     console.error(`set-latest must be 'true' or 'false' (got '${setLatestRaw}')`);

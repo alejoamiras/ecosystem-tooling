@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { Fr } from '@aztec/aztec.js/fields';
-import { PublicKeys } from '@aztec/aztec.js/keys';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { getContractInstanceFromInstantiationParams } from '@aztec-labs/aztec.js/contracts';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import { PublicKeys } from '@aztec-labs/aztec.js/keys';
 import { describe, expect, it } from 'vitest';
 import { PrivateFPCContractArtifact } from '../../artifacts/PrivateFPC.js';
 
@@ -21,7 +21,7 @@ describe('canonical-deployment.json matches the compiled artifact', () => {
 
   it('aztecVersion matches the package pin', () => {
     const pkg = JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8'));
-    const pinned = pkg.peerDependencies?.['@aztec/aztec.js'] ?? pkg.devDependencies?.['@aztec/aztec.js'];
+    const pinned = pkg.peerDependencies?.['@aztec-labs/aztec.js'] ?? pkg.devDependencies?.['@aztec-labs/aztec.js'];
     expect(canonical.aztecVersion).toBe(pinned);
   });
 

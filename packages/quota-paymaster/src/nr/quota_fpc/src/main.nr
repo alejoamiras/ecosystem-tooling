@@ -91,10 +91,12 @@ contract QuotaFpc {
     /// shorten its own warning window. NOTHING in this contract takes effect
     /// faster than this — there is no pause and no fast lever.
     global UPDATE_DELAY_SECONDS: u64 = 43200; // 12 hours
-    /// The delay the storage variable is BORN with. Must be zero so the
-    /// constructor's first write lands immediately; the real delay is applied
-    /// in the same constructor. See the ordering note there.
-    global BOOTSTRAP_DELAY: u64 = 0;
+    /// The delay the storage variable is BORN with, so the constructor's first
+    /// write waits this long too: a fresh deployment reads an all-zero bundle,
+    /// sponsoring nothing, for its first hour. aztec-nr rejects anything below
+    /// 3600. The real delay is applied in the same constructor. See the
+    /// ordering note there.
+    global BOOTSTRAP_DELAY: u64 = 3600;
 
     global SEAT_NULLIFIER_SEPARATOR: u32 = 1397047636; // "SEAT" (0x53454154)
     global PLAYER_NULLIFIER_SEPARATOR: u32 = 1347180882; // "PLYR" (0x504c5952)
@@ -157,7 +159,7 @@ contract QuotaFpc {
     /// earlier cohort keeps spending under a later, higher `max_fee`.
     #[derive(Packable, Eq)]
     #[note]
-    struct QuotaNote {
+    pub struct QuotaNote {
         spent: u32,
         seat: u32,
         generation: u32,
@@ -208,13 +210,12 @@ contract QuotaFpc {
 
         // ORDER IS LOAD-BEARING. `DelayedPublicMutable` has no direct-write
         // path — every write goes through the current delay, including the
-        // first. The generic delay is therefore 0 so this write lands NOW; the
-        // delay is raised immediately afterwards, which is allowed because
-        // delay INCREASES take effect at once (decreases are themselves
-        // delayed). Swap these two lines and the contract returns an all-zero
-        // bundle — sponsoring nothing, silently — for the first 12 hours after
-        // every deploy, because an unset delayed value reads as zeroes rather
-        // than erroring.
+        // first — so this write lands BOOTSTRAP_DELAY (1 hour) from now, and
+        // until then the bundle reads as zeroes rather than erroring. The delay
+        // is raised immediately afterwards, which is allowed because delay
+        // INCREASES take effect at once (decreases are themselves delayed) and
+        // leaves the already-scheduled write where it is. Swap these two lines
+        // and every deploy sponsors nothing for 12 hours instead of 1.
         self.storage.settings.schedule_value_change(bundle);
         self.storage.settings.schedule_delay_change(UPDATE_DELAY_SECONDS);
 

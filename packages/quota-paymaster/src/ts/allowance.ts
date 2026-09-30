@@ -70,6 +70,13 @@ export interface FeeSourceInputs {
   paymasterBalance: bigint;
   /** Below this the paymaster is treated as unable to sponsor. */
   minPaymasterBalance: bigint;
+  /**
+   * Whether the paymaster's policy is in force — pass `policy.max_users > 0` from
+   * `get_policy`. A fresh deployment reads an all-zero policy for its first hour and
+   * sponsors nothing. Omitted keeps the old behavior, where a zero `max_users` makes
+   * a seat lookup throw.
+   */
+  policyActive?: boolean;
 }
 
 /**
@@ -97,6 +104,10 @@ export async function resolveFeeSource(inputs: FeeSourceInputs): Promise<FeeSour
       return { kind: 'self' };
     }
     return { kind: 'blocked', reason: 'sync-pending' };
+  }
+
+  if (inputs.policyActive === false) {
+    return fallback('policy-inactive');
   }
 
   // A generation chosen before midnight is no longer accepted after it; the

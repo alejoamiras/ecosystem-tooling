@@ -11,9 +11,9 @@
 import { defineOperatorConfig } from '../src/ts/operator/config.js';
 
 export default defineOperatorConfig(async () => {
-  const { createAztecNodeClient, waitForNode } = await import('@aztec/aztec.js/node');
-  const { EmbeddedWallet } = await import('@aztec/wallets/embedded');
-  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec/wallets/testing');
+  const { createAztecNodeClient, waitForNode } = await import('@aztec-labs/aztec.js/node');
+  const { EmbeddedWallet } = await import('@aztec-labs/wallets/embedded');
+  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec-labs/wallets/testing');
 
   const node = createAztecNodeClient(process.env.NODE_URL ?? 'http://localhost:8080');
   await waitForNode(node);

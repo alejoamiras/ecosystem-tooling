@@ -11,13 +11,13 @@ import { generationAt } from '../../generation.js';
 import { measureSponsoredFee } from '../../operator/measure.js';
 import { buildSandwichPayload } from '../../sandwich.js';
 import { type Ctx, chainTimestamp, connect, evidence, fundWithFeeJuice, sendFromPaymaster } from '../harness.js';
-import { allowanceOf, callsOf, deployOwnFpc, MAX_USES, unwrap } from '../suite-helpers.js';
+import { activate, callsOf, deployOwnFpc, freshDayIfShort, MAX_USES, unwrap } from '../suite-helpers.js';
 
 describe('measureSponsoredFee (live)', () => {
   let ctx: Ctx;
   let target: FpcTestTargetContract;
   let fpc: QuotaFpcContract;
-  let player: import('@aztec/stdlib/aztec-address').AztecAddress;
+  let player: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
   let generation: number;
 
   beforeAll(async () => {
@@ -29,9 +29,10 @@ describe('measureSponsoredFee (live)', () => {
     // Its own paymaster: measurement consumes allowance, and the main suite's
     // shared instance must not lose uses to it.
     fpc = await deployOwnFpc(ctx, target, player);
-    await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, () =>
-      target.methods.ping().send({ from: player }),
-    );
+    const poke = () => target.methods.ping().send({ from: player });
+    await fundWithFeeJuice(ctx.node, ctx.wallet, fpc.address, 10n ** 21n, player, poke);
+    await activate(ctx, [fpc], poke);
+    await freshDayIfShort(ctx, poke);
     generation = generationAt(await chainTimestamp(ctx.node));
   });
 

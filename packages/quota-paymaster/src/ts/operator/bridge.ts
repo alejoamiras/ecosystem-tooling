@@ -17,13 +17,13 @@
  * claimFeeJuice can consume directly.
  */
 
-import type { ExtendedViemWalletClient } from '@aztec/ethereum/types';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import type { ExtendedViemWalletClient } from '@aztec-labs/ethereum/types';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
 import { type ConfirmAction, confirmAndRevalidate, createActionPlan } from './action-plan.js';
 import { OperatorConfigError } from './config-module.js';
 import { appendJournalRecord, BRIDGE_JOURNAL_FILE, type JournalHandle, withJournalLock } from './internal/journal.js';
 
-/** The L1 client surface this module needs (an @aztec/ethereum extended client). */
+/** The L1 client surface this module needs (an @aztec-labs/ethereum extended client). */
 /** The fee-juice claim takes a u128 amount (verified against the 5.0.1 FeeJuice artifact). */
 export const MAX_FEE_JUICE_AMOUNT_WEI = (1n << 128n) - 1n;
 
@@ -189,11 +189,11 @@ export async function bridgeFeeJuice(deps: BridgeDeps, request: BridgeRequest): 
 
   const [{ generateClaimSecret }, { FeeJuicePortalAbi }, { IERC20Abi }, { extractEvent }, { createLogger }] =
     await Promise.all([
-      import('@aztec/aztec.js/ethereum'),
-      import('@aztec/l1-artifacts/FeeJuicePortalAbi'),
-      import('@aztec/l1-artifacts/IERC20Abi'),
-      import('@aztec/ethereum/utils'),
-      import('@aztec/foundation/log'),
+      import('@aztec-labs/aztec.js/ethereum'),
+      import('@aztec-foundation/l1-artifacts/FeeJuicePortalAbi'),
+      import('@aztec-foundation/l1-artifacts/IERC20Abi'),
+      import('@aztec-labs/ethereum/utils'),
+      import('@aztec-labs/foundation/log'),
     ]);
   const logger = createLogger('quota-paymaster:bridge');
 

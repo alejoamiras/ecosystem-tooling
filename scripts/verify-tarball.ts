@@ -13,6 +13,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
+import { type Manifest, optionalPeers, validateManifest } from './lib/manifest-policy.ts';
+
 type Check =
   | { kind: 'import' | 'require' | 'file' | 'json' | 'absent-dir'; spec: string }
   | { kind: 'absent-match'; spec: string; pattern: RegExp }
@@ -46,14 +48,14 @@ const CHECKS: Record<string, Check[]> = {
     // relatively, so a tarball without it gives every npm reader a dead link.
     { kind: 'file', spec: 'node_modules/@alejoamiras/quota-paymaster/INTEGRATING.md' },
     {
-      // The SDK loads its cryptography LAZILY (dynamic import of @aztec/stdlib/hash inside
+      // The SDK loads its cryptography LAZILY (dynamic import of @aztec-labs/stdlib/hash inside
       // seat-picker) — a tarball missing that runtime dep passes a plain root-import check
       // green and explodes at first real use. EXECUTE a lazy path in the clean room.
       kind: 'exec',
-      spec: 'lazy path: hasSubscribed → dynamic @aztec/stdlib/hash',
+      spec: 'lazy path: hasSubscribed → dynamic @aztec-labs/stdlib/hash',
       script: `
         import { hasSubscribed } from '@alejoamiras/quota-paymaster';
-        import { AztecAddress } from '@aztec/stdlib/aztec-address';
+        import { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
         const addr = AztecAddress.fromStringUnsafe('0x' + '1'.repeat(64));
         const node = { findLeavesIndexes: async () => [undefined] };
         const result = await hasSubscribed({ node, fpcAddress: addr, generation: 1, player: addr });
@@ -64,9 +66,9 @@ const CHECKS: Record<string, Check[]> = {
       // Same rationale for the OPERATOR entry's lazy paths (post-impl audit
       // finding #10: only probing the stdlib path leaves the other lazy peers
       // unexercised). verifyAccountClassIds dynamically imports
-      // @aztec/accounts/schnorr and hashes its artifacts — CPU-only.
+      // @aztec-labs/accounts/schnorr and hashes its artifacts — CPU-only.
       kind: 'exec',
-      spec: 'lazy path: verifyAccountClassIds → dynamic @aztec/accounts/schnorr',
+      spec: 'lazy path: verifyAccountClassIds → dynamic @aztec-labs/accounts/schnorr',
       script: `
         import { verifyAccountClassIds } from '@alejoamiras/quota-paymaster/operator';
         const r = await verifyAccountClassIds([]);
@@ -78,12 +80,12 @@ const CHECKS: Record<string, Check[]> = {
       // a confirmed plan — too late to discover a missing peer. Prove they
       // resolve in the clean-room consumer install.
       kind: 'exec',
-      spec: 'lazy deps resolvable: @aztec/ethereum, @aztec/l1-artifacts, @aztec/aztec.js/ethereum, @aztec/entrypoints',
+      spec: 'lazy deps resolvable: @aztec-labs/ethereum, @aztec-foundation/l1-artifacts, @aztec-labs/aztec.js/ethereum, @aztec-labs/entrypoints',
       script: `
-        await import('@aztec/ethereum/utils');
-        await import('@aztec/l1-artifacts/FeeJuicePortalAbi');
-        await import('@aztec/aztec.js/ethereum');
-        await import('@aztec/entrypoints/encoding');
+        await import('@aztec-labs/ethereum/utils');
+        await import('@aztec-foundation/l1-artifacts/FeeJuicePortalAbi');
+        await import('@aztec-labs/aztec.js/ethereum');
+        await import('@aztec-labs/entrypoints/encoding');
       `,
     },
     {
@@ -135,6 +137,9 @@ const CHECKS: Record<string, Check[]> = {
   ],
 };
 
+const aztecVersion: string = JSON.parse(readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8')).config
+  .aztecVersion;
+
 const run = (cmd: string, args: string[], cwd: string) =>
   execFileSync(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'inherit'] })
     .toString()
@@ -174,6 +179,20 @@ for (const pkgDirArg of process.argv.slice(2)) {
     failures++;
   } else {
     console.log('  ✓ tarball free of build debris');
+  }
+
+  const source: Manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
+  const packed: Manifest = JSON.parse(run('tar', ['-xzOf', tarball, 'package/package.json'], pkgDir));
+  const violations = validateManifest(packed, {
+    aztecVersion,
+    expectedPeers: Object.keys(source.peerDependencies ?? {}),
+    expectedOptionalPeers: optionalPeers(source),
+  });
+  if (violations.length > 0) {
+    console.error(`  ✗ packed manifest violates the Aztec pin policy:\n    ${violations.join('\n    ')}`);
+    failures++;
+  } else {
+    console.log(`  ✓ packed manifest: Aztec pins == ${aztecVersion}, peer set matches source`);
   }
 
   const tmp = mkdtempSync(join(tmpdir(), `verify-${pkgName}-`));

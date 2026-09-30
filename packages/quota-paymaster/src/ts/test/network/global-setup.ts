@@ -1,22 +1,26 @@
 /**
- * Self-provisions a DISPOSABLE local Aztec network for the warp suite.
+ * Self-provisions a DISPOSABLE local Aztec network for the integration and
+ * warp suites.
  *
- * Time-travel warps are global and irreversible — a warped chain later fails
- * everything with "Invalid expiration timestamp" — so this suite NEVER runs
- * against a shared network (plan D5.3, mechanical quarantine). Both the anvil
- * L1 and the Aztec node are spawned here on ephemeral-picked ports, in their
- * own process groups, with a real-disk data directory, and torn down by owned
- * pgid. Runs identically locally and in CI (no port registry needed: ports
- * are picked by binding 0).
+ * Every QuotaFpc instance is inert for its first hour, so these suites warp the
+ * chain to activate policies — and warps are global and irreversible (a warped
+ * chain later fails everything with "Invalid expiration timestamp"). So they
+ * NEVER run against a shared network. Both the anvil L1 and the Aztec node are
+ * spawned here on ephemeral-picked ports, in their own process groups, with a
+ * real-disk data directory, and torn down by owned pgid. Runs identically
+ * locally and in CI (no port registry needed: ports are picked by binding 0).
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import pkg from '../../../../package.json' with { type: 'json' };
+import root from '../../../../../../package.json' with { type: 'json' };
 
-const AZTEC_VERSION = pkg.version; // lockstep: the package version IS the Aztec version
+// The package version can carry a -revision.N suffix; the toolchain is the Aztec version.
+const AZTEC_VERSION = root.config.aztecVersion;
+// Upstream's installer honours AZTEC_HOME; unset (CI) means the default ~/.aztec.
+const AZTEC_HOME = process.env.AZTEC_HOME ?? join(homedir(), '.aztec');
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -104,17 +108,17 @@ function killGroup(child: ChildProcess | undefined) {
 }
 
 export default async function setup(): Promise<() => Promise<void>> {
-  const versionDir = join(homedir(), '.aztec', 'versions', AZTEC_VERSION);
+  const versionDir = join(AZTEC_HOME, 'versions', AZTEC_VERSION);
   const aztecBin = join(versionDir, 'bin', 'aztec');
   const internalBin = join(versionDir, 'internal-bin');
 
   const anvilPort = await freePort();
   const nodePort = await freePort();
   const adminPort = await freePort();
-  const dataDir = join(homedir(), '.cache', 'quota-paymaster-warp', `run-${process.pid}-${anvilPort}`);
+  const dataDir = join(homedir(), '.cache', 'quota-paymaster-network', `run-${process.pid}-${anvilPort}`);
   mkdirSync(dataDir, { recursive: true });
 
-  console.log(`[warp-setup] disposable network: node :${nodePort}, anvil :${anvilPort}, data ${dataDir}`);
+  console.log(`[network-setup] disposable network: node :${nodePort}, anvil :${anvilPort}, data ${dataDir}`);
 
   const anvil = spawnOwned(
     join(internalBin, 'anvil'),
@@ -126,7 +130,7 @@ export default async function setup(): Promise<() => Promise<void>> {
     killGroup(node);
     killGroup(anvil);
     rmSync(dataDir, { recursive: true, force: true });
-    console.log('[warp-setup] disposable network torn down');
+    console.log('[network-setup] disposable network torn down');
   };
 
   try {
@@ -164,7 +168,9 @@ export default async function setup(): Promise<() => Promise<void>> {
   // the harness in every test worker.
   process.env.NODE_URL = `http://127.0.0.1:${nodePort}`;
   process.env.L1_RPC_URL = `http://127.0.0.1:${anvilPort}`;
-  console.log(`[warp-setup] ready at ${process.env.NODE_URL}`);
+  // The harness warps only when NODE_URL matches this: proof the node is ours.
+  process.env.DISPOSABLE_NODE_URL = process.env.NODE_URL;
+  console.log(`[network-setup] ready at ${process.env.NODE_URL}`);
 
   return teardown;
 }

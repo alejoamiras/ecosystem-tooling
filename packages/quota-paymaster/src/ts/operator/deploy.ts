@@ -6,9 +6,9 @@
  * because fee juice sent to the paymaster can never be recovered.
  */
 
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
-import type { Wallet } from '@aztec/aztec.js/wallet';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { getContractClassFromArtifact } from '@aztec-labs/aztec.js/contracts';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 import knownDeployments from '../../../known-deployments.json' with { type: 'json' };
 import { QuotaFpcContract, QuotaFpcContractArtifact } from '../../artifacts/QuotaFpc.js';
 import {
@@ -25,12 +25,13 @@ import {
   snapshotOptions,
 } from './action-plan.js';
 import { OperatorConfigError } from './config-module.js';
+import { assertCurrentLineageClass, describeAnchor, type LineageAnchor } from './lineage.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
 /**
  * Class ids are hashes of the account artifacts, pinned to the installed
- * `@aztec/accounts` version. A config carrying ids from a different version
+ * `@aztec-labs/accounts` version. A config carrying ids from a different version
  * would deploy an immutable allowlist that matches NO real account — every
  * sponsorship attempt would fail — so recompute and refuse on any mismatch.
  * Known upstream classes are checked by name; an unrecognized name FAILS
@@ -43,7 +44,7 @@ export async function verifyAccountClassIds(
   onWarn: (msg: string) => void = () => {},
 ): Promise<{ verified: number; unverified: number }> {
   const { SchnorrAccountContractArtifact, SchnorrInitializerlessAccountContractArtifact } = await import(
-    '@aztec/accounts/schnorr'
+    '@aztec-labs/accounts/schnorr'
   );
 
   // Two unrelated artifact hashes — non-trivial CPU work, computed in parallel.
@@ -79,7 +80,7 @@ export async function verifyAccountClassIds(
     if (BigInt(entry.classId) !== expected) {
       throw new Error(
         `Config classId for ${entry.name} (${entry.classId}) does not match the installed ` +
-          `@aztec/accounts artifact (0x${expected.toString(16).padStart(64, '0')}). ` +
+          `@aztec-labs/accounts artifact (0x${expected.toString(16).padStart(64, '0')}). ` +
           `The config is pinned to a different version — update it, or deploy from the matching checkout. ` +
           `Deploying anyway would ship an immutable allowlist that rejects every real account.`,
       );
@@ -89,17 +90,14 @@ export async function verifyAccountClassIds(
   return { verified, unverified };
 }
 
-/** Lineage guard: refuse to deploy an artifact that is not the chain-verified class. */
-export async function assertArtifactIsChainVerifiedClass(): Promise<string> {
+/**
+ * Lineage guard: refuse to deploy an artifact whose class id is not the one reviewed for this
+ * package's Aztec version (known-deployments.json). The returned anchor says whether that class
+ * was ever checked against a chain or is only locally pinned.
+ */
+export async function assertArtifactIsLineageClass(): Promise<LineageAnchor> {
   const { id } = await getContractClassFromArtifact(QuotaFpcContractArtifact);
-  const expected = knownDeployments.mainnet.classId;
-  if (id.toString() !== expected) {
-    throw new Error(
-      `The compiled QuotaFpc artifact's class id ${id} does not match the chain-verified ` +
-        `lineage class ${expected}. Rebuild from clean sources (verify:lineage) before deploying.`,
-    );
-  }
-  return id.toString();
+  return assertCurrentLineageClass(knownDeployments, id.toString());
 }
 
 export interface DeployQuotaFpcDeps {
@@ -143,7 +141,9 @@ export async function deployQuotaFpc(
     sendOptions: snapshotOptions(opts.sendOptions ?? {}),
   };
 
-  const classId = await assertArtifactIsChainVerifiedClass();
+  const anchor = await assertArtifactIsLineageClass();
+  if (!anchor.chainVerified) deps.onWarn?.(`QuotaFpc class ${describeAnchor(anchor)}.`);
+  const classId = anchor.classId;
   await verifyAccountClassIds(snapshot.accountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
 
   // WHICH CHAIN. Every sibling plan binds this; deploy bound none, so a dry
@@ -153,7 +153,7 @@ export async function deployQuotaFpc(
   // The EFFECTIVE options, computed before the plan so the digest covers what
   // actually executes rather than what was requested (round-12). The import
   // stays inside the function — laziness preserved, just earlier.
-  const { TxStatus } = await import('@aztec/stdlib/tx');
+  const { TxStatus } = await import('@aztec-labs/stdlib/tx');
   const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
   const { wait: callerWait, from: callerFrom, ...sendOpts } = snapshot.sendOptions;
   const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};

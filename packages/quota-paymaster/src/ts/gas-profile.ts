@@ -58,7 +58,7 @@ export function assertValidGasProfile(profile: GasProfile): void {
   if (!Number.isSafeInteger(Math.round(profile.feeHeadroomMultiplier * 1000))) {
     throw new RangeError(`GasProfile.feeHeadroomMultiplier is too large: ${profile.feeHeadroomMultiplier}`);
   }
-  // Teardown is reserved INSIDE the totals at v5.0.1, so a teardown limit
+  // Teardown is reserved INSIDE the totals (still true at 6.0.0-rc.1), so a teardown limit
   // above its total describes an envelope that cannot exist.
   if (profile.teardownDaGasLimit > profile.daGasLimit) {
     throw new RangeError(
@@ -92,7 +92,7 @@ export const DARK_FOREST_REFERENCE_GAS_PROFILE: GasProfile = {
  *
  * Mirrors the contract's own `assert_fee_within_max`, which bills
  * `gas_limits x max_fees_per_gas` and deliberately does NOT add teardown —
- * teardown is already reserved inside the limits at v5.0.1.
+ * teardown is already reserved inside the limits (still true at 6.0.0-rc.1).
  */
 export function sponsoredFeeFloorWei(profile: GasProfile, feePerDaGas: bigint, feePerL2Gas: bigint): bigint {
   assertValidGasProfile(profile);

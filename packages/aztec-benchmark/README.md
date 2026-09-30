@@ -100,16 +100,16 @@ import {
   type BenchmarkContext,
   type NamedBenchmarkedInteraction
 } from '@alejoamiras/aztec-benchmark';
-import type { PXE } from '@aztec/pxe/server';
-import type { Contract } from '@aztec/aztec.js/contracts'; // Generic Contract type from Aztec.js
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
-import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import { createStore } from '@aztec/kv-store/lmdb-v2';
-import { createPXE, getPXEConfig } from '@aztec/pxe/server';
-import { createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
+import type { PXE } from '@aztec-labs/pxe/server';
+import type { Contract } from '@aztec-labs/aztec.js/contracts'; // Generic Contract type from Aztec.js
+import type { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { ContractFunctionInteractionCallIntent } from '@aztec-labs/aztec.js/authorization';
+import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import { createStore } from '@aztec-labs/kv-store/lmdb-v2';
+import { createPXE, getPXEConfig } from '@aztec-labs/pxe/server';
+import { createAztecNodeClient, waitForNode } from '@aztec-labs/aztec.js/node';
+import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
+import { registerInitialLocalNetworkAccountsInWallet } from '@aztec-labs/wallets/testing';
 // import { YourSpecificContract } from '../artifacts/YourSpecificContract.js'; // Replace with your actual contract artifact
 
 // 1. Define a specific context for your benchmark (optional but good practice)
@@ -159,9 +159,9 @@ export default class MyContractBenchmark extends Benchmark {
     // Optional: use SponsoredFPC so accounts don't need pre-existing Fee Juice.
     // The sandbox ships with a canonical SponsoredFPC pre-deployed at a deterministic address.
     //
-    // import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee/testing';
-    // import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
-    // import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+    // import { SponsoredFeePaymentMethod } from '@aztec-labs/aztec.js/fee/testing';
+    // import { SponsoredFPCContract } from '@aztec-labs/noir-contracts.js/SponsoredFPC';
+    // import { getContractInstanceFromInstantiationParams } from '@aztec-labs/aztec.js/contracts';
     //
     // const instance = await getContractInstanceFromInstantiationParams(
     //   SponsoredFPCContract.artifact,

@@ -25,7 +25,7 @@ TAG="${3:?dist-tag required}"
 
 tagged=""
 for i in $(seq 1 30); do
-  tags=$(npm view "$PKG" dist-tags --json 2>/dev/null || echo '{}')
+  tags=$("$(dirname "$0")/read-dist-tags.sh" "$PKG" 2>/dev/null || echo '{}')
   tagged=$(printf '%s' "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$TAG'] ?? ''" 2>/dev/null || echo '')
   [ "$tagged" = "$EXPECTED" ] && break
   [ "$i" -eq 30 ] || sleep 20  # no wasted trailing sleep after the final read
