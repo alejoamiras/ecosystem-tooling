@@ -1,6 +1,6 @@
 {
   "name": "@alejoamiras/aztec-benchmark",
-  "version": "5.0.1",
+  "version": "6.0.0-rc.1",
   "description": "CLI tool and GitHub Action for Aztec contract benchmarking",
   "repository": {
     "type": "git",
@@ -36,15 +36,15 @@
     "typescript": "5.8.3"
   },
   "devDependencies": {
-    "@aztec-labs/aztec.js": "5.0.1",
-    "@aztec-labs/stdlib": "5.0.1",
-    "@aztec-labs/wallets": "5.0.1",
+    "@aztec-labs/aztec.js": "6.0.0-rc.1",
+    "@aztec-labs/stdlib": "6.0.0-rc.1",
+    "@aztec-labs/wallets": "6.0.0-rc.1",
     "@types/node": "22.15.3",
     "@vercel/ncc": "0.38.3"
   },
   "peerDependencies": {
-    "@aztec-labs/aztec.js": "5.0.1",
-    "@aztec-labs/wallets": "5.0.1"
+    "@aztec-labs/aztec.js": "6.0.0-rc.1",
+    "@aztec-labs/wallets": "6.0.0-rc.1"
   },
   "engines": {
     "node": ">=22"

@@ -5,7 +5,7 @@ compiler_version = ">=1.0.0"
 authors = [""]
 
 [dependencies]
-aztec = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v5.0.1", directory = "aztec" }
-balance_set = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v5.0.1", directory = "balance-set" }
+aztec = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v6.0.0-rc.1", directory = "aztec" }
+balance_set = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v6.0.0-rc.1", directory = "balance-set" }
 keccak256 = { tag = "v0.1.3", git = "https://github.com/noir-lang/keccak256" }
 fpc_lib = { path = "../fpc_lib" }

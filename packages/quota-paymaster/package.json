@@ -1,6 +1,6 @@
 {
   "name": "@alejoamiras/quota-paymaster",
-  "version": "5.0.1",
+  "version": "6.0.0-rc.1",
   "description": "Quota paymaster (QuotaFpc) for Aztec — allowlist-scoped, per-day-quota fee sponsorship. Noir contract + TypeScript SDK + operator library",
   "repository": {
     "type": "git",
@@ -59,16 +59,16 @@
     "verify:package": "bun run verify:lineage && bun ../../scripts/verify-tarball.ts ."
   },
   "devDependencies": {
-    "@aztec-foundation/l1-artifacts": "5.0.1",
-    "@aztec-labs/accounts": "5.0.1",
-    "@aztec-labs/aztec.js": "5.0.1",
-    "@aztec-labs/constants": "5.0.1",
-    "@aztec-labs/entrypoints": "5.0.1",
-    "@aztec-labs/ethereum": "5.0.1",
-    "@aztec-labs/foundation": "5.0.1",
-    "@aztec-labs/protocol-contracts": "5.0.1",
-    "@aztec-labs/stdlib": "5.0.1",
-    "@aztec-labs/wallets": "5.0.1",
+    "@aztec-foundation/l1-artifacts": "6.0.0-rc.1",
+    "@aztec-labs/accounts": "6.0.0-rc.1",
+    "@aztec-labs/aztec.js": "6.0.0-rc.1",
+    "@aztec-labs/constants": "6.0.0-rc.1",
+    "@aztec-labs/entrypoints": "6.0.0-rc.1",
+    "@aztec-labs/ethereum": "6.0.0-rc.1",
+    "@aztec-labs/foundation": "6.0.0-rc.1",
+    "@aztec-labs/protocol-contracts": "6.0.0-rc.1",
+    "@aztec-labs/stdlib": "6.0.0-rc.1",
+    "@aztec-labs/wallets": "6.0.0-rc.1",
     "@noble/hashes": "1.8.0",
     "@types/node": "25.6.0",
     "tsx": "4.21.0",
@@ -76,14 +76,14 @@
     "vitest": "4.1.4"
   },
   "peerDependencies": {
-    "@aztec-foundation/l1-artifacts": "5.0.1",
-    "@aztec-labs/accounts": "5.0.1",
-    "@aztec-labs/aztec.js": "5.0.1",
-    "@aztec-labs/entrypoints": "5.0.1",
-    "@aztec-labs/ethereum": "5.0.1",
-    "@aztec-labs/foundation": "5.0.1",
-    "@aztec-labs/stdlib": "5.0.1",
-    "@aztec-labs/wallets": "5.0.1",
+    "@aztec-foundation/l1-artifacts": "6.0.0-rc.1",
+    "@aztec-labs/accounts": "6.0.0-rc.1",
+    "@aztec-labs/aztec.js": "6.0.0-rc.1",
+    "@aztec-labs/entrypoints": "6.0.0-rc.1",
+    "@aztec-labs/ethereum": "6.0.0-rc.1",
+    "@aztec-labs/foundation": "6.0.0-rc.1",
+    "@aztec-labs/stdlib": "6.0.0-rc.1",
+    "@aztec-labs/wallets": "6.0.0-rc.1",
     "tsx": "^4.19.0"
   },
   "peerDependenciesMeta": {
