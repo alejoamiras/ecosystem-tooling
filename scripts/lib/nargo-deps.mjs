@@ -43,8 +43,9 @@ const isTable = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** Every git/path key outside the top-level [dependencies] table, as dotted paths. */
 function strayDependencyKeys(node, at, out) {
-  if (Array.isArray(node)) node.forEach((v, i) => strayDependencyKeys(v, `${at}[${i}]`, out));
-  else if (isTable(node)) {
+  if (Array.isArray(node)) {
+    for (const [i, v] of node.entries()) strayDependencyKeys(v, `${at}[${i}]`, out);
+  } else if (isTable(node)) {
     for (const [k, v] of Object.entries(node)) {
       const here = at ? `${at}.${k}` : k;
       if (here === 'dependencies') continue;
