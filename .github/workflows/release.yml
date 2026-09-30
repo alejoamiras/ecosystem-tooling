@@ -543,10 +543,14 @@ jobs:
         run: |
           mkdir -p latest-before
           for pkg in $PUBLISH_PACKAGES; do
-            # A failed read must fail the step: an empty baseline would make the post-publish
-            # comparison vacuous.
-            npm view "@alejoamiras/$pkg" dist-tags.latest > "latest-before/$pkg"
-            echo "@alejoamiras/$pkg latest before publish: $(cat "latest-before/$pkg")"
+            # Every package here already has a `latest`. A failed or empty read must fail the
+            # step: an empty baseline makes the post-publish comparison vacuous.
+            latest=$(./scripts/read-dist-tags.sh "@alejoamiras/$pkg" latest)
+            if [ -z "$latest" ]; then
+              echo "ERROR: @alejoamiras/$pkg has no latest dist-tag — surface for the manual OTP runbook" >&2; exit 1
+            fi
+            printf '%s' "$latest" > "latest-before/$pkg"
+            echo "@alejoamiras/$pkg latest before publish: $latest"
           done
 
       - name: Publish tarballs (benchmark → private-fee-juice → quota-paymaster, idempotent)
@@ -578,7 +582,7 @@ jobs:
             # passes every binding, so without this it could drag `rc` back behind a newer rc.
             # Canaries are sha-named and unordered by design; `latest` is guarded separately.
             if [ "$DIST_TAG" != "latest" ] && [ "$INPUT_MODE" != "rehearsal" ]; then
-              current=$(npm view "@alejoamiras/$pkg" "dist-tags.$DIST_TAG")
+              current=$(./scripts/read-dist-tags.sh "@alejoamiras/$pkg" "$DIST_TAG")
               if [ -n "$current" ]; then
                 node scripts/release-policy.mjs --forward "$current" "$INPUT_VERSION"
               fi
@@ -612,7 +616,7 @@ jobs:
             # (documented >10 min) — retry dist-tags/integrity before judging.
             tagged=""
             for _ in $(seq 1 15); do
-              tags=$(npm view "@alejoamiras/$pkg" dist-tags --json 2>/dev/null || echo '{}')
+              tags=$(./scripts/read-dist-tags.sh "@alejoamiras/$pkg" 2>/dev/null || echo '{}')
               tagged=$(echo "$tags" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8'))['$DIST_TAG'] ?? ''")
               [ "$tagged" = "$INPUT_VERSION" ] && break
               sleep 20

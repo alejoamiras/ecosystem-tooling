@@ -190,8 +190,12 @@ test('the notes renderer reads the publish set from its OWN job step, not from n
 
 test('a non-latest publish can neither move `latest` nor drag a prerelease tag backwards', () => {
   // Removing either guard leaves every other check green, so pin their presence.
-  assert.match(releaseYml, /npm view "@alejoamiras\/\$pkg" dist-tags\.latest > "latest-before\/\$pkg"/);
+  assert.match(releaseYml, /latest=\$\(\.\/scripts\/read-dist-tags\.sh "@alejoamiras\/\$pkg" latest\)/);
+  assert.match(releaseYml, /has no latest dist-tag/, 'an empty baseline must fail, not pass vacuously');
+  assert.match(releaseYml, /current=\$\(\.\/scripts\/read-dist-tags\.sh "@alejoamiras\/\$pkg" "\$DIST_TAG"\)/);
   assert.match(releaseYml, /node scripts\/release-policy\.mjs --forward "\$current" "\$INPUT_VERSION"/);
+  // `npm view <pkg> dist-tags…` resolves through `latest` and reads empty without it.
+  assert.doesNotMatch(releaseYml, /npm view "@alejoamiras\/\$pkg" dist-tags/);
   assert.match(releaseYml, /if \[ "\$latest" = "\$INPUT_VERSION" \]; then/, 'stateless latest != input check');
   assert.match(releaseYml, /if \[ "\$latest" != "\$before" \]; then/, 'per-run latest-unchanged check');
 });
