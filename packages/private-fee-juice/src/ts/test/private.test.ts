@@ -1,11 +1,11 @@
-import { Fr } from '@aztec/aztec.js/fields';
-import type { AztecNode } from '@aztec/aztec.js/node';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
-import { FeeJuiceContract } from '@aztec/noir-contracts.js/FeeJuice';
-import type { SimpleTokenContract } from '@aztec/noir-contracts.js/SimpleToken';
-import { ProtocolContractAddress } from '@aztec/protocol-contracts';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import type { AztecNode } from '@aztec-labs/aztec.js/node';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
+import { FeeJuiceContract } from '@aztec-labs/noir-contracts.js/FeeJuice';
+import type { SimpleTokenContract } from '@aztec-labs/noir-contracts.js/SimpleToken';
+import { ProtocolContractAddress } from '@aztec-labs/protocol-contracts';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import type { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { PrivateFPCContract } from '../../artifacts/PrivateFPC.js';

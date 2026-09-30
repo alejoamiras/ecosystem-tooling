@@ -9,10 +9,10 @@
  * detection (never Date.now — local clocks lie).
  */
 
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import { TxStatus } from '@aztec/stdlib/tx';
+import type { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
+import { TxStatus } from '@aztec-labs/stdlib/tx';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
 import { assertValidTargetList, padAllowedTargets, U32_MAX, U128_MAX, worstCasePerDayWei } from '../config/schema.js';
 import { type GasProfile, sponsoredFeeFloorWei } from '../gas-profile.js';
@@ -132,7 +132,9 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
     fpc.methods.get_admin().simulate({ from }),
     fpc.methods.get_policy().simulate({ from }),
     fpc.methods.get_allowed_targets().simulate({ from }),
-    import('@aztec/aztec.js/utils').then(({ getFeeJuiceBalance }) => getFeeJuiceBalance(deps.fpcAddress, deps.node)),
+    import('@aztec-labs/aztec.js/utils').then(({ getFeeJuiceBalance }) =>
+      getFeeJuiceBalance(deps.fpcAddress, deps.node),
+    ),
     deps.node.getCurrentMinFees(),
   ]);
   const [scheduledBundle, activatesAt, revision] = unwrap(scheduledRaw) as [RawBundle, bigint, bigint];
@@ -491,7 +493,7 @@ export async function schedulePolicyChange(
     return revalidateAlso ? await revalidateAlso() : undefined;
   });
 
-  const { AztecAddress: Addr } = await import('@aztec/aztec.js/addresses');
+  const { AztecAddress: Addr } = await import('@aztec-labs/aztec.js/addresses');
   const paddedTargets = padAllowedTargets(next.allowedTargets).map((a) => Addr.fromStringUnsafe(a));
   await fpc.methods
     .schedule_settings(

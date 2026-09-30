@@ -5,16 +5,16 @@ import {
   type NamedBenchmarkedInteraction,
   namedMethod,
 } from '@alejoamiras/aztec-benchmark';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Fr } from '@aztec/aztec.js/fields';
-import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
-import { Barretenberg } from '@aztec/bb.js';
-import { FeeJuiceContract } from '@aztec/noir-contracts.js/FeeJuice';
-import type { SimpleTokenContract } from '@aztec/noir-contracts.js/SimpleToken';
-import { ProtocolContractAddress } from '@aztec/protocol-contracts';
-import { getPXEConfig } from '@aztec/pxe/config';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { registerInitialLocalNetworkAccountsInWallet } from '@aztec/wallets/testing';
+import { Barretenberg } from '@aztec-foundation/bb.js';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import { type AztecNode, createAztecNodeClient, waitForNode } from '@aztec-labs/aztec.js/node';
+import { FeeJuiceContract } from '@aztec-labs/noir-contracts.js/FeeJuice';
+import type { SimpleTokenContract } from '@aztec-labs/noir-contracts.js/SimpleToken';
+import { ProtocolContractAddress } from '@aztec-labs/protocol-contracts';
+import { getPXEConfig } from '@aztec-labs/pxe/config';
+import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
+import { registerInitialLocalNetworkAccountsInWallet } from '@aztec-labs/wallets/testing';
 import { z } from 'zod';
 
 import type { PrivateFPCContract } from '../src/artifacts/PrivateFPC.js';

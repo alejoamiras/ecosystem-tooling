@@ -13,9 +13,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
 import {
   type ConfirmAction,
   confirmAndRevalidate,
@@ -196,7 +196,7 @@ export async function claimFeeJuice(
   // means a typo cannot write CLAIM_SUBMITTING / CLAIM_OUTCOME_UNKNOWN for a
   // transaction that never existed, which would make the next claim refuse
   // until --allow-retry-after-unknown (round-12).
-  const { Fr } = await import('@aztec/aztec.js/fields');
+  const { Fr } = await import('@aztec-labs/aztec.js/fields');
   let claimSecretFr: InstanceType<typeof Fr>;
   try {
     claimSecretFr = Fr.fromString(claimSecret);
@@ -209,7 +209,7 @@ export async function claimFeeJuice(
   // Effective options before the plan, for the same reason as deploy: the send
   // floors waitForStatus and forces dontThrowOnRevert, so digesting the raw
   // request advertised coverage of values this function overrides (round-12).
-  const { TxStatus } = await import('@aztec/stdlib/tx');
+  const { TxStatus } = await import('@aztec-labs/stdlib/tx');
   const FINALITY_ORDER = [TxStatus.PROPOSED, TxStatus.CHECKPOINTED, TxStatus.PROVEN, TxStatus.FINALIZED];
   const callerWaitObj = callerWait && typeof callerWait === 'object' ? (callerWait as Record<string, unknown>) : {};
   const requestedStatus = callerWaitObj.waitForStatus as (typeof FINALITY_ORDER)[number] | undefined;
@@ -235,7 +235,7 @@ export async function claimFeeJuice(
   };
 
   const recipient = AztecAddress.fromStringUnsafe(recipientStr);
-  const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
+  const { getFeeJuiceBalance } = await import('@aztec-labs/aztec.js/utils');
   const [before, info, walletChain] = await Promise.all([
     getFeeJuiceBalance(recipient, deps.node).then((b) => BigInt(b ?? 0n)),
     deps.node.getNodeInfo(),
@@ -306,7 +306,7 @@ export async function claimFeeJuice(
       : 'the wallet changed chains between confirmation and broadcast';
   });
 
-  const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
+  const { FeeJuiceContract } = await import('@aztec-labs/aztec.js/protocol');
   // Durable attempt marker BEFORE the send (round-4 finding 3): if the wait
   // times out AFTER broadcast, the claim may still checkpoint later with
   // nothing journaled — a retry would then burn gas on an already-redeemed

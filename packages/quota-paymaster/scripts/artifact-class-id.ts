@@ -1,7 +1,7 @@
 /** Shared by the dev/verification scripts: artifact JSON → contract class id. */
 import { readFileSync } from 'node:fs';
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
-import { loadContractArtifact } from '@aztec/stdlib/abi';
+import { getContractClassFromArtifact } from '@aztec-labs/aztec.js/contracts';
+import { loadContractArtifact } from '@aztec-labs/stdlib/abi';
 
 export async function classIdOfArtifactJson(path: string | URL): Promise<string> {
   const artifact = loadContractArtifact(JSON.parse(readFileSync(path, 'utf8')));

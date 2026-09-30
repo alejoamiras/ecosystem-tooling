@@ -1,6 +1,6 @@
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Fr } from '@aztec/aztec.js/fields';
-import type { Wallet } from '@aztec/aztec.js/wallet';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 // Static JSON import (NOT a runtime readFileSync): with tsconfig.build rootDir ".",
 // tsc emits the JSON to dist/canonical-deployment.json and this specifier resolves
 // from dist/src/ts/utils/deploy.js at runtime. The depth is ../../../ (utils -> ts

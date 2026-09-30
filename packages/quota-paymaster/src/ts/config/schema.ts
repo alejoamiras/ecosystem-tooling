@@ -45,7 +45,7 @@ export interface QuotaFpcAccountClass {
   name: string;
   /**
    * The account contract's class id — a hash of its artifact, so it is pinned
-   * to an `@aztec/accounts` VERSION, not to a network — or the name of an env
+   * to an `@aztec-labs/accounts` VERSION, not to a network — or the name of an env
    * var holding it (prefix `env:`), like target addresses. The deploy tooling
    * recomputes ids from the installed artifacts and refuses to deploy on a
    * mismatch, so config drift from a dependency bump is caught before the

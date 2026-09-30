@@ -3,12 +3,12 @@
  * exist to catch version drift, so testing them against mocks would be
  * circular.
  */
-import { getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
+import { getContractClassFromArtifact } from '@aztec-labs/aztec.js/contracts';
 import { describe, expect, test } from 'vitest';
 import { assertArtifactIsChainVerifiedClass, verifyAccountClassIds } from '../../operator/deploy.js';
 
 async function realInitializerlessClassId(): Promise<string> {
-  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec/accounts/schnorr');
+  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec-labs/accounts/schnorr');
   const { id } = await getContractClassFromArtifact(SchnorrInitializerlessAccountContractArtifact);
   return id.toString();
 }
@@ -20,7 +20,7 @@ describe('verifyAccountClassIds', () => {
     expect(result).toEqual({ verified: 1, unverified: 0 });
   });
 
-  test('a stale id (different @aztec/accounts version) is refused with the expected id named', async () => {
+  test('a stale id (different @aztec-labs/accounts version) is refused with the expected id named', async () => {
     await expect(verifyAccountClassIds([{ name: 'SchnorrInitializerlessAccount', classId: '0x1234' }])).rejects.toThrow(
       /does not match the installed/,
     );

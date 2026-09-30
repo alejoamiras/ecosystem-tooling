@@ -1,5 +1,5 @@
-import { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { Gas, GasFees } from '@aztec/stdlib/gas';
+import { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import { Gas, GasFees } from '@aztec-labs/stdlib/gas';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -292,7 +292,7 @@ describe('gas utilities', () => {
     warnSpy.mockRestore();
     // NB: no trailing vi.resetModules() — this pool is singleFork/isolate:false with a
     // shared module registry; clearing it here would force the next test file to
-    // re-evaluate its load-bearing @aztec/@noble inline deps. The leading reset above
+    // re-evaluate its load-bearing Aztec/@noble inline deps. The leading reset above
     // already isolates this test.
   });
 });

@@ -36,15 +36,15 @@
     "typescript": "5.8.3"
   },
   "devDependencies": {
-    "@aztec/aztec.js": "5.0.1",
-    "@aztec/stdlib": "5.0.1",
-    "@aztec/wallets": "5.0.1",
+    "@aztec-labs/aztec.js": "5.0.1",
+    "@aztec-labs/stdlib": "5.0.1",
+    "@aztec-labs/wallets": "5.0.1",
     "@types/node": "22.15.3",
     "@vercel/ncc": "0.38.3"
   },
   "peerDependencies": {
-    "@aztec/aztec.js": "5.0.1",
-    "@aztec/wallets": "5.0.1"
+    "@aztec-labs/aztec.js": "5.0.1",
+    "@aztec-labs/wallets": "5.0.1"
   },
   "engines": {
     "node": ">=22"

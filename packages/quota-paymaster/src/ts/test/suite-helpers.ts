@@ -2,7 +2,7 @@
  * Shared helpers for the integration and warp suites. Kept out of the test
  * files so both suites drive the contract through IDENTICAL code paths.
  */
-import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
 import type { FpcTestTargetContract } from '../../artifacts/FpcTestTarget.js';
 import { QuotaFpcContract } from '../../artifacts/QuotaFpc.js';
 import { buildSandwichPayload } from '../sandwich.js';
@@ -17,12 +17,12 @@ export const MAX_USERS = 40;
  * The harness accounts are schnorr_initializerless — the same class the
  * embedded wallet deploys in production — so allowlisting it proves the REAL
  * positive path. Computed from the installed artifact rather than hardcoded,
- * exactly as the deploy library does, so an @aztec/accounts bump cannot
+ * exactly as the deploy library does, so an @aztec-labs/accounts bump cannot
  * silently break the suite.
  */
 export async function initializerlessClassId(): Promise<bigint> {
-  const { getContractClassFromArtifact } = await import('@aztec/aztec.js/contracts');
-  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec/accounts/schnorr');
+  const { getContractClassFromArtifact } = await import('@aztec-labs/aztec.js/contracts');
+  const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec-labs/accounts/schnorr');
   const { id } = await getContractClassFromArtifact(SchnorrInitializerlessAccountContractArtifact);
   return id.toBigInt();
 }

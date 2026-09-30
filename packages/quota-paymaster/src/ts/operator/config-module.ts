@@ -15,9 +15,9 @@
  * checkout's code with an operator's keys in the environment.
  */
 import { pathToFileURL } from 'node:url';
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import type { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
 import { assertValidGasProfile, type GasProfile } from '../gas-profile.js';
 import type { BridgeL1Client } from './bridge.js';
 

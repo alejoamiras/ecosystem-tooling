@@ -1,4 +1,11 @@
-import { ALLOWED_LEGACY_ALIAS, EXACT_SEMVER, isLegacyName, isLockstepName, parseAlias } from './aztec-scopes.ts';
+import {
+  ALLOWED_LEGACY_ALIAS,
+  EXACT_SEMVER,
+  isLegacyName,
+  isLockstepName,
+  LEGACY_SCOPE,
+  parseAlias,
+} from './aztec-scopes.ts';
 
 export const DEP_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const;
 
@@ -42,7 +49,7 @@ export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] 
     for (const [name, spec] of Object.entries(m[section] ?? {})) {
       const at = `${section}.${name}`;
       if (isLegacyName(name)) {
-        errors.push(`${at}: legacy @aztec/* name — use the @aztec-labs / @aztec-foundation successor`);
+        errors.push(`${at}: legacy ${LEGACY_SCOPE}* name — use the @aztec-labs / @aztec-foundation successor`);
         continue;
       }
       if (isLockstepName(name) && spec !== aztecVersion) {
@@ -66,7 +73,7 @@ export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] 
 
   const peers = Object.keys(m.peerDependencies ?? {});
   for (const name of Object.keys(m.peerDependenciesMeta ?? {})) {
-    if (isLegacyName(name)) errors.push(`peerDependenciesMeta.${name}: legacy @aztec/* name`);
+    if (isLegacyName(name)) errors.push(`peerDependenciesMeta.${name}: legacy ${LEGACY_SCOPE}* name`);
     if (!peers.includes(name)) errors.push(`peerDependenciesMeta.${name} has no matching peerDependencies entry`);
   }
 

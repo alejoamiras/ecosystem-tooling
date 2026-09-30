@@ -30,7 +30,7 @@ export default defineConfig({
     include: ['src/ts/test/warp/**/*.test.ts'],
     server: {
       deps: {
-        inline: [/@aztec/, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
+        inline: [/@aztec(-labs|-foundation)?\//, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
       },
     },
   },

@@ -33,7 +33,7 @@ export default defineConfig({
     include: ['src/ts/test/unit/**/*.test.ts', 'src/ts/test/integration/**/*.test.ts', 'examples/**/*.test.ts'],
     server: {
       deps: {
-        inline: [/@aztec/, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
+        inline: [/@aztec(-labs|-foundation)?\//, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
       },
     },
   },

@@ -6,14 +6,14 @@
  * http://localhost:8080) and L1_RPC_URL (default http://127.0.0.1:8545). The
  * warp suite OVERRIDES both via its self-provisioned network's env.
  */
-import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec/aztec.js/node';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
-import { DefaultEntrypoint } from '@aztec/entrypoints/default';
-import { Fr } from '@aztec/foundation/curves/bn254';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { Gas, GasSettings } from '@aztec/stdlib/gas';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
-import type { ExecutionPayload } from '@aztec/stdlib/tx';
+import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec-labs/aztec.js/node';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
+import { DefaultEntrypoint } from '@aztec-labs/entrypoints/default';
+import { Fr } from '@aztec-labs/foundation/curves/bn254';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import { Gas, GasSettings } from '@aztec-labs/stdlib/gas';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
+import type { ExecutionPayload } from '@aztec-labs/stdlib/tx';
 
 export const NODE_URL = process.env.NODE_URL ?? 'http://localhost:8080';
 export const L1_RPC_URL = process.env.L1_RPC_URL ?? 'http://127.0.0.1:8545';
@@ -36,8 +36,8 @@ export interface Ctx {
 }
 
 export async function connect(): Promise<Ctx> {
-  const { EmbeddedWallet } = await import('@aztec/wallets/embedded');
-  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec/wallets/testing');
+  const { EmbeddedWallet } = await import('@aztec-labs/wallets/embedded');
+  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec-labs/wallets/testing');
 
   const node = createAztecNodeClient(NODE_URL);
   await waitForNode(node);
@@ -68,7 +68,7 @@ export async function warpChainToDayStart(node: AztecNode, poke?: () => Promise<
 }
 
 async function debugClient() {
-  const { createAztecNodeDebugClient } = await import('@aztec/stdlib/interfaces/client');
+  const { createAztecNodeDebugClient } = await import('@aztec-labs/stdlib/interfaces/client');
   // biome-ignore lint/suspicious/noExplicitAny: the debug client's warp surface is untyped
   return createAztecNodeDebugClient(NODE_URL) as any;
 }
@@ -144,12 +144,12 @@ export async function fundWithFeeJuice(
   claimFrom: AztecAddress,
   poke?: () => Promise<unknown>,
 ) {
-  const { L1FeeJuicePortalManager } = await import('@aztec/aztec.js/ethereum');
-  const { createEthereumChain } = await import('@aztec/ethereum/chain');
-  const { createExtendedL1Client } = await import('@aztec/ethereum/client');
-  const { FeeJuiceContract } = await import('@aztec/aztec.js/protocol');
-  const { createLogger } = await import('@aztec/foundation/log');
-  const { isL1ToL2MessageReady } = await import('@aztec/aztec.js/messaging');
+  const { L1FeeJuicePortalManager } = await import('@aztec-labs/aztec.js/ethereum');
+  const { createEthereumChain } = await import('@aztec-labs/ethereum/chain');
+  const { createExtendedL1Client } = await import('@aztec-labs/ethereum/client');
+  const { FeeJuiceContract } = await import('@aztec-labs/aztec.js/protocol');
+  const { createLogger } = await import('@aztec-labs/foundation/log');
+  const { isL1ToL2MessageReady } = await import('@aztec-labs/aztec.js/messaging');
 
   const info = await node.getNodeInfo();
   // TEST-ONLY, LOCAL-ONLY: anvil's well-known first default key, guarded by

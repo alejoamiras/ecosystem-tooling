@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ContractFunctionInteractionCallIntent } from '@aztec/aztec.js/authorization';
+import type { ContractFunctionInteractionCallIntent } from '@aztec-labs/aztec.js/authorization';
 import toml from '@iarna/toml';
 import { Command } from 'commander';
 import { Profiler } from './profiler.js';

@@ -10,7 +10,7 @@ agent: read the "Traps" section before writing code, not after.
 
 ## Prerequisites
 
-1. **Aztec `5.0.1`.** Versions are LOCKSTEP — `@aztec/*` are exact `5.0.1` peer
+1. **Aztec `5.0.1`.** Versions are LOCKSTEP — `@aztec-labs/*` and `@aztec-foundation/*` are exact `5.0.1` peer
    dependencies. A different Aztec version will not resolve, by design.
 2. **A 7-day npm min-age gate will reject a fresh release.** If your repo sets
    `minimumReleaseAge` in `bunfig.toml` (a good supply-chain default), a version

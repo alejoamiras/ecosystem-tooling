@@ -17,7 +17,7 @@ describe('measureSponsoredFee (live)', () => {
   let ctx: Ctx;
   let target: FpcTestTargetContract;
   let fpc: QuotaFpcContract;
-  let player: import('@aztec/stdlib/aztec-address').AztecAddress;
+  let player: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
   let generation: number;
 
   beforeAll(async () => {

@@ -1,6 +1,6 @@
-import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { Gas, GasFees, GasSettings } from '@aztec/stdlib/gas';
+import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import { Gas, GasFees, GasSettings } from '@aztec-labs/stdlib/gas';
 
 type GasEstimationNode = {
   getCurrentMinFees(): Promise<GasFees>;

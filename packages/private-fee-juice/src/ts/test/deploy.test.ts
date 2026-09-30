@@ -1,5 +1,5 @@
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Fr } from '@aztec/aztec.js/fields';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { Fr } from '@aztec-labs/aztec.js/fields';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import canonical from '../../../canonical-deployment.json' with { type: 'json' };
 import { PrivateFPCContract } from '../../artifacts/PrivateFPC.js';

@@ -10,11 +10,11 @@
  * (undefined slipping through a config) made the original sampling loop spin
  * forever with no thrown error, freezing the page.
  */
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
 import { computePlayerNullifier, computeSeatNullifier } from './nullifiers.js';
 
 /**
- * Nullifier-tree id, per @aztec/stdlib's `MerkleTreeId.NULLIFIER_TREE`.
+ * Nullifier-tree id, per @aztec-labs/stdlib's `MerkleTreeId.NULLIFIER_TREE`.
  * Verified against the enum: it is 0, not 1. Querying the wrong tree makes every
  * claimed seat look free, so capacity is never detected and users collide.
  */
@@ -48,7 +48,7 @@ export function assertValidMaxUsers(maxUsers: number): void {
 
 /** Silos a nullifier by contract address, matching the protocol's own scheme. */
 async function siloedSeatNullifiers(fpcAddress: AztecAddress, generation: number, seats: number[]): Promise<unknown[]> {
-  const { siloNullifier } = await import('@aztec/stdlib/hash');
+  const { siloNullifier } = await import('@aztec-labs/stdlib/hash');
   return Promise.all(
     seats.map(async (seat) => siloNullifier(fpcAddress, await computeSeatNullifier(generation, seat))),
   );
@@ -113,7 +113,7 @@ export async function hasSubscribed(query: {
   generation: number;
   player: AztecAddress;
 }): Promise<boolean> {
-  const { siloNullifier } = await import('@aztec/stdlib/hash');
+  const { siloNullifier } = await import('@aztec-labs/stdlib/hash');
   // siloNullifier is async; an unawaited promise reaches the RPC layer as an
   // opaque object and fails schema validation rather than anything obvious.
   const nullifier = await siloNullifier(query.fpcAddress, await computePlayerNullifier(query.generation, query.player));

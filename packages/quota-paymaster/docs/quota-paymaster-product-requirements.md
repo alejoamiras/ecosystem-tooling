@@ -75,7 +75,7 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
 2. Re-verify teardown-gas billing semantics against the new `gas_settings.ts` (the fee
    ceiling mirrors `getFeeLimit()`, which does NOT add teardown at 5.0.1).
 3. Recompute account class ids (`verifyAccountClassIds` refuses stale configs) — an
-   `@aztec/accounts` bump changes them and requires paymaster redeploys.
+   `@aztec-labs/accounts` bump changes them and requires paymaster redeploys.
 
 ## Version History
 

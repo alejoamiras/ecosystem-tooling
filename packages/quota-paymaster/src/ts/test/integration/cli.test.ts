@@ -67,7 +67,7 @@ describe('published CLI (live network)', () => {
     // network's pre-registered accounts instead of env-supplied keys.
     //
     // It lives INSIDE the package, not in the OS temp dir, because a config
-    // module's own bare imports (@aztec/*) resolve from the CONFIG'S location
+    // module's own bare imports (@aztec-labs/*) resolve from the CONFIG'S location
     // — the split-resolution the Phase-1 spike documented. A config in /tmp
     // resolves against the global cache and fails; an operator's real config
     // sits in their project, where its deps resolve. The test must model that.
@@ -78,9 +78,9 @@ describe('published CLI (live network)', () => {
       configModulePath,
       `import { defineOperatorConfig } from '${join(PKG_ROOT, 'src/ts/operator/config.ts')}';\n` +
         `export default defineOperatorConfig(async () => {\n` +
-        `  const { createAztecNodeClient, waitForNode } = await import('@aztec/aztec.js/node');\n` +
-        `  const { EmbeddedWallet } = await import('@aztec/wallets/embedded');\n` +
-        `  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec/wallets/testing');\n` +
+        `  const { createAztecNodeClient, waitForNode } = await import('@aztec-labs/aztec.js/node');\n` +
+        `  const { EmbeddedWallet } = await import('@aztec-labs/wallets/embedded');\n` +
+        `  const { registerInitialLocalNetworkAccountsInWallet } = await import('@aztec-labs/wallets/testing');\n` +
         `  const node = createAztecNodeClient(${JSON.stringify(NODE_URL)});\n` +
         `  await waitForNode(node);\n` +
         `  const wallet = await EmbeddedWallet.create(node, { ephemeral: true });\n` +
@@ -153,12 +153,12 @@ describe('published CLI (live network)', () => {
   }, 300_000);
 
   test('deploy runs end to end through the bin and a config module', async () => {
-    // The class id must be the REAL one from the installed @aztec/accounts:
+    // The class id must be the REAL one from the installed @aztec-labs/accounts:
     // for a KNOWN class name a mismatched id always refuses (and should —
     // it would ship an allowlist that rejects every real account).
     // --allow-unverified-account-classes only covers UNKNOWN names.
-    const { getContractClassFromArtifact } = await import('@aztec/aztec.js/contracts');
-    const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec/accounts/schnorr');
+    const { getContractClassFromArtifact } = await import('@aztec-labs/aztec.js/contracts');
+    const { SchnorrInitializerlessAccountContractArtifact } = await import('@aztec-labs/accounts/schnorr');
     const classId = (await getContractClassFromArtifact(SchnorrInitializerlessAccountContractArtifact)).id.toString();
 
     const configPath = join(dirname(configModulePath), 'deploy.json');

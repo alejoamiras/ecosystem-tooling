@@ -9,9 +9,9 @@
  * "which seats are still free?" without sending a transaction. Any drift from
  * the Noir implementation silently breaks both, so the parity tests pin them.
  */
-import { poseidon2HashWithSeparator } from '@aztec/foundation/crypto/poseidon';
-import { Fr } from '@aztec/foundation/curves/bn254';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { poseidon2HashWithSeparator } from '@aztec-labs/foundation/crypto/poseidon';
+import { Fr } from '@aztec-labs/foundation/curves/bn254';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
 
 /** Domain separators — must match the contract's globals exactly. */
 export const SEAT_NULLIFIER_SEPARATOR = 0x53454154; // "SEAT"

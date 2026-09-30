@@ -1,5 +1,5 @@
-import { FeeJuiceContractArtifact } from '@aztec/noir-contracts.js/FeeJuice';
-import { FunctionSelector } from '@aztec/stdlib/abi';
+import { FeeJuiceContractArtifact } from '@aztec-labs/noir-contracts.js/FeeJuice';
+import { FunctionSelector } from '@aztec-labs/stdlib/abi';
 import { describe, expect, it } from 'vitest';
 import { PrivateFPCContractArtifact } from '../../artifacts/PrivateFPC.js';
 

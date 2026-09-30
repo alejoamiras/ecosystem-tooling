@@ -137,7 +137,7 @@ function reportRace(pendingActivatedFirst: boolean | 'unknown', verb: string): v
 }
 
 export async function run(flags: ParsedFlags): Promise<void> {
-  const { AztecAddress } = await import('@aztec/aztec.js/addresses');
+  const { AztecAddress } = await import('@aztec-labs/aztec.js/addresses');
   const fpcAddress = AztecAddress.fromStringUnsafe(requireAddressFlag(flags, 'fpc'));
 
   // Everything that can be judged from argv + local files is judged BEFORE the

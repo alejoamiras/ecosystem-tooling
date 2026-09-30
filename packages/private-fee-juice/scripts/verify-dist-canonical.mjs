@@ -7,7 +7,7 @@
 // dist layout — a guard that rejects the LEGITIMATE canonical address. Source-only
 // tests never exercise dist, so this runs the built module end-to-end.
 //
-// Run AFTER `bun run build`, from a cwd where @aztec/* peers resolve (the package's
+// Run AFTER `bun run build`, from a cwd where the Aztec peers resolve (the package's
 // own node_modules). Exits non-zero (and prints the reason) if the built guard cannot
 // load the canonical JSON, or rejects the canonical salt/address.
 
@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fr } from '@aztec-labs/aztec.js/fields';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = join(here, '..');

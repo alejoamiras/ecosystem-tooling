@@ -2,8 +2,8 @@
 // live Aztec mainnet deployment (plan D2.1, fail-closed). No keys, no transactions —
 // a single node_getContract query. Result is recorded in known-deployments.json.
 // Usage: bun scripts/chain-verify.ts [nodeUrl]
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
 import { classIdOfArtifactJson } from './artifact-class-id.js';
 
 const MAINNET_INSTANCE = '0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4';

@@ -7,7 +7,7 @@
  *   - root package.json  config.aztecVersion
  *   - packages/*'/package.json  version (lockstep) + every @aztec-labs/* and @aztec-foundation/*
  *     pin (direct or aliased) + internal cross-package pins (deps whose name is itself a
- *     workspace package — detected by name set, not prefix). Legacy @aztec/* names are an
+ *     workspace package — detected by name set, not prefix). Legacy-scope names are an
  *     error (scripts/lib/manifest-policy.ts); the only legacy name left is the viem alias.
  *   - packages/*'/**'/Nargo.toml  `tag = "v<old>"` on aztec-nr lines (noir-lang deps untouched;
  *     a legacy aztec-nr URL is an error)

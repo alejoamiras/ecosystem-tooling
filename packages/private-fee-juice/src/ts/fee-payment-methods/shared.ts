@@ -1,8 +1,8 @@
-import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
-import { FunctionCall, FunctionSelector, FunctionType } from '@aztec/stdlib/abi';
-import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import type { GasSettings } from '@aztec/stdlib/gas';
-import { ExecutionPayload } from '@aztec/stdlib/tx';
+import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import { FunctionCall, FunctionSelector, FunctionType } from '@aztec-labs/stdlib/abi';
+import type { AztecAddress } from '@aztec-labs/stdlib/aztec-address';
+import type { GasSettings } from '@aztec-labs/stdlib/gas';
+import { ExecutionPayload } from '@aztec-labs/stdlib/tx';
 
 /**
  * Generic fee payment method compatible with any FPC contract that implements pay_fee().

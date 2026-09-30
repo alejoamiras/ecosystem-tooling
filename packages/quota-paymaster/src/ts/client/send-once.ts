@@ -29,9 +29,9 @@
  * pipeline must be built on {@link SendOnceContext.node} — that is the
  * documented contract, mechanically checkable only by the caller.
  */
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { makeFetch } from '@aztec/foundation/json-rpc/client';
-import type { AztecNode } from '@aztec/stdlib/interfaces/client';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
+import { makeFetch } from '@aztec-labs/foundation/json-rpc/client';
+import type { AztecNode } from '@aztec-labs/stdlib/interfaces/client';
 import { isQuotaUnavailableError } from '../errors.js';
 
 /**

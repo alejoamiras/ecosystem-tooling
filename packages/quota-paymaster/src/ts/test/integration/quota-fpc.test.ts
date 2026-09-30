@@ -46,8 +46,8 @@ describe('QuotaFpc integration', () => {
   let fpc: QuotaFpcContract;
   let target: FpcTestTargetContract;
   let decoy: FpcTestTargetContract;
-  let player: import('@aztec/stdlib/aztec-address').AztecAddress;
-  let other: import('@aztec/stdlib/aztec-address').AztecAddress;
+  let player: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
+  let other: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
   let generation: number;
   let suite: Suite;
 
@@ -55,7 +55,7 @@ describe('QuotaFpc integration', () => {
   const sponsor = (
     // biome-ignore lint/suspicious/noExplicitAny: FunctionCall arrays from interactions
     calls: any[],
-    from: import('@aztec/stdlib/aztec-address').AztecAddress,
+    from: import('@aztec-labs/stdlib/aztec-address').AztecAddress,
     opts: { seat?: number; generation?: number } = {},
   ) => sponsorVia(suite, calls, from, opts);
 
@@ -69,7 +69,7 @@ describe('QuotaFpc integration', () => {
     await targetDeploy.send({ from: player });
     target = await targetDeploy.register();
 
-    const { Fr } = await import('@aztec/foundation/curves/bn254');
+    const { Fr } = await import('@aztec-labs/foundation/curves/bn254');
     const decoyDeploy = FpcTestTargetContract.deploy(ctx.wallet, {
       salt: Fr.random(),
       // biome-ignore lint/suspicious/noExplicitAny: deploy options are version-loose
@@ -226,12 +226,12 @@ describe('QuotaFpc integration', () => {
    * then prove sponsorship refuses it.
    */
   test('a published account that scheduled an upgrade is refused despite an allowlisted class', async () => {
-    const { publishInstance, publishContractClass } = await import('@aztec/aztec.js/deployment');
-    const { Fr, Fq } = await import('@aztec/foundation/curves/bn254');
+    const { publishInstance, publishContractClass } = await import('@aztec-labs/aztec.js/deployment');
+    const { Fr, Fq } = await import('@aztec-labs/foundation/curves/bn254');
     const { SchnorrAccountContractArtifact, SchnorrInitializerlessAccountContractArtifact } = await import(
-      '@aztec/accounts/schnorr'
+      '@aztec-labs/accounts/schnorr'
     );
-    const { getContractClassFromArtifact } = await import('@aztec/aztec.js/contracts');
+    const { getContractClassFromArtifact } = await import('@aztec-labs/aztec.js/contracts');
 
     // Publishing an instance requires its class to be publicly registered.
     // Publication is permanent, so both publishes are conditional: a re-run
@@ -284,7 +284,7 @@ describe('QuotaFpc integration', () => {
     await fundWithFeeJuice(ctx.node, ctx.wallet, victim, 10n ** 21n, player, () =>
       target.methods.ping().send({ from: player }),
     );
-    const { ContractInstanceRegistryContract } = await import('@aztec/aztec.js/protocol');
+    const { ContractInstanceRegistryContract } = await import('@aztec-labs/aztec.js/protocol');
     await ContractInstanceRegistryContract.at(ctx.wallet).methods.update(hostileClass.id).send({ from: victim });
     evidence('upgrade-scheduled', {
       victim: victim.toString(),

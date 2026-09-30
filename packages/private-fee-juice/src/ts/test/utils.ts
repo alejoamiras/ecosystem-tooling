@@ -1,6 +1,6 @@
-import { Fr } from '@aztec/aztec.js/fields';
-import type { Wallet } from '@aztec/aztec.js/wallet';
-import { SimpleTokenContract } from '@aztec/noir-contracts.js/SimpleToken';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import { SimpleTokenContract } from '@aztec-labs/noir-contracts.js/SimpleToken';
 
 /** Global test timeout constant for individual test cases. */
 export const TEST_TIMEOUT = 300_000;
@@ -9,7 +9,7 @@ export const TEST_TIMEOUT = 300_000;
 export const TEST_SALT = Fr.ZERO;
 
 /**
- * Deploys a stock upstream `SimpleToken` (from `@aztec/noir-contracts.js`, a demonstration
+ * Deploys a stock upstream `SimpleToken` (from `@aztec-labs/noir-contracts.js`, a demonstration
  * contract) to act as the private application transaction the FPC sponsors in the tests and
  * benchmark. It replaces the previously-bundled local `counter_contract`: a stock contract
  * needs no maintained Noir crate and ships nothing to consumers. SimpleToken is test-only —

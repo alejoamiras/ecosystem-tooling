@@ -38,8 +38,8 @@ const ACTIVATION = 43_260; // 12h + a minute
 describe('QuotaFpc time-travel', () => {
   let ctx: Ctx;
   let target: FpcTestTargetContract;
-  let player: import('@aztec/stdlib/aztec-address').AztecAddress;
-  let other: import('@aztec/stdlib/aztec-address').AztecAddress;
+  let player: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
+  let other: import('@aztec-labs/stdlib/aztec-address').AztecAddress;
 
   const poke = () => target.methods.ping().send({ from: player });
   const recordCall = () => callsOf(target.methods.record());
@@ -50,7 +50,7 @@ describe('QuotaFpc time-travel', () => {
 
   async function sponsorOn(
     fpc: QuotaFpcContract,
-    from: import('@aztec/stdlib/aztec-address').AztecAddress,
+    from: import('@aztec-labs/stdlib/aztec-address').AztecAddress,
     opts: { seat?: number; generation: number },
   ) {
     const payload = await buildSandwichPayload(

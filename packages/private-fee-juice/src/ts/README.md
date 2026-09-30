@@ -27,7 +27,7 @@ import {
   PrivateMintAndPayFeePaymentMethod,
   registerPrivateContract,
 } from '@alejoamiras/private-fee-juice';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fr } from '@aztec-labs/aztec.js/fields';
 
 // Register the PrivateFPC with the PXE — no deployment transaction needed
 const salt = Fr.ZERO; // must match the salt used in `bun run compute`
