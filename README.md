@@ -4,7 +4,7 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 
 > **aztec-standards has moved**: the Aztec Foundation now owns and publishes it as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) ([AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). The `@alejoamiras/aztec-standards` package is deprecated on npm (all versions) — migrate to the Foundation package.
 
-**Current lockstep target: `5.0.1`** (package versions track the Aztec version they target) — releases are published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline; check the [npm badges below](#packages) for what is live.
+**Current lockstep target: `6.0.0-rc.1`** (package versions track the Aztec version they target; the rc ships under the `rc` dist-tag while `latest` stays on the Aztec `5.0.1` releases) — releases are published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline; check the [npm badges below](#packages) for what is live.
 
 ## Packages
 

@@ -226,7 +226,7 @@ jobs:
 
           ## 🚀 Install
 
-          Use `__VERSION__` with an Aztec `__AZTEC_VERSION__` node/sandbox — `@aztec/*` peer dependencies install automatically. This release is also available under the `__DIST_TAG__` dist-tag.
+          Use `__VERSION__` with an Aztec `__AZTEC_VERSION__` node/sandbox — the `@aztec-labs/*` / `@aztec-foundation/*` peer dependencies install automatically. This release is also available under the `__DIST_TAG__` dist-tag.
 
           ```bash
           bun add @alejoamiras/private-fee-juice@__VERSION__
@@ -240,11 +240,14 @@ jobs:
 
           The Aztec Foundation now owns and publishes aztec-standards as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (repo: [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). `@alejoamiras/aztec-standards` is retired and will receive no further releases — migrate to the Foundation package.
 
-          ## ⚠️ Compatibility notes at 5.0.1
+          ## ⚠️ Compatibility notes at 6.0.0-rc.1
 
-          - No package-local API changes in `private-fee-juice` or `aztec-benchmark` in the initial 5.0.1 release. (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 5.0.1, not your fix.)
-          - Upstream Aztec `5.0.1` includes two breaking changes enforced through the exact `@aztec/*` peers: the fee payer must be set in the non-revertible phase ([#24479](https://github.com/AztecProtocol/aztec-packages/pull/24479)), and note-history validation helpers are re-siloed/renamed ([#24644](https://github.com/AztecProtocol/aztec-packages/pull/24644)).
-          - **The canonical PrivateFPC address CHANGED at 5.0.1** (recompiled bytecode): the 5.0.1 canonical address is `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0`. The 5.0.0 address `0x257aa8701e8801b2c03a6b03cdf385c4fa9200efda1dc41f94a905980efc86e9` is STALE for 5.0.1 — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
+          - **Release candidate, opt-in.** Published under the `rc` dist-tag; `latest` stays on the Aztec 5 releases. Install the exact version above (or `@rc`). (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 6.0.0-rc.1, not your fix.)
+          - **Breaking: new npm scopes.** Aztec 6 moved `@aztec/*` to `@aztec-labs/*`, with `bb.js` and `l1-artifacts` under `@aztec-foundation/*` (`viem` stays `npm:@aztec/viem`). Every package's peers are exact `6.0.0-rc.1` pins on the new scopes — move your own imports with the install.
+          - **The canonical PrivateFPC address CHANGED at 6.0.0-rc.1** (recompiled bytecode): `__PFJ_CANONICAL_ADDRESS__`. The 5.0.1 address `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0` is STALE for Aztec 6 — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
+          - **quota-paymaster: new class id and a one-hour bootstrap.** Compiled against Aztec 6, QuotaFpc's class id is `__QUOTA_FPC_CLASS_ID__` — a locally reviewed pin, not chain-verified; the Aztec 5 mainnet deployment is untouched. aztec-nr 6 enforces a 3600s minimum delay on the constructor's policy write, so a fresh deployment reads an all-zero policy and sponsors nothing for its first hour. `resolveFeeSource` takes `policyActive` and returns the `policy-inactive` reason; the operator CLI prints the activation time and refuses to measure before it.
+          - **quota-paymaster: breaking export rename.** `assertArtifactIsChainVerifiedClass` is now `assertArtifactIsLineageClass`, which resolves the class id against the anchors in `known-deployments.json` and reports whether the match is chain-verified.
+          - No other package-local API changes in `private-fee-juice` or `aztec-benchmark`.
 
           ## 📚 Docs & migration
 
