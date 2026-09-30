@@ -8,6 +8,8 @@
  */
 
 export interface KnownDeployments {
+  /** The Aztec version this package build targets; its anchor is the only one a deploy accepts. */
+  currentAztecVersion: string;
   mainnet: { aztecVersion: string; classId: string; verifiedAgainstChain: boolean };
   compiled?: Record<string, { classId: string; verifiedAgainstChain: boolean }>;
 }
@@ -42,9 +44,22 @@ export function selectAnchor(known: KnownDeployments, aztecVersion: string): Lin
   return hit;
 }
 
-/** The reviewed anchor carrying this class id, if any. */
-export function anchorForClassId(known: KnownDeployments, classId: string): LineageAnchor | undefined {
-  return anchors(known).find((a) => a.classId === classId);
+/**
+ * The anchor for the Aztec version this package targets, provided `classId` is exactly its class.
+ * An older reviewed class (a stale artifact from a previous Aztec version) is refused too: it is
+ * reviewed, but not what this package build is.
+ */
+export function assertCurrentLineageClass(known: KnownDeployments, classId: string): LineageAnchor {
+  const anchor = selectAnchor(known, known.currentAztecVersion);
+  if (classId !== anchor.classId) {
+    const other = anchors(known).find((a) => a.classId === classId);
+    throw new Error(
+      `The compiled QuotaFpc artifact's class id ${classId} is not this package's reviewed class ` +
+        `${describeAnchor(anchor)}${other ? ` — it is the Aztec ${other.aztecVersion} class, a stale artifact` : ''}. ` +
+        'Rebuild from clean sources (verify:lineage) before deploying.',
+    );
+  }
+  return anchor;
 }
 
 export const describeAnchor = (a: LineageAnchor): string =>

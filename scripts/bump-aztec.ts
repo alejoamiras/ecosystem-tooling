@@ -24,7 +24,7 @@
  *   bun scripts/bump-aztec.ts --regenerate-excludes
  */
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -225,6 +225,23 @@ for (const pkg of PACKAGES) {
       writes.push([prd, after]);
       edits.push(`${pkg} PRD Target Aztec Version updated`);
     }
+  }
+}
+
+// 4b. Lineage records: the deploy guard selects its anchor by currentAztecVersion. The anchor
+// for the new version does not exist yet — verify:lineage fails until it is compiled and reviewed.
+for (const pkg of PACKAGES) {
+  const knownPath = join(ROOT, 'packages', pkg, 'known-deployments.json');
+  if (!existsSync(knownPath)) continue;
+  const before = readFileSync(knownPath, 'utf8');
+  const after = before.replace(/("currentAztecVersion":\s*)"[^"]*"/, `$1"${target}"`);
+  if (after === before && !before.includes(`"currentAztecVersion": "${target}"`)) {
+    errors.push(`packages/${pkg}/known-deployments.json: no currentAztecVersion to sweep`);
+  } else if (after !== before) {
+    writes.push([knownPath, after]);
+    edits.push(
+      `${pkg} known-deployments currentAztecVersion -> ${target} (record compiled["${target}"] after compiling)`,
+    );
   }
 }
 

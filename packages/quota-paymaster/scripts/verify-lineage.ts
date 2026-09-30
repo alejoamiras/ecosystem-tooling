@@ -39,6 +39,12 @@ const aztecVersion: string = JSON.parse(read(repoRoot, 'package.json')).config.a
 const anchor = selectAnchor(known, aztecVersion);
 const anchorKind = anchor.chainVerified ? 'chain-verified' : 'locally pinned';
 const failures: string[] = [];
+// The deploy guard's only runtime source for the targeted Aztec version.
+if (known.currentAztecVersion !== aztecVersion) {
+  failures.push(
+    `known-deployments.json currentAztecVersion ${known.currentAztecVersion} != config.aztecVersion ${aztecVersion}`,
+  );
+}
 
 // (a) vendored source freshness + upstream reconstruction
 for (const [rel, expected] of Object.entries(provenance.vendoredSha256)) {

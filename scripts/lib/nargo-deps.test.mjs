@@ -1,8 +1,9 @@
 // bun test scripts/lib/nargo-deps.test.mjs — bun is the runtime verify-nargo-refs.sh uses (Bun.TOML).
+
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 
 import { parseNargoDeps, rawManifestUrl, resolveRelative } from './nargo-deps.mjs';

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import known from '../../../../known-deployments.json' with { type: 'json' };
 import { reconstructUpstream, type SanctionedEdit } from '../../../../scripts/lineage-core.js';
-import { anchorForClassId, selectAnchor } from '../../operator/lineage.js';
+import { assertCurrentLineageClass, type KnownDeployments, selectAnchor } from '../../operator/lineage.js';
 
 const vendored = readFileSync(new URL('../../../nr/quota_fpc/src/main.nr', import.meta.url), 'utf8');
 const edits = known.provenance.sanctionedEdits as SanctionedEdit[];
@@ -42,7 +42,16 @@ describe('lineage anchors', () => {
     expect(() => selectAnchor(known, '9.9.9')).toThrow(/no lineage anchor for Aztec 9\.9\.9/);
   });
 
-  test('an unreviewed class id matches no anchor, so the deploy guard refuses it', () => {
-    expect(anchorForClassId(known, `0x${'0'.repeat(64)}`)).toBeUndefined();
+  test("the deploy guard accepts only the current version's class, never a stale reviewed one", () => {
+    const current: KnownDeployments = {
+      ...known,
+      currentAztecVersion: '9.0.0',
+      compiled: { '9.0.0': { classId: `0x${'9'.repeat(64)}`, verifiedAgainstChain: false } },
+    };
+    expect(assertCurrentLineageClass(current, `0x${'9'.repeat(64)}`)).toMatchObject({ chainVerified: false });
+    expect(() => assertCurrentLineageClass(current, known.mainnet.classId)).toThrow(/Aztec 5\.0\.1 class, a stale/);
+    expect(() => assertCurrentLineageClass(current, `0x${'0'.repeat(64)}`)).toThrow(
+      /not this package's reviewed class/,
+    );
   });
 });

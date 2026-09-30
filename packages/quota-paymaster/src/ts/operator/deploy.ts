@@ -25,7 +25,7 @@ import {
   snapshotOptions,
 } from './action-plan.js';
 import { OperatorConfigError } from './config-module.js';
-import { anchorForClassId, describeAnchor, type LineageAnchor } from './lineage.js';
+import { assertCurrentLineageClass, describeAnchor, type LineageAnchor } from './lineage.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
@@ -91,20 +91,13 @@ export async function verifyAccountClassIds(
 }
 
 /**
- * Lineage guard: refuse to deploy an artifact whose class id is not one this package reviewed
- * (known-deployments.json). The returned anchor says whether that class was ever checked against
- * a chain or is only locally pinned.
+ * Lineage guard: refuse to deploy an artifact whose class id is not the one reviewed for this
+ * package's Aztec version (known-deployments.json). The returned anchor says whether that class
+ * was ever checked against a chain or is only locally pinned.
  */
 export async function assertArtifactIsLineageClass(): Promise<LineageAnchor> {
   const { id } = await getContractClassFromArtifact(QuotaFpcContractArtifact);
-  const anchor = anchorForClassId(knownDeployments, id.toString());
-  if (!anchor) {
-    throw new Error(
-      `The compiled QuotaFpc artifact's class id ${id} is not a reviewed lineage class in ` +
-        `known-deployments.json. Rebuild from clean sources (verify:lineage) before deploying.`,
-    );
-  }
-  return anchor;
+  return assertCurrentLineageClass(knownDeployments, id.toString());
 }
 
 export interface DeployQuotaFpcDeps {

@@ -1,5 +1,6 @@
 {
-  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. mainnet.classId is the only class id ever checked against a live chain (Aztec 5.0.1). compiled[<aztecVersion>] entries are class ids this repo compiled and reviewed for later Aztec versions: local pins, not proof of any deployment. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion.",
+  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. mainnet.classId is the only class id ever checked against a live chain (Aztec 5.0.1). compiled[<aztecVersion>] entries are class ids this repo compiled and reviewed for later Aztec versions: local pins, not proof of any deployment. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion. currentAztecVersion is the Aztec version this package build targets (swept by bump-aztec.ts, asserted equal to config.aztecVersion by verify:lineage): the deploy guard accepts only its anchor.",
+  "currentAztecVersion": "6.0.0-rc.1",
   "mainnet": {
     "name": "Dark Forest quota paymaster (reference deployment — NOT this package's to operate)",
     "address": "0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4",
