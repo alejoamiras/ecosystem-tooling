@@ -245,15 +245,21 @@ for (const [dir, pkg] of swept) {
 }
 while (queue.length > 0) {
   const [name, version] = queue.shift() as [string, string];
-  if (closure.has(name)) continue;
+  const seen = closure.get(name);
+  if (seen !== undefined) {
+    // One name at two versions would install both; the exclusion list is per name.
+    if (seen !== version) errors.push(`${name} is reached at both ${seen} and ${version}`);
+    continue;
+  }
   closure.set(name, version);
   const doc = registryDoc(`${name}@${version}`);
   // Optional deps carry the per-platform native binaries, and bun gates each one by age.
-  const deps = { ...doc.peerDependencies, ...doc.optionalDependencies, ...doc.dependencies };
-  for (const [dep, spec] of Object.entries(deps)) {
-    const edge = closureEdge(`${name}@${version}`, dep, spec, target);
-    if (edge && 'error' in edge) errors.push(edge.error);
-    else if (edge && !closure.has(edge.name)) queue.push([edge.name, edge.version]);
+  for (const section of ['peerDependencies', 'optionalDependencies', 'dependencies'] as const) {
+    for (const [dep, spec] of Object.entries((doc[section] ?? {}) as Record<string, string>)) {
+      const edge = closureEdge(`${name}@${version}`, dep, spec, target);
+      if (edge && 'error' in edge) errors.push(edge.error);
+      else if (edge) queue.push([edge.name, edge.version]);
+    }
   }
 }
 if (errors.length > 0) fail(errors);

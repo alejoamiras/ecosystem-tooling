@@ -56,8 +56,12 @@ export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] 
         errors.push(`${at} is ${spec}, expected exactly aztecVersion ${aztecVersion}`);
         continue;
       }
+      if (!spec.startsWith('npm:')) continue;
       const alias = parseAlias(spec);
-      if (!alias) continue;
+      if (!alias) {
+        errors.push(`${at}: unparseable npm: alias ${spec}`);
+        continue;
+      }
       if (isLockstepName(alias.target) && alias.version !== aztecVersion) {
         errors.push(`${at} aliases ${alias.target}@${alias.version}, expected exactly aztecVersion ${aztecVersion}`);
       } else if (isLegacyName(alias.target)) {

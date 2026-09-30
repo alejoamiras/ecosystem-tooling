@@ -37,6 +37,15 @@ describe('closureEdge', () => {
     const r = closureEdge('@aztec-labs/aztec.js', '@aztec-foundation/l1-artifacts', '6.0.0-rc.2', T);
     expect(r).toEqual({ error: expect.stringMatching(/upstream versions diverged/) });
   });
+
+  test('ranges and aliases must actually resolve to the target', () => {
+    const diverged = { error: expect.stringMatching(/upstream versions diverged/) };
+    expect(closureEdge('p', '@aztec-labs/stdlib', `^${T}`, T)).toEqual({ name: '@aztec-labs/stdlib', version: T });
+    expect(closureEdge('p', '@aztec-labs/stdlib', '^5.0.1', T)).toEqual(diverged);
+    expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js@5.0.1', T)).toEqual(diverged);
+    expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js', T)).toEqual(diverged);
+    expect(closureEdge('p', 'viem', 'npm:@aztec/viem', T)).toEqual({ error: expect.stringMatching(/not an exact/) });
+  });
 });
 
 describe('youngNames', () => {
@@ -59,6 +68,9 @@ describe('youngNames', () => {
 test('parseAlias + lockfilePairs read bun.lock-shaped entries across all scopes', () => {
   expect(parseAlias('npm:@aztec/viem@2.38.3')).toEqual({ target: '@aztec/viem', version: '2.38.3' });
   expect(parseAlias('2.38.3')).toBeUndefined();
+  // npm installs a versionless alias as `*`; it must surface, not vanish.
+  expect(parseAlias('npm:@aztec-labs/stdlib')).toEqual({ target: '@aztec-labs/stdlib', version: '' });
+  expect(parseAlias('npm:@aztec/stdlib@')).toEqual({ target: '@aztec/stdlib', version: '' });
   const lock = `
     "@aztec-labs/stdlib": ["@aztec-labs/stdlib@${T}", "", {}, "sha512-x"],
     "viem": ["@aztec/viem@2.38.3", "", {}, "sha512-y"],

@@ -25,10 +25,14 @@ export const MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const isLockstepName = (name: string): boolean => LOCKSTEP_SCOPES.some((s) => name.startsWith(s));
 export const isLegacyName = (name: string): boolean => name.startsWith(LEGACY_SCOPE);
 
-/** `npm:<target>@<version>` → its parts; undefined for a plain version spec. */
+/**
+ * `npm:<target>[@<version>]` → its parts; undefined for a non-alias spec. An omitted or empty
+ * version comes back as `''` rather than undefined: npm installs it as `*`, so callers must
+ * see it and refuse it, not skip it.
+ */
 export function parseAlias(spec: string): { target: string; version: string } | undefined {
-  const m = /^npm:((?:@[^/@]+\/)?[^@]+)@(.+)$/.exec(spec);
-  return m?.[1] && m[2] ? { target: m[1], version: m[2] } : undefined;
+  const m = /^npm:((?:@[^/@]+\/)?[^@]+)(?:@(.*))?$/.exec(spec);
+  return m?.[1] ? { target: m[1], version: m[2] ?? '' } : undefined;
 }
 
 const normalizeGit = (url: string): string => url.replace(/\/+$/, '');
@@ -65,18 +69,26 @@ export function closureEdge(
   spec: string,
   target: string,
 ): { name: string; version: string } | { error: string } | undefined {
-  const alias = parseAlias(spec);
-  if (alias) {
-    if (isLockstepName(alias.target) || alias.target === ALLOWED_LEGACY_ALIAS.target) {
-      return { name: alias.target, version: alias.version };
+  const diverged = (name: string, version: string) => ({
+    error: `${parent} depends on ${name}@${version}, which the lockstep ${target} does not satisfy — upstream versions diverged; extend the tooling before bumping`,
+  });
+  if (spec.startsWith('npm:')) {
+    const alias = parseAlias(spec);
+    if (!alias) return { error: `${parent}: unparseable alias ${dep}@${spec}` };
+    if (isLockstepName(alias.target)) {
+      return alias.version === target ? { name: alias.target, version: target } : diverged(alias.target, alias.version);
+    }
+    if (alias.target === ALLOWED_LEGACY_ALIAS.target) {
+      return EXACT_SEMVER.test(alias.version)
+        ? { name: alias.target, version: alias.version }
+        : { error: `${parent}: ${dep} aliases ${alias.target}@${alias.version || '*'}, not an exact version` };
     }
     return undefined;
   }
   if (!isLockstepName(dep)) return undefined;
-  if (EXACT_SEMVER.test(spec) && spec !== target) {
-    return {
-      error: `${parent} depends on ${dep}@${spec}, not the lockstep ${target} — upstream versions diverged; extend the tooling before bumping`,
-    };
+  // A range (`^5.0.1`, `*`) is only an edge to the target when bun would actually pick it.
+  if (spec !== target && !(!EXACT_SEMVER.test(spec) && Bun.semver.satisfies(target, spec))) {
+    return diverged(dep, spec);
   }
   return { name: dep, version: target };
 }

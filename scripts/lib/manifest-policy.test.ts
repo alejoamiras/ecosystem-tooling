@@ -52,6 +52,12 @@ describe('aliases are judged by target', () => {
     expect(errs({ dependencies: { notviem: 'npm:@aztec/viem@2.38.3' } })[0]).toMatch(/only viem/);
   });
 
+  test('a versionless alias installs as `*`, so it is refused', () => {
+    expect(errs({ dependencies: { helper: 'npm:@aztec-labs/stdlib' } })[0]).toMatch(/aliases @aztec-labs\/stdlib@,/);
+    expect(errs({ dependencies: { helper: 'npm:@aztec/stdlib@' } })[0]).toMatch(/legacy @aztec\/stdlib/);
+    expect(errs({ devDependencies: { viem: 'npm:@aztec/viem' } })[0]).toMatch(/expected an exact version/);
+  });
+
   test('the viem alias must be exact', () => {
     expect(errs({ devDependencies: { viem: 'npm:@aztec/viem@^2.38.3' } })[0]).toMatch(/exact version/);
   });
