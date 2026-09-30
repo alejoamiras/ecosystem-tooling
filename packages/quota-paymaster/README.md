@@ -8,9 +8,10 @@ users transact without ever bridging. The contract is app-agnostic: all app-spec
 
 | | |
 |---|---|
-| Contract | `QuotaFpc` (Noir), class id `0x115cfdfdc4e440c11f040af7e9c980c0e61858b86daeacfe9765a9be613a62fc` |
-| Lineage | Byte-verbatim from the live Aztec mainnet deployment; class id verified against the chain (see `known-deployments.json`) |
-| Versioning | Lockstep with Aztec: package `5.0.1` targets Aztec `5.0.1` |
+| Contract | `QuotaFpc` (Noir); one class id per Aztec version, recorded in `known-deployments.json` |
+| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay); its compiled class id is a locally reviewed pin, **not** chain-verified |
+| Versioning | Lockstep with Aztec: package `6.0.0-rc.1` targets Aztec `6.0.0-rc.1`, published under the `rc` dist-tag |
+| Bootstrap | A fresh deployment is inert for its first hour (aztec-nr's 3600s minimum delay): the policy reads all zeros and sponsors nothing |
 | SDK | Browser-safe root export; Node-only `./operator` export |
 
 ## The "sandwich" (how it works)
@@ -198,12 +199,15 @@ bun run test:nr        # Noir TXE suite (28 tests; never concurrently with a liv
 bun run test:unit      # unit + examples, network-free
 bun run test:js        # unit, then integration on a self-provisioned disposable network
 bun run test:warp      # time-travel suite — likewise on its own disposable network
-bun run verify:lineage # source-hash + dep-lock + artifact class id vs the chain-verified one
+bun run verify:lineage # source hash + dep lock + artifact class id vs this Aztec version's anchor
 ```
 
 `verify:lineage` binds the vendored sources, the locked Nargo dependency, and both compiled
-artifacts to the chain-verified class id — a source edit without recompile, a stale
-artifact, or any deviation beyond the enumerated ones fails it.
+artifacts to the class id anchored for the root `config.aztecVersion` — a source edit without
+recompile, a stale artifact, or any deviation beyond the enumerated ones fails it. Only the
+5.0.1 anchor is chain-verified; a later version's anchor is a pin committed alongside the
+source, so the check is a review-gated tripwire, not proof against a coordinated edit of
+both. Its success line says which kind of anchor it matched.
 
 ## Provenance & license
 

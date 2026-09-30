@@ -2,7 +2,7 @@
 
 How a dApp wires up sponsored transactions with `@alejoamiras/quota-paymaster`.
 The README covers what the contract IS, its threat model, and the operator CLI;
-this covers the client path — the order to call things in, and the four places
+this covers the client path — the order to call things in, and the five places
 where a reasonable-looking integration silently stops sponsoring.
 
 Written to be readable by a coding agent as well as a person. If you are an
@@ -10,15 +10,17 @@ agent: read the "Traps" section before writing code, not after.
 
 ## Prerequisites
 
-1. **Aztec `5.0.1`.** Versions are LOCKSTEP — `@aztec-labs/*` and `@aztec-foundation/*` are exact `5.0.1` peer
-   dependencies. A different Aztec version will not resolve, by design.
+1. **Aztec `6.0.0-rc.1`.** Versions are LOCKSTEP — `@aztec-labs/*` and `@aztec-foundation/*` are exact
+   `6.0.0-rc.1` peer dependencies. A different Aztec version will not resolve, by design. This is a
+   release candidate, published under the `rc` dist-tag: install it as `@rc`, since `latest` still
+   targets Aztec 5.
 2. **A 7-day npm min-age gate will reject a fresh release.** If your repo sets
    `minimumReleaseAge` in `bunfig.toml` (a good supply-chain default), a version
    published this week is refused. Wait out the window or add a scoped exception.
    This is expected behaviour, not a broken install.
 
 ```bash
-bun add @alejoamiras/quota-paymaster
+bun add @alejoamiras/quota-paymaster@rc
 ```
 
 ## The mental model, in four sentences
@@ -67,6 +69,7 @@ const source = await resolveFeeSource({
   findFreeSeat: () => findFreeSeat({ node, fpcAddress, generation, maxUsers }),
   ownBalance, minSelfPayBalance,
   paymasterBalance, minPaymasterBalance,
+  policyActive: policy.max_users > 0,   // from get_policy — see Traps
 });
 ```
 
@@ -150,7 +153,7 @@ transition instead.
 
 ## Traps
 
-These are the four that cost real time. Each is a case where the naive reading is
+These are the five that cost real time. Each is a case where the naive reading is
 wrong and the failure is silent or misleading.
 
 **`AllowanceState.subscribed` is not the contract's `has_allowance`.** It means
@@ -176,6 +179,14 @@ actions (`npx @alejoamiras/quota-paymaster measure …`) and size from that.
 **The note is not consumed on the last use.** The contract re-inserts it
 unconditionally; only `has_allowance` flips. Do not treat "note gone" as a state
 you will ever observe.
+
+**A fresh paymaster is inert for its first hour.** aztec-nr enforces a 3600s
+minimum delay on every policy write, the constructor's included, so until then
+`get_policy` reads all zeros and every sponsored transaction is unprovable (an
+all-zero allowlist admits no target). It is fail-closed, not an error. Pass
+`policyActive` so `resolveFeeSource` falls back with `policy-inactive` instead
+of looking for a seat against `max_users = 0`. The deploy command prints when
+sponsorship activates; deploy at least an hour before you need it.
 
 ## Handling refusals well
 

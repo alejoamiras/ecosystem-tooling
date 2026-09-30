@@ -50,9 +50,23 @@ pub unconstrained fn make_bundle(
     QuotaFpc::PolicyBundle::deserialize(fields)
 }
 
-/// Deploys QuotaFpc with the standard test configuration via its REAL public
-/// constructor (exercising the bootstrap write-then-raise-delay ordering).
+/// aztec-nr's minimum DelayedPublicMutable delay, which the constructor's own
+/// write goes through. Pinned here, not imported, so a contract change shows up
+/// as a test failure.
+pub global BOOTSTRAP_SECONDS: u64 = 3600;
+
+/// Deploys QuotaFpc with the standard test configuration and moves past its
+/// bootstrap hour, so the constructor's bundle is in force.
 pub unconstrained fn setup() -> (TestEnvironment, AztecAddress, AztecAddress) {
+    let (mut env, fpc, admin) = setup_inert();
+    env.advance_next_block_timestamp_by(BOOTSTRAP_SECONDS + 1);
+    env.mine_block();
+    (env, fpc, admin)
+}
+
+/// Deploys via the REAL public constructor (exercising the write-then-raise-delay
+/// ordering) and stops: the policy still reads all-zero.
+pub unconstrained fn setup_inert() -> (TestEnvironment, AztecAddress, AztecAddress) {
     let mut env = TestEnvironment::new();
     let admin = env.create_light_account();
     let initializer = QuotaFpc::interface().constructor(
