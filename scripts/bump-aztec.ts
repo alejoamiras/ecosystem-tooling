@@ -1,53 +1,185 @@
 #!/usr/bin/env bun
 /**
- * Lockstep Aztec version bump (plan D9/D14/Phase 6).
+ * Lockstep Aztec version bump.
  *
- * Sweeps EVERY location the Aztec version lives:
+ * Sweeps EVERY location the Aztec version lives, validating the whole result before writing
+ * any of it:
  *   - root package.json  config.aztecVersion
- *   - packages/*'/package.json  version (lockstep) + every @aztec/* pin in
- *     dependencies/devDependencies/peerDependencies + internal cross-package pins
- *     (deps whose name is itself a workspace package — detected by name set, not prefix)
- *   - packages/*'/**'/Nargo.toml  `tag = "v<old>"` on lines referencing aztec-packages
- *     (noir-lang deps like keccak256/sha512/bignum are deliberately untouched)
- *   - the FPC PRD header `**Target Aztec Version**`
+ *   - packages/*'/package.json  version (lockstep) + every @aztec-labs/* and @aztec-foundation/*
+ *     pin (direct or aliased) + internal cross-package pins (deps whose name is itself a
+ *     workspace package — detected by name set, not prefix). Legacy @aztec/* names are an
+ *     error (scripts/lib/manifest-policy.ts); the only legacy name left is the viem alias.
+ *   - packages/*'/**'/Nargo.toml  `tag = "v<old>"` on aztec-nr lines (noir-lang deps untouched;
+ *     a legacy aztec-nr URL is an error)
+ *   - every package's PRD header `**Target Aztec Version**`
  *
- * Min-age handling (two-phase — bun's minimumReleaseAgeExcludes takes exact names and
- * transitives are gated independently; empirically verified, lessons/phase-1.md):
- *   - pre-install: BFS the @aztec/* dependency closure from the npm registry at the
- *     TARGET version and write it into bunfig.toml when the target is <7 days old
- *   - post-install (--regenerate-excludes): rewrite the list from the fresh bun.lock
- *
- * Also emits a supply-chain report (publish date, age, provenance) for the bump PR.
+ * Min-age handling (bun's minimumReleaseAgeExcludes takes exact names, and transitives are
+ * gated independently): only names whose resolved version is younger than 7 days are exempted.
+ *   - pre-install: walk the registry closure at the TARGET and write its young names
+ *   - post-install (--regenerate-excludes): recompute from the fresh bun.lock, then print the
+ *     supply-chain report (publish date, age, publisher, attestation presence) for the PR
  *
  * Usage:
- *   bun scripts/bump-aztec.ts 5.0.0-rc.2
+ *   bun scripts/bump-aztec.ts 6.0.0-rc.1
  *   bun scripts/bump-aztec.ts --regenerate-excludes
  */
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROOT = join(import.meta.dir, '..');
-const MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const PACKAGES = readdirSync(join(ROOT, 'packages')).filter((d) => statSync(join(ROOT, 'packages', d)).isDirectory());
-// Workspace package NAMES (from each packages/*/package.json). Internal cross-package pins are
-// bumped by membership in this set — NOT a `@alejoamiras/aztec-*` prefix — so a package rename
-// (e.g. aztec-fee-payment → private-fee-juice) can't silently drop a pin from the sweep.
-const WORKSPACE_NAMES = new Set<string>(
-  PACKAGES.map((d) => JSON.parse(readFileSync(join(ROOT, 'packages', d, 'package.json'), 'utf8')).name),
-);
+import {
+  closureEdge,
+  EXACT_SEMVER,
+  isLockstepName,
+  lockfilePairs,
+  type PublishRow,
+  parseAlias,
+  sweepNargoLine,
+  youngNames,
+} from './lib/aztec-scopes.ts';
+import { DEP_SECTIONS, type Manifest, validateManifest } from './lib/manifest-policy.ts';
 
-const npmView = (spec: string, field: string): unknown => {
+const ROOT = join(import.meta.dir, '..');
+const PACKAGES = readdirSync(join(ROOT, 'packages')).filter((d) => statSync(join(ROOT, 'packages', d)).isDirectory());
+const manifestPath = (dir: string) => join(ROOT, 'packages', dir, 'package.json');
+const readJson = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
+// Workspace package NAMES. Internal cross-package pins are bumped by membership in this set —
+// NOT a name prefix — so a package rename can't silently drop a pin from the sweep.
+const WORKSPACE_NAMES = new Set<string>(PACKAGES.map((d) => readJson(manifestPath(d)).name));
+
+interface RegistryDoc {
+  version?: string;
+  time?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  dist?: { attestations?: { url?: string } | null };
+  _npmUser?: string;
+}
+
+const docs = new Map<string, RegistryDoc>();
+/** The registry's view of one exact version. Every failure throws: no caller may read "unfetchable" as "absent". */
+function registryDoc(spec: string): RegistryDoc {
+  const cached = docs.get(spec);
+  if (cached) return cached;
+  let out: string;
   try {
-    const out = execFileSync('npm', ['view', spec, field, '--json'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    out = execFileSync('npm', ['view', spec, '--json'], { stdio: ['ignore', 'pipe', 'pipe'] })
       .toString()
       .trim();
-    return out ? JSON.parse(out) : undefined;
-  } catch {
-    return undefined;
+  } catch (e) {
+    const stderr = (e as { stderr?: Buffer }).stderr?.toString().trim().split('\n')[0];
+    throw new Error(`npm view ${spec} failed: ${stderr || e}`);
   }
-};
+  const doc = out ? JSON.parse(out) : undefined;
+  if (!doc || Array.isArray(doc)) throw new Error(`npm view ${spec}: expected exactly one published version`);
+  docs.set(spec, doc);
+  return doc;
+}
 
+const publishRow = (name: string, version: string): PublishRow => ({
+  name,
+  version,
+  publishedAt: registryDoc(`${name}@${version}`).time?.[version],
+});
+
+function writeExcludes(names: string[], source: string): void {
+  const bunfigPath = join(ROOT, 'bunfig.toml');
+  const line = `minimumReleaseAgeExcludes = [${names.map((n) => `"${n}"`).join(', ')}]`;
+  const re = /^#?\s*minimumReleaseAgeExcludes\s*=.*$/m;
+  const bunfig = readFileSync(bunfigPath, 'utf8');
+  writeFileSync(bunfigPath, re.test(bunfig) ? bunfig.replace(re, line) : `${bunfig.trimEnd()}\n${line}\n`);
+  console.log(
+    `bunfig.toml: ${names.length} min-age exclusion(s) written (${source})${names.length ? `: ${names.join(', ')}` : ''}`,
+  );
+}
+
+function fail(errors: string[]): never {
+  console.error(`bump-aztec: refusing — nothing was written:\n  ${errors.join('\n  ')}`);
+  process.exit(1);
+}
+
+if (process.argv[2] === '--regenerate-excludes') {
+  const now = Date.now();
+  const rows = [...lockfilePairs(readFileSync(join(ROOT, 'bun.lock'), 'utf8'))].flatMap(([name, versions]) =>
+    versions.map((v) => publishRow(name, v)),
+  );
+  writeExcludes(youngNames(rows, now), 'from bun.lock');
+
+  console.log('\n=== supply-chain report (from bun.lock) ===\n');
+  console.log('| package | version | published (UTC) | age (days) | publisher | attestation present (not verified) |');
+  console.log('|---|---|---|---|---|---|');
+  const unattested: string[] = [];
+  for (const row of rows) {
+    const doc = registryDoc(`${row.name}@${row.version}`);
+    const attested = Boolean(doc.dist?.attestations?.url);
+    // The foundation scope ships attestations today; a missing one is a tripwire, not a proof.
+    if (row.name.startsWith('@aztec-foundation/') && !attested) unattested.push(`${row.name}@${row.version}`);
+    const age = ((now - Date.parse(row.publishedAt as string)) / 86_400_000).toFixed(1);
+    const publisher = (doc._npmUser ?? 'unknown').replace(/\s*<.*$/, '');
+    console.log(
+      `| ${row.name} | ${row.version} | ${row.publishedAt} | ${age} | ${publisher} | ${attested ? 'yes' : 'no'} |`,
+    );
+  }
+  if (unattested.length > 0) {
+    console.error(`\n@aztec-foundation/* without attestations (expected present): ${unattested.join(', ')}`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+const target = process.argv[2];
+if (!target || !EXACT_SEMVER.test(target)) {
+  console.error(
+    'usage: bun scripts/bump-aztec.ts <version>   (e.g. 6.0.0-rc.1)\n       bun scripts/bump-aztec.ts --regenerate-excludes',
+  );
+  process.exit(1);
+}
+
+// Refuse to sweep to a version that isn't actually on the registry.
+if (registryDoc(`@aztec-labs/aztec.js@${target}`).version !== target) {
+  fail([`@aztec-labs/aztec.js@${target} is not on the npm registry`]);
+}
+
+const errors: string[] = [];
+const writes: Array<[path: string, content: string]> = [];
+const edits: string[] = [];
+
+// 1. Root config.aztecVersion
+{
+  const p = join(ROOT, 'package.json');
+  const pkg = readJson(p);
+  edits.push(`root config.aztecVersion: ${pkg.config?.aztecVersion} -> ${target}`);
+  pkg.config = { ...pkg.config, aztecVersion: target };
+  writes.push([p, `${JSON.stringify(pkg, null, 2)}\n`]);
+}
+
+// 2. Package manifests: lockstep version + Aztec pins + internal pins
+const swept: Array<[dir: string, pkg: Manifest]> = [];
+for (const dir of PACKAGES) {
+  const pkg = readJson(manifestPath(dir));
+  const old = pkg.version;
+  pkg.version = target;
+  let count = 0;
+  for (const section of DEP_SECTIONS) {
+    const deps: Record<string, string> | undefined = pkg[section];
+    if (!deps) continue;
+    for (const [name, spec] of Object.entries(deps)) {
+      const alias = parseAlias(spec);
+      if ((isLockstepName(name) && EXACT_SEMVER.test(spec)) || WORKSPACE_NAMES.has(name)) {
+        deps[name] = target;
+        count++;
+      } else if (alias && isLockstepName(alias.target)) {
+        deps[name] = `npm:${alias.target}@${target}`;
+        count++;
+      }
+    }
+  }
+  errors.push(...validateManifest(pkg, { aztecVersion: target }).map((e) => `packages/${dir}: ${e}`));
+  swept.push([dir, pkg]);
+  writes.push([manifestPath(dir), `${JSON.stringify(pkg, null, 2)}\n`]);
+  edits.push(`packages/${dir}: version ${old} -> ${target}, ${count} pins`);
+}
+
+// 3. Nargo.toml aztec-nr tags
 function walkNargoTomls(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === 'target' || entry.startsWith('.')) continue;
@@ -57,205 +189,79 @@ function walkNargoTomls(dir: string, acc: string[] = []): string[] {
   }
   return acc;
 }
-
-// name -> declared version where the manifest pins one explicitly (alias specs always do;
-// plain @aztec/* deps ride the lockstep target, expressed here as undefined).
-function declaredAztecNames(): Map<string, string | undefined> {
-  const names = new Map<string, string | undefined>();
-  const manifests = [join(ROOT, 'package.json'), ...PACKAGES.map((d) => join(ROOT, 'packages', d, 'package.json'))];
-  for (const m of manifests) {
-    const pkg = JSON.parse(readFileSync(m, 'utf8'));
-    for (const section of ['dependencies', 'devDependencies', 'peerDependencies']) {
-      for (const [name, spec] of Object.entries((pkg[section] ?? {}) as Record<string, string>)) {
-        if (name.startsWith('@aztec/') && !names.has(name)) names.set(name, undefined);
-        const alias = /^npm:(@aztec\/[^@]+)@(.+)$/.exec(spec);
-        if (alias?.[1]) names.set(alias[1], alias[2]);
-      }
-    }
-  }
-  return names;
-}
-
-// Returns name -> resolved version. Aliased packages (e.g. "viem": "npm:@aztec/viem@2.38.2")
-// live at their OWN version, not the lockstep target — querying them at the target yields
-// false NOT PUBLISHED rows in the report and null dep walks in the BFS.
-function aztecClosure(version: string): Map<string, string> {
-  const seen = new Map<string, string>();
-  const queue: Array<[string, string]> = [...declaredAztecNames()].map(([n, v]) => [n, v ?? version]);
-  while (queue.length > 0) {
-    const entry = queue.shift();
-    if (!entry || seen.has(entry[0])) continue;
-    const [name, resolved] = entry;
-    seen.set(name, resolved);
-    const deps = (npmView(`${name}@${resolved}`, 'dependencies') ?? {}) as Record<string, string>;
-    for (const [dep, spec] of Object.entries(deps)) {
-      // Direct @aztec deps ride the lockstep target unless they pin an exact different version.
-      if (dep.startsWith('@aztec/') && !seen.has(dep))
-        queue.push([dep, /^\d+\.\d+\.\d+(-.+)?$/.test(spec) ? spec : version]);
-      const alias = /^npm:(@aztec\/[^@]+)@(.+)$/.exec(spec);
-      if (alias?.[1] && !seen.has(alias[1])) queue.push([alias[1], alias[2]]);
-    }
-  }
-  return new Map([...seen.entries()].sort(([a], [b]) => a.localeCompare(b)));
-}
-
-// name -> RESOLVED version from bun.lock. The report's >7d fallback path must not query
-// alias packages (e.g. @aztec/viem, resolved at 2.38.x) at the lockstep target — that
-// reintroduces the false NOT-PUBLISHED rows the closure path was fixed to avoid.
-function lockfileAztecPairs(): Map<string, string[]> {
-  const lock = readFileSync(join(ROOT, 'bun.lock'), 'utf8');
-  const pairs = new Map<string, string[]>();
-  for (const m of lock.matchAll(/"(@aztec\/[a-z0-9._-]+)@([0-9][^"]*)"/gi)) {
-    const list = pairs.get(m[1]) ?? [];
-    if (!list.includes(m[2])) list.push(m[2]);
-    pairs.set(m[1], list);
-  }
-  return new Map([...pairs.entries()].sort(([a], [b]) => a.localeCompare(b)));
-}
-
-function writeExcludes(names: string[], source: string): void {
-  const bunfigPath = join(ROOT, 'bunfig.toml');
-  let bunfig = readFileSync(bunfigPath, 'utf8');
-  const line = `minimumReleaseAgeExcludes = [${names.map((n) => `"${n}"`).join(', ')}]`;
-  if (/^#?\s*minimumReleaseAgeExcludes\s*=.*$/m.test(bunfig)) {
-    bunfig = bunfig.replace(/^#?\s*minimumReleaseAgeExcludes\s*=.*$/m, line);
-  } else {
-    bunfig = `${bunfig.trimEnd()}\n${line}\n`;
-  }
-  writeFileSync(bunfigPath, bunfig);
-  console.log(`bunfig.toml: ${names.length} @aztec/* exclusions written (${source})`);
-}
-
-if (process.argv[2] === '--regenerate-excludes') {
-  writeExcludes([...lockfileAztecPairs().keys()], 'from bun.lock');
-  process.exit(0);
-}
-
-const target = process.argv[2];
-if (!target || !/^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$/.test(target)) {
-  console.error(
-    'usage: bun scripts/bump-aztec.ts <version>   (e.g. 5.0.0-rc.2)\n       bun scripts/bump-aztec.ts --regenerate-excludes',
-  );
-  process.exit(1);
-}
-
-// Refuse to sweep to a version that isn't actually on the registry.
-const published = npmView(`@aztec/aztec.js@${target}`, 'version');
-if (published !== target) {
-  console.error(`@aztec/aztec.js@${target} is not on the npm registry — aborting`);
-  process.exit(1);
-}
-
-const edits: string[] = [];
-
-// 1. Root config.aztecVersion
-{
-  const p = join(ROOT, 'package.json');
-  const pkg = JSON.parse(readFileSync(p, 'utf8'));
-  const old = pkg.config?.aztecVersion;
-  pkg.config = { ...pkg.config, aztecVersion: target };
-  writeFileSync(p, `${JSON.stringify(pkg, null, 2)}\n`);
-  edits.push(`root config.aztecVersion: ${old} -> ${target}`);
-}
-
-// 2. Package manifests: lockstep version + @aztec/* + internal pins
-for (const dir of PACKAGES) {
-  const p = join(ROOT, 'packages', dir, 'package.json');
-  const pkg = JSON.parse(readFileSync(p, 'utf8'));
-  const old = pkg.version;
-  pkg.version = target;
-  let count = 0;
-  for (const section of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
-    const deps = pkg[section];
-    if (!deps) continue;
-    for (const name of Object.keys(deps)) {
-      if (name.startsWith('@aztec/') && /^\d+\.\d+\.\d+(-|$)/.test(deps[name])) {
-        deps[name] = target;
-        count++;
-      }
-      if (WORKSPACE_NAMES.has(name)) {
-        deps[name] = target;
-        count++;
-      }
-    }
-  }
-  writeFileSync(p, `${JSON.stringify(pkg, null, 2)}\n`);
-  edits.push(`packages/${dir}: version ${old} -> ${target}, ${count} dep pins`);
-}
-
-// 3. Nargo.toml git tags (aztec-packages refs only)
 for (const tomlPath of walkNargoTomls(join(ROOT, 'packages'))) {
+  const rel = tomlPath.replace(`${ROOT}/`, '');
   const before = readFileSync(tomlPath, 'utf8');
   const after = before
     .split('\n')
-    .map((line) =>
-      line.includes('aztec-packages') ? line.replace(/tag\s*=\s*"v[0-9][^"]*"/, `tag = "v${target}"`) : line,
-    )
+    .map((line) => {
+      const r = sweepNargoLine(line, target);
+      if (r.error) errors.push(`${rel}: ${r.error}`);
+      return r.line;
+    })
     .join('\n');
   if (after !== before) {
-    writeFileSync(tomlPath, after);
-    edits.push(`${tomlPath.replace(`${ROOT}/`, '')}: aztec tag -> v${target}`);
+    writes.push([tomlPath, after]);
+    edits.push(`${rel}: aztec-nr tag -> v${target}`);
   }
 }
 
-// 4. PRD headers — every package's product-requirements doc, discovered by glob
-// (a hardcoded single path silently skipped new packages' PRDs on every bump).
-{
-  for (const pkg of PACKAGES) {
-    const docsDir = join(ROOT, 'packages', pkg, 'docs');
-    let docs: string[] = [];
-    try {
-      docs = readdirSync(docsDir).filter((f) => f.endsWith('product-requirements.md'));
-    } catch {
-      continue; // no docs dir — nothing to sweep
-    }
-    for (const doc of docs) {
-      const prd = join(docsDir, doc);
-      const before = readFileSync(prd, 'utf8');
-      const after = before.replace(/(\*\*Target Aztec Version\*\*:\s*)\S+/, `$1${target}`);
-      if (after !== before) {
-        writeFileSync(prd, after);
-        edits.push(`${pkg} PRD Target Aztec Version updated`);
-      }
+// 4. PRD headers — every package's product-requirements doc, discovered by glob.
+for (const pkg of PACKAGES) {
+  const docsDir = join(ROOT, 'packages', pkg, 'docs');
+  let prds: string[] = [];
+  try {
+    prds = readdirSync(docsDir).filter((f) => f.endsWith('product-requirements.md'));
+  } catch {
+    continue; // no docs dir — nothing to sweep
+  }
+  for (const doc of prds) {
+    const prd = join(docsDir, doc);
+    const before = readFileSync(prd, 'utf8');
+    const after = before.replace(/(\*\*Target Aztec Version\*\*:\s*)\S+/, `$1${target}`);
+    if (after !== before) {
+      writes.push([prd, after]);
+      edits.push(`${pkg} PRD Target Aztec Version updated`);
     }
   }
 }
+
+if (errors.length > 0) fail(errors);
+
+// 5. Min-age exclusions from the registry closure of the swept manifests. A lockstep dep off
+// the target means labs and foundation diverged — stop rather than guess a second version.
+const closure = new Map<string, string>();
+const queue: Array<[name: string, version: string]> = [];
+for (const [dir, pkg] of swept) {
+  for (const section of DEP_SECTIONS) {
+    for (const [name, spec] of Object.entries(pkg[section] ?? {})) {
+      const edge = closureEdge(`packages/${dir}`, name, spec, target);
+      if (edge && 'error' in edge) errors.push(edge.error);
+      else if (edge) queue.push([edge.name, edge.version]);
+    }
+  }
+}
+while (queue.length > 0) {
+  const [name, version] = queue.shift() as [string, string];
+  if (closure.has(name)) continue;
+  closure.set(name, version);
+  for (const [dep, spec] of Object.entries(registryDoc(`${name}@${version}`).dependencies ?? {})) {
+    const edge = closureEdge(`${name}@${version}`, dep, spec, target);
+    if (edge && 'error' in edge) errors.push(edge.error);
+    else if (edge && !closure.has(edge.name)) queue.push([edge.name, edge.version]);
+  }
+}
+if (errors.length > 0) fail(errors);
+const young = youngNames(
+  [...closure].map(([n, v]) => publishRow(n, v)),
+  Date.now(),
+);
+
+for (const [p, content] of writes) writeFileSync(p, content);
+writeExcludes(young, `registry closure of ${closure.size} packages (pre-install)`);
 
 console.log(`\n=== bump-aztec: swept to ${target} ===`);
 for (const e of edits) console.log(`  - ${e}`);
-
-// 5. Min-age exclusions (pre-install closure) — only needed when the target is young.
-const times = (npmView(`@aztec/aztec.js@${target}`, 'time') ?? {}) as Record<string, string>;
-const publishedAt = times[target] ? new Date(times[target]) : undefined;
-const ageMs = publishedAt ? Date.now() - publishedAt.getTime() : Number.NaN;
-const needsExcludes = Number.isFinite(ageMs) && ageMs < MIN_AGE_MS;
-let closureMap = new Map<string, string>();
-if (needsExcludes) {
-  console.log(
-    `\n@aztec/*@${target} is ${(ageMs / 86_400_000).toFixed(1)} days old (<7d) — computing registry closure...`,
-  );
-  closureMap = aztecClosure(target);
-  writeExcludes([...closureMap.keys()], 'registry closure (pre-install)');
-} else {
-  console.log(`\n@aztec/*@${target} clears the 7-day min-age gate — no exclusions needed.`);
-}
-
-// 6. Supply-chain report (markdown, for the bump PR description)
-console.log('\n=== supply-chain report ===\n');
-console.log(`| package | version | published (UTC) | age (days) | provenance |`);
-console.log(`|---|---|---|---|---|`);
-const reportSet: Array<[string, string]> =
-  closureMap.size > 0
-    ? [...closureMap.entries()]
-    : [...lockfileAztecPairs().entries()].flatMap(([n, versions]) => versions.map((v): [string, string] => [n, v]));
-for (const [name, version] of reportSet) {
-  const t = (npmView(`${name}@${version}`, 'time') ?? {}) as Record<string, string>;
-  const at = t[version];
-  const age = at ? ((Date.now() - new Date(at).getTime()) / 86_400_000).toFixed(1) : 'n/a';
-  const att = npmView(`${name}@${version}`, 'dist.attestations.url');
-  console.log(`| ${name} | ${version} | ${at ?? 'NOT PUBLISHED'} | ${age} | ${att ? 'yes' : 'NO'} |`);
-}
-
 console.log(
-  '\nNext: bun install && bun scripts/bump-aztec.ts --regenerate-excludes && full validation (plan Phase 6).',
+  '\nNext: scripts/verify-nargo-refs.sh --write && bun install && bun scripts/bump-aztec.ts --regenerate-excludes (prints the supply-chain report) && bun install --frozen-lockfile',
 );
