@@ -86,6 +86,29 @@ describe('resolveFeeSource', () => {
     expect(source).not.toEqual({ kind: 'blocked', reason: 'exhausted' });
   });
 
+  test('a policy not yet in force falls back without ever looking for a seat', async () => {
+    const firstOfDay = { generation: GENERATION, subscribed: false, remaining: 0, syncing: false };
+    let seatLookups = 0;
+    const findFreeSeat = async () => {
+      seatLookups++;
+      throw new RangeError('max_users must be positive');
+    };
+    const base = { state: firstOfDay, policyActive: false, findFreeSeat };
+    expect(await resolveFeeSource(inputs(base))).toEqual({ kind: 'blocked', reason: 'policy-inactive' });
+    expect(await resolveFeeSource(inputs({ ...base, ownBalance: 10n ** 19n }))).toEqual({ kind: 'self' });
+    expect(seatLookups).toBe(0);
+    // Syncing still wins, and omitting the input keeps the old seat lookup.
+    expect(await resolveFeeSource(inputs({ ...base, state: { ...firstOfDay, syncing: true } }))).toEqual({
+      kind: 'blocked',
+      reason: 'sync-pending',
+    });
+    expect(await resolveFeeSource(inputs({ state: firstOfDay }))).toEqual({
+      kind: 'sponsored-first',
+      generation: GENERATION,
+      seat: 3,
+    });
+  });
+
   test("onSyncing 'wait' never spends the user's balance on inconclusive evidence", async () => {
     const syncing = {
       generation: GENERATION,

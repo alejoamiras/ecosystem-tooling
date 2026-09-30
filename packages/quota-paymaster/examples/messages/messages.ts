@@ -105,6 +105,13 @@ export function describeQuotaUnavailable(reason: QuotaUnavailableReason, context
         detail: 'This only takes a moment.',
       };
 
+    case 'policy-inactive':
+      return {
+        headline: "Sponsored transactions haven't started yet, so this one runs on your own gas.",
+        detail: 'They switch on shortly. Adding a little gas to your account lets you keep going meanwhile.',
+        action: addGasAction(bridgeUrl),
+      };
+
     case 'not-sponsored':
       return {
         headline: "This action isn't covered by sponsorship, so it runs on your own gas.",

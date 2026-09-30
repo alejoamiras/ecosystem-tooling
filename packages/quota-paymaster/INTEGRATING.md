@@ -192,6 +192,7 @@ different honest thing to tell a user:
 | `rollover` | the clock rolled past the chosen generation | rebuild and retry |
 | `not-sponsored` | this call targets a non-allowlisted contract | a bug in your call construction |
 | `seat-revoked` | policy narrowed and this seat fell outside the new cap | reset or self-pay |
+| `policy-inactive` | the paymaster's policy is not in force yet (a fresh deployment's first hour) | self-pay, or wait for activation |
 
 Use `reasonFromRevert` to classify a revert rather than matching strings
 yourself. `resetsIn` / `inAbout` / `humanizeDuration` are exported for the
