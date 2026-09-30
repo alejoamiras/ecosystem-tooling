@@ -15,7 +15,8 @@ set -euo pipefail
 # walked too, since nargo re-resolves their tags at compile time just the same.
 #
 # Exit non-zero on any mismatch, unlocked dep, unresolvable ref, or unparseable manifest.
-# All manifest parsing and lock IO lives in scripts/lib/nargo-deps.mjs (argv in, TSV out).
+# All manifest parsing and lock IO lives in scripts/lib/nargo-deps.mjs (argv in, TSV out), run
+# under bun for its TOML parser.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK="$ROOT/nargo-deps.lock.json"
@@ -58,7 +59,7 @@ sha_for() {
   if [ "$MODE" = "--write" ]; then
     echo "locked: $key -> $sha" >&2
   else
-    locked="$(node "$LIB" lock-get "$LOCK" "$key")" || return 1
+    locked="$(bun "$LIB" lock-get "$LOCK" "$key")" || return 1
     if [ -z "$locked" ]; then
       echo "UNLOCKED: $key has no entry in nargo-deps.lock.json (run --write and review the diff)" >&2
       return 1
@@ -76,7 +77,7 @@ sha_for() {
 # Breadth-first over (url, tag, dir). Loops read files, never process substitutions, so a
 # failure anywhere below stops the script under `set -e`.
 find "$ROOT/packages" -name Nargo.toml -not -path '*/node_modules/*' -not -path '*/target/*' -print0 > "$WORK/manifests"
-xargs -0 node "$LIB" deps < "$WORK/manifests" > "$WORK/frontier.tsv"
+xargs -0 bun "$LIB" deps < "$WORK/manifests" > "$WORK/frontier.tsv"
 [ -s "$WORK/frontier.tsv" ] || { echo "ERROR: no git dependencies found under packages/" >&2; exit 1; }
 cp "$WORK/frontier.tsv" "$WORK/seen.tsv"
 fail=0
@@ -87,10 +88,10 @@ while [ -s "$WORK/frontier.tsv" ]; do
       fail=1
       continue
     fi
-    raw="$(node "$LIB" raw-url "$url" "$sha" "$dir")"
+    raw="$(bun "$LIB" raw-url "$url" "$sha" "$dir")"
     curl --proto '=https' --tlsv1.2 -sSfL "$raw" -o "$WORK/remote.toml" ||
       { echo "ERROR: cannot fetch $raw" >&2; exit 1; }
-    node "$LIB" remote-deps "$WORK/remote.toml" "$url" "$tag" "$dir" >> "$WORK/next.tsv" ||
+    bun "$LIB" remote-deps "$WORK/remote.toml" "$url" "$tag" "$dir" >> "$WORK/next.tsv" ||
       { echo "ERROR: in $raw" >&2; exit 1; }
   done < "$WORK/frontier.tsv"
   sort -u "$WORK/next.tsv" > "$WORK/next.sorted"
@@ -100,13 +101,13 @@ done
 
 if [ "$MODE" = "--write" ]; then
   [ "$fail" -eq 0 ] || { echo "ERROR: unresolvable dependencies — lock NOT written" >&2; exit 1; }
-  node "$LIB" lock-write "$LOCK" "$WORK/shas.tsv"
+  bun "$LIB" lock-write "$LOCK" "$WORK/shas.tsv"
   echo "wrote $LOCK ($(wc -l < "$WORK/shas.tsv") entries)"
   exit 0
 fi
 
 # No stale lock entries for deps that are no longer reachable (advisory tidy signal).
-node "$LIB" lock-keys "$LOCK" > "$WORK/lock-keys"
+bun "$LIB" lock-keys "$LOCK" > "$WORK/lock-keys"
 cut -f1 "$WORK/shas.tsv" > "$WORK/reached-keys"
 while IFS= read -r key; do
   grep -qxF -- "$key" "$WORK/reached-keys" ||

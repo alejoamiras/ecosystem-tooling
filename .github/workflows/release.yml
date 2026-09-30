@@ -197,6 +197,8 @@ jobs:
             fi
           fi
           echo "Bindings OK: mode $INPUT_MODE, version $INPUT_VERSION, HEAD $GITHUB_SHA"
+      # The Nargo lock verifier parses manifests with Bun.TOML.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Verify Nargo git refs against committed lock
         run: ./scripts/verify-nargo-refs.sh
       - name: Render release notes (pre-publish — fails fast, reused verbatim by tag-release)
