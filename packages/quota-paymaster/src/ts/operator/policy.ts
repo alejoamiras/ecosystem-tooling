@@ -52,6 +52,12 @@ export interface PolicyState {
     /** True when activatesAt is still ahead of CHAIN time. */
     pending: boolean;
   };
+  /**
+   * False while the deployment's initial policy has not taken effect: a fresh
+   * QuotaFpc reads an all-zero live bundle for its first hour and sponsors nothing.
+   * A zero max_users can only mean this — every schedule requires it positive.
+   */
+  policyActive: boolean;
   /** Latest block's timestamp — the clock every judgment here uses. */
   chainTimestamp: bigint;
   balanceWei: bigint;
@@ -169,6 +175,7 @@ export async function readPolicyState(deps: PolicyDeps, gasProfile: GasProfile):
       revision: BigInt(revision),
       pending: BigInt(activatesAt) > chainTimestamp,
     },
+    policyActive: Number(livePolicy.max_users) > 0,
     chainTimestamp,
     balanceWei,
     // The profile's OWN headroom, not a stripped 1x: admission checks the fee
@@ -433,6 +440,16 @@ export async function schedulePolicyChange(
             'goes live and THESE EXACT values replace it ~12h after landing (reported via pendingActivatedFirst)',
         }
       : {}),
+    // Replacing a bundle that is pending because it is the INITIAL one restarts the wait
+    // at the full 12h, so an early replacement keeps sponsorship off far longer than the
+    // hour the operator may be expecting.
+    ...(state.policyActive
+      ? {}
+      : {
+          replacesInitialPolicy:
+            `replaces the not-yet-active initial policy — if included before t=${state.scheduled.activatesAt}, ` +
+            'sponsorship stays off until ~12h after inclusion',
+        }),
     worstCasePerDayWei: worstCase.toString(),
     maxLossWei: guards.maxLossWei.toString(),
     activationDelayHours: 12,
@@ -585,6 +602,14 @@ export async function cancelPendingPolicyChange(
   const state = await readPolicyState(deps, guards.gasProfile);
   if (!state.scheduled.pending) {
     throw new Error('nothing is pending — the last scheduled bundle is already in force');
+  }
+  // Cancel works by rescheduling the live values, and before the initial policy takes
+  // effect those are all zero — which no schedule accepts, and which would restore nothing.
+  if (!state.policyActive) {
+    throw new Error(
+      `the pending bundle is the initial policy (takes effect at t=${state.scheduled.activatesAt}); ` +
+        'there is no earlier policy to restore. Schedule a replacement instead, or let it activate.',
+    );
   }
   return schedulePolicyChange(
     deps,

@@ -52,6 +52,11 @@ export async function run(flags: ParsedFlags): Promise<void> {
       },
     );
     console.log(`\nDeployed. QUOTA_FPC_CONTRACT_ADDRESS=${contract.address.toString()}`);
+    const scheduled = await contract.methods.get_scheduled_settings().simulate({ from: ctx.from });
+    const [, activatesAt] = ((scheduled as { result?: unknown }).result ?? scheduled) as [unknown, bigint, bigint];
+    console.log(
+      `Sponsorship activates at chain t=${activatesAt} (~1h): until then the policy reads all-zero and sponsors nothing.`,
+    );
     console.log('It holds no fee juice and sponsors nothing until funded. Fund LAST, in tranches —');
     console.log('fee juice cannot be withdrawn or moved once it lands.');
   });

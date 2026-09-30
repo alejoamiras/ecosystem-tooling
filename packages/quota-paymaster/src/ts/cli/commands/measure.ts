@@ -229,6 +229,15 @@ export async function run(flags: ParsedFlags): Promise<void> {
     };
     const maxUses = Number(livePolicy.max_uses);
     const maxUsers = Number(livePolicy.max_users);
+    // A fresh deployment's first hour: the all-zero policy sponsors nothing, and a zero
+    // max_users is not a seat range at all.
+    if (maxUsers === 0) {
+      const scheduled = await fpcContract.methods.get_scheduled_settings().simulate({ from });
+      const [, activatesAt] = ((scheduled as { result?: unknown }).result ?? scheduled) as [unknown, bigint, bigint];
+      throw new CliUsageError(
+        `policy not active until chain t=${activatesAt} — nothing can be sponsored or measured yet`,
+      );
+    }
 
     // The FEE CEILING, read once and bound into the plan: it was read inside
     // the send, after confirmation, so two runs of an identical plan — same
