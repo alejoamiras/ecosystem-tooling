@@ -50,7 +50,7 @@
     "codegen": "aztec codegen target --outdir src/artifacts -f",
     "compile": "aztec compile",
     "test": "bun run test:nr && bun run test:js",
-    "test:js": "vitest run",
+    "test:js": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:nr": "aztec test",
     "test:unit": "vitest run src/ts/test/unit examples",
     "test:warp": "vitest run --config vitest.warp.config.ts",

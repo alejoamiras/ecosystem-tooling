@@ -195,8 +195,9 @@ Contributors can run the same CLI from source without building:
 ```bash
 bun run ccc            # clean + compile (aztec compile) + codegen
 bun run test:nr        # Noir TXE suite (28 tests; never concurrently with a live network)
-bun run test:js        # unit + live-network integration (needs a local network)
-bun run test:warp      # time-travel suite — self-provisions its own disposable network
+bun run test:unit      # unit + examples, network-free
+bun run test:js        # unit, then integration on a self-provisioned disposable network
+bun run test:warp      # time-travel suite — likewise on its own disposable network
 bun run verify:lineage # source-hash + dep-lock + artifact class id vs the chain-verified one
 ```
 

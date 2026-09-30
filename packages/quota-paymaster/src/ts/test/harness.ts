@@ -4,7 +4,7 @@
  *
  * Network endpoints follow the repo convention: NODE_URL (default
  * http://localhost:8080) and L1_RPC_URL (default http://127.0.0.1:8545). The
- * warp suite OVERRIDES both via its self-provisioned network's env.
+ * integration and warp configs OVERRIDE both via their disposable network's env.
  */
 import { createAztecNodeClient, waitForNode, waitForTx } from '@aztec-labs/aztec.js/node';
 import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
@@ -30,7 +30,7 @@ export const TEARDOWN_GAS_LIMITS = new Gas(5_000, 500_000);
 
 export interface Ctx {
   node: AztecNode;
-  // biome-ignore lint/suspicious/noExplicitAny: EmbeddedWallet's full surface is not typed against the Wallet interface at 5.0.1
+  // biome-ignore lint/suspicious/noExplicitAny: EmbeddedWallet's full surface is not typed against the Wallet interface
   wallet: any;
   addresses: AztecAddress[];
 }
@@ -56,8 +56,7 @@ export async function chainTimestamp(node: AztecNode): Promise<bigint> {
 /**
  * Moves the chain to just after the next UTC midnight. Allowance notes are
  * keyed to a generation (a UTC day), so warp tests start a fresh day to be
- * deterministic rather than clock-dependent. WARP SUITE ONLY: warping is
- * global and irreversible; never point this at a shared network.
+ * deterministic rather than clock-dependent.
  */
 export async function warpChainToDayStart(node: AztecNode, poke?: () => Promise<unknown>): Promise<bigint> {
   const DAY = 86_400n;
@@ -73,16 +72,31 @@ async function debugClient() {
   return createAztecNodeDebugClient(NODE_URL) as any;
 }
 
-async function warpChainTo(node: AztecNode, target: number, poke?: () => Promise<unknown>) {
+/**
+ * Warping is global and irreversible, so it is refused unless NODE_URL is the
+ * disposable network this vitest run's globalSetup booted and owns.
+ */
+function assertDisposable(): void {
+  if (!process.env.DISPOSABLE_NODE_URL || process.env.DISPOSABLE_NODE_URL !== NODE_URL) {
+    throw new Error(`refusing to warp ${NODE_URL}: not this run's disposable network`);
+  }
+}
+
+export async function warpChainTo(node: AztecNode, target: number, poke?: () => Promise<unknown>) {
+  assertDisposable();
   const debug = await debugClient();
   await debug.warpL2TimeAtLeastTo(target);
   // The warp moves the clock, but a block still has to be built for the new
   // time to be observable — an idle local chain produces none on its own.
-  if (poke) await poke();
+  if (!poke) return;
+  await poke();
+  const after = await chainTimestamp(node);
+  if (after < BigInt(target)) throw new Error(`Warp did not take: chain at ${after}, expected at least ${target}`);
 }
 
-/** Fast-forwards the local chain by at least `seconds`. WARP SUITE ONLY. */
+/** Fast-forwards the local chain by at least `seconds`. */
 export async function warpChainBy(node: AztecNode, seconds: number, poke?: () => Promise<unknown>): Promise<bigint> {
+  assertDisposable();
   const before = await chainTimestamp(node);
   const debug = await debugClient();
   if (typeof debug.warpL2TimeAtLeastBy !== 'function') {

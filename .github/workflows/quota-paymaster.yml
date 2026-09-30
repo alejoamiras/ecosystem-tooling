@@ -46,6 +46,6 @@ jobs:
     with:
       package-dir: packages/quota-paymaster
       min-txe-tests: 20
-      # The time-travel suite self-provisions its own disposable network
-      # (ephemeral ports + own anvil), so it coexists with the job's main one.
+      # Integration and warp suites each boot their own disposable network.
+      shared-network: false
       run-warp-tests: true

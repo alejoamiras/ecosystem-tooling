@@ -308,6 +308,8 @@ jobs:
     with:
       package-dir: packages/quota-paymaster
       min-txe-tests: 20
+      # Integration and warp suites each boot their own disposable network.
+      shared-network: false
       run-warp-tests: true
 
   benchmark-build:
