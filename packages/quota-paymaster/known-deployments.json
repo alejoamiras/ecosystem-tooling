@@ -14,6 +14,13 @@
     },
     "warning": "Fee juice is protocol-non-transferable: funding this instance is an IRREVERSIBLE donation to Dark Forest. Deploy your own paymaster instead."
   },
+  "compiled": {
+    "6.0.0-rc.1": {
+      "classId": "0x22dd37644f0b2d9873ed029f2350d7a3e47d31a2c7b2d8bf107bb1f651504dc2",
+      "verifiedAgainstChain": false,
+      "toolchain": "aztec CLI 6.0.0-rc.1 (aztec compile; nargo 1.0.0-rc.3); reproduced by two independent compiles"
+    }
+  },
   "provenance": {
     "sourceRepo": "alejoamiras/dark-forest-aztec",
     "sourceBranch": "worktree-quota-fpc",

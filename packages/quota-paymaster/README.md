@@ -9,7 +9,7 @@ users transact without ever bridging. The contract is app-agnostic: all app-spec
 | | |
 |---|---|
 | Contract | `QuotaFpc` (Noir); one class id per Aztec version, recorded in `known-deployments.json` |
-| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay); its compiled class id is a locally reviewed pin, **not** chain-verified |
+| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id (`0x22dd3764…4dc2`) is a locally reviewed pin, **not** chain-verified |
 | Versioning | Lockstep with Aztec: package `6.0.0-rc.1` targets Aztec `6.0.0-rc.1`, published under the `rc` dist-tag |
 | Bootstrap | A fresh deployment is inert for its first hour (aztec-nr's 3600s minimum delay): the policy reads all zeros and sponsors nothing |
 | SDK | Browser-safe root export; Node-only `./operator` export |
@@ -195,7 +195,7 @@ Contributors can run the same CLI from source without building:
 
 ```bash
 bun run ccc            # clean + compile (aztec compile) + codegen
-bun run test:nr        # Noir TXE suite (28 tests; never concurrently with a live network)
+bun run test:nr        # Noir TXE suite (29 tests; never concurrently with a live network)
 bun run test:unit      # unit + examples, network-free
 bun run test:js        # unit, then integration on a self-provisioned disposable network
 bun run test:warp      # time-travel suite — likewise on its own disposable network
