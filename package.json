@@ -25,6 +25,7 @@
     "test": "bun run test:nr && bun run test:js",
     "test:js": "bun run --cwd packages/private-fee-juice test:js && bun run --cwd packages/quota-paymaster test:js",
     "test:nr": "bun run --cwd packages/private-fee-juice test:nr && bun run --cwd packages/quota-paymaster test:nr",
+    "test:scripts": "node --test scripts/release-policy.test.mjs scripts/release-wiring.test.mjs scripts/lib/nargo-deps.test.mjs && bun test scripts/lib/aztec-scopes.test.ts scripts/lib/manifest-policy.test.ts",
     "test:warp": "bun run --cwd packages/quota-paymaster test:warp",
     "typecheck": "bun run --cwd packages/private-fee-juice typecheck && bun run --cwd packages/aztec-benchmark typecheck && bun run --cwd packages/quota-paymaster typecheck"
   },
