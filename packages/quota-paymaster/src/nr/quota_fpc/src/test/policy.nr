@@ -36,10 +36,7 @@ unconstrained fn bootstrap_policy_is_inert_until_the_initial_delay() {
         [AztecAddress::zero(); 12],
     );
     // The immutable half is live from the start.
-    assert_eq(
-        env.execute_utility(QuotaFpc::at(fpc).get_allowed_account_classes()),
-        test_classes(),
-    );
+    assert_eq(env.execute_utility(QuotaFpc::at(fpc).get_allowed_account_classes()), test_classes());
 
     let (_bundle, activates_at, _revision) =
         env.call_public(admin, QuotaFpc::at(fpc).get_scheduled_settings());

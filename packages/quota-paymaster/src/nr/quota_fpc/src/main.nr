@@ -159,7 +159,7 @@ contract QuotaFpc {
     /// earlier cohort keeps spending under a later, higher `max_fee`.
     #[derive(Packable, Eq)]
     #[note]
-    struct QuotaNote {
+    pub struct QuotaNote {
         spent: u32,
         seat: u32,
         generation: u32,

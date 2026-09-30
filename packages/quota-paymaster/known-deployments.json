@@ -25,7 +25,7 @@
       "contracts/fpc/fpc_test_target/src/main.nr": "c4cbf5fe6d6e8417a24321936ed3de19bee7d5a2c8e2b490cf027f178cedf52b"
     },
     "vendoredSha256": {
-      "src/nr/quota_fpc/src/main.nr": "a0e67e180cf3e0a8d980b3707d5a42a0d026715748f9e109183ef2df8dbf702c",
+      "src/nr/quota_fpc/src/main.nr": "670045ede1e7a1d96ffec72cc81cde5a271580097810af6f738d1757c3afcf32",
       "src/nr/fpc_test_target/src/main.nr": "c4cbf5fe6d6e8417a24321936ed3de19bee7d5a2c8e2b490cf027f178cedf52b",
       "src/nr/quota_fpc/Nargo.toml": "4d632db5bb5c6042e4be4e6f336f12d07ddb61585ef83de25c50147b676b9031",
       "src/nr/fpc_test_target/Nargo.toml": "b0414f1f735077481beb42dc0692973f52ec4ef0b83a6dfcc7de60bb8e740969"
@@ -74,6 +74,11 @@
           "        // leaves the already-scheduled write where it is. Swap these two lines",
           "        // and every deploy sponsors nothing for 12 hours instead of 1."
         ]
+      },
+      {
+        "reason": "aztec-nr 6's #[note] macro generates a NoteType impl that names the note struct from outside the contract module, so the struct must be pub; visibility only, no field or layout change",
+        "upstream": ["    struct QuotaNote {"],
+        "vendored": ["    pub struct QuotaNote {"]
       }
     ]
   }
