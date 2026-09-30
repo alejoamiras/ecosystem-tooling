@@ -51,6 +51,8 @@ interface RegistryDoc {
   version?: string;
   time?: Record<string, string>;
   dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
   dist?: { attestations?: { url?: string } | null };
   _npmUser?: string;
 }
@@ -245,7 +247,10 @@ while (queue.length > 0) {
   const [name, version] = queue.shift() as [string, string];
   if (closure.has(name)) continue;
   closure.set(name, version);
-  for (const [dep, spec] of Object.entries(registryDoc(`${name}@${version}`).dependencies ?? {})) {
+  const doc = registryDoc(`${name}@${version}`);
+  // Optional deps carry the per-platform native binaries, and bun gates each one by age.
+  const deps = { ...doc.peerDependencies, ...doc.optionalDependencies, ...doc.dependencies };
+  for (const [dep, spec] of Object.entries(deps)) {
     const edge = closureEdge(`${name}@${version}`, dep, spec, target);
     if (edge && 'error' in edge) errors.push(edge.error);
     else if (edge && !closure.has(edge.name)) queue.push([edge.name, edge.version]);
