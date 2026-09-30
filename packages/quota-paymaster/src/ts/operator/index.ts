@@ -31,7 +31,7 @@ export {
   findClaimInJournal,
 } from './claim.js';
 export {
-  assertArtifactIsChainVerifiedClass,
+  assertArtifactIsLineageClass,
   type DeployQuotaFpcDeps,
   type DeployQuotaFpcOptions,
   deployQuotaFpc,
@@ -50,6 +50,7 @@ export {
   readJournalRecords,
   withJournalLock,
 } from './internal/journal.js';
+export { type LineageAnchor, selectAnchor } from './lineage.js';
 export { type MeasureDeps, type MeasureResult, measureSponsoredFee } from './measure.js';
 export {
   cancelPendingPolicyChange,

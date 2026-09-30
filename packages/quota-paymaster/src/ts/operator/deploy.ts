@@ -25,6 +25,7 @@ import {
   snapshotOptions,
 } from './action-plan.js';
 import { OperatorConfigError } from './config-module.js';
+import { anchorForClassId, describeAnchor, type LineageAnchor } from './lineage.js';
 
 export type ParsedQuotaFpcConfig = ReturnType<typeof parseQuotaFpcConfig>;
 
@@ -89,17 +90,21 @@ export async function verifyAccountClassIds(
   return { verified, unverified };
 }
 
-/** Lineage guard: refuse to deploy an artifact that is not the chain-verified class. */
-export async function assertArtifactIsChainVerifiedClass(): Promise<string> {
+/**
+ * Lineage guard: refuse to deploy an artifact whose class id is not one this package reviewed
+ * (known-deployments.json). The returned anchor says whether that class was ever checked against
+ * a chain or is only locally pinned.
+ */
+export async function assertArtifactIsLineageClass(): Promise<LineageAnchor> {
   const { id } = await getContractClassFromArtifact(QuotaFpcContractArtifact);
-  const expected = knownDeployments.mainnet.classId;
-  if (id.toString() !== expected) {
+  const anchor = anchorForClassId(knownDeployments, id.toString());
+  if (!anchor) {
     throw new Error(
-      `The compiled QuotaFpc artifact's class id ${id} does not match the chain-verified ` +
-        `lineage class ${expected}. Rebuild from clean sources (verify:lineage) before deploying.`,
+      `The compiled QuotaFpc artifact's class id ${id} is not a reviewed lineage class in ` +
+        `known-deployments.json. Rebuild from clean sources (verify:lineage) before deploying.`,
     );
   }
-  return id.toString();
+  return anchor;
 }
 
 export interface DeployQuotaFpcDeps {
@@ -143,7 +148,9 @@ export async function deployQuotaFpc(
     sendOptions: snapshotOptions(opts.sendOptions ?? {}),
   };
 
-  const classId = await assertArtifactIsChainVerifiedClass();
+  const anchor = await assertArtifactIsLineageClass();
+  if (!anchor.chainVerified) deps.onWarn?.(`QuotaFpc class ${describeAnchor(anchor)}.`);
+  const classId = anchor.classId;
   await verifyAccountClassIds(snapshot.accountClasses, opts.allowUnverifiedAccountClasses ?? false, deps.onWarn);
 
   // WHICH CHAIN. Every sibling plan binds this; deploy bound none, so a dry
