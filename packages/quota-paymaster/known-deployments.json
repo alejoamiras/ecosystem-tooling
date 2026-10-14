@@ -19,6 +19,11 @@
       "classId": "0x22dd37644f0b2d9873ed029f2350d7a3e47d31a2c7b2d8bf107bb1f651504dc2",
       "verifiedAgainstChain": false,
       "toolchain": "aztec CLI 6.0.0-rc.1 (aztec compile; nargo 1.0.0-rc.3); reproduced by two independent compiles"
+    },
+    "6.0.0-rc.3": {
+      "classId": "0x248f2f32203a066d7415d3eb5c68cf4dfc35f826a54e946f2cd182d74673597b",
+      "verifiedAgainstChain": false,
+      "toolchain": "aztec CLI 6.0.0-rc.3 (aztec compile; nargo 1.0.0-rc.3; installed from aztec-toolchain.lock.json); reproduced by two independent compiles"
     }
   },
   "provenance": {
@@ -34,8 +39,8 @@
     "vendoredSha256": {
       "src/nr/quota_fpc/src/main.nr": "670045ede1e7a1d96ffec72cc81cde5a271580097810af6f738d1757c3afcf32",
       "src/nr/fpc_test_target/src/main.nr": "c4cbf5fe6d6e8417a24321936ed3de19bee7d5a2c8e2b490cf027f178cedf52b",
-      "src/nr/quota_fpc/Nargo.toml": "4d632db5bb5c6042e4be4e6f336f12d07ddb61585ef83de25c50147b676b9031",
-      "src/nr/fpc_test_target/Nargo.toml": "b0414f1f735077481beb42dc0692973f52ec4ef0b83a6dfcc7de60bb8e740969"
+      "src/nr/quota_fpc/Nargo.toml": "8a6fcbd1a38698c7d0d0a6c39166a78a957bf19869d8ee870b33689de00bab69",
+      "src/nr/fpc_test_target/Nargo.toml": "09d0fd0a473153951031552c10389d70be0103fe1f671785c684a434ca7e0a0f"
     },
     "allowedDeviations": [
       "src/nr/quota_fpc/src/main.nr: exactly one added `pub mod test;` registration line (proven class-id-neutral by the Phase-1 spike; re-proven by every verify:lineage run)",

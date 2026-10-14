@@ -38,7 +38,7 @@ After any code change that affects contract logic, SDK public API, error codes, 
 ## Prerequisites
 
 - Node.js >= 22, bun (workspace member of the ecosystem-tooling monorepo)
-- Aztec CLI — version pinned by the repo root `package.json` `config.aztecVersion` (install via `aztec-up install <version>`)
+- Aztec CLI — version pinned by the repo root `package.json` `config.aztecVersion` (install via `scripts/install-aztec-toolchain.sh <version> [AZTEC_HOME]`, which only runs digest-pinned inputs from `aztec-toolchain.lock.json`)
 
 ## Commands
 
