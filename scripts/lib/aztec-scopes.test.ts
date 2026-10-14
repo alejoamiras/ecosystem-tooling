@@ -105,17 +105,27 @@ describe('scope versions', () => {
     expect(foundationVersionOf('aztec', { '@aztec-foundation/bb.js': `^${F}` })).toEqual(bad);
   });
 
-  test('lockfileScopeErrors flags any Aztec-scoped resolution off its scope target', () => {
-    const pairs = new Map([
-      ['@aztec-foundation/bb.js', [F]],
-      ['@aztec-labs/stdlib', [L]],
-      ['@aztec/viem', ['2.38.3']],
+  // bun.lock-shaped: trailing commas, [ident, registry, meta, integrity] entries.
+  const lockOf = (bb: string, stdlibAsks: string) => `{
+    "lockfileVersion": 1,
+    "packages": {
+      "@aztec-foundation/bb.js": ["@aztec-foundation/bb.js@${bb}", "", {}, "sha512-a"],
+      "@aztec-labs/stdlib": ["@aztec-labs/stdlib@${L}", "", { "dependencies": { "@aztec-foundation/bb.js": "${stdlibAsks}", "viem": "npm:@aztec/viem@2.38.3" } }, "sha512-b"],
+      "viem": ["@aztec/viem@2.38.3", "", {}, "sha512-c"],
+    },
+  }`;
+
+  test('lockfileScopeErrors: resolutions and declared specs must both match the scope targets', () => {
+    expect(lockfileScopeErrors(lockOf(F, F), split)).toEqual([]);
+    expect(lockfileScopeErrors(lockOf(L, F), split)).toEqual([
+      `bun.lock resolves @aztec-foundation/bb.js@${L}, expected @aztec-foundation/bb.js@${F}`,
     ]);
-    expect(lockfileScopeErrors(pairs, split)).toEqual([]);
-    pairs.set('@aztec-foundation/bb.js', [F, L]);
-    expect(lockfileScopeErrors(pairs, split)).toEqual([
-      `bun.lock resolves @aztec-foundation/bb.js@${L}, expected only ${F}`,
-    ]);
+  });
+
+  test('lockfileScopeErrors: an override that resolves a version labs never asked for still fails', () => {
+    // Config, pins and the resolution all say rc.1; the labs package's own spec says rc.6.
+    const forced = { aztecVersion: L, aztecFoundationVersion: T };
+    expect(lockfileScopeErrors(lockOf(T, F), forced)).toEqual([expect.stringMatching(/upstream versions diverged/)]);
   });
 });
 
@@ -156,7 +166,7 @@ test('parseAlias + lockfilePairs read bun.lock-shaped entries across all scopes'
 test('the committed bun.lock resolves each Aztec scope only at its root config version', () => {
   const root = join(import.meta.dir, '..', '..');
   const config = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).config;
-  const pairs = lockfilePairs(readFileSync(join(root, 'bun.lock'), 'utf8'));
-  expect(pairs.size).toBeGreaterThan(0);
-  expect(lockfileScopeErrors(pairs, readAztecVersions(config))).toEqual([]);
+  const lockText = readFileSync(join(root, 'bun.lock'), 'utf8');
+  expect(lockfilePairs(lockText).size).toBeGreaterThan(0);
+  expect(lockfileScopeErrors(lockText, readAztecVersions(config))).toEqual([]);
 });

@@ -182,13 +182,30 @@ export function lockfilePairs(lockText: string): Map<string, string[]> {
   return new Map([...pairs.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-/** Every bun.lock resolution of an Aztec-scoped name to a version other than its scope's target. */
-export function lockfileScopeErrors(pairs: Map<string, string[]>, targets: AztecVersions): string[] {
+/**
+ * bun.lock against both config versions: every Aztec-scoped package must RESOLVE at its scope's
+ * target, and every locked package's own Aztec-scoped dependency SPECS must ask for it too. The
+ * second half is what catches a root `overrides` entry that forces a version the labs release
+ * never declared, with config and pins hand-edited to match.
+ */
+export function lockfileScopeErrors(lockText: string, targets: AztecVersions): string[] {
+  const lock = Bun.JSONC.parse(lockText) as { packages?: Record<string, unknown[]> };
   const errors: string[] = [];
-  for (const [name, versions] of pairs) {
+  for (const [ident, , meta] of Object.values(lock.packages ?? {}) as [string, unknown, LockMeta?][]) {
+    const at = ident.lastIndexOf('@');
+    const [name, version] = [ident.slice(0, at), ident.slice(at + 1)];
     const target = pinnedVersion(name, targets);
-    const off = target === undefined ? [] : versions.filter((v) => v !== target);
-    if (off.length > 0) errors.push(`bun.lock resolves ${name}@${off.join(', ')}, expected only ${target}`);
+    if (target !== undefined && version !== target) {
+      errors.push(`bun.lock resolves ${ident}, expected ${name}@${target}`);
+    }
+    for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
+      for (const [dep, spec] of Object.entries(meta?.[section] ?? {})) {
+        const edge = closureEdge(ident, dep, spec, targets);
+        if (edge && 'error' in edge) errors.push(`bun.lock: ${edge.error}`);
+      }
+    }
   }
   return errors;
 }
+
+type LockMeta = Partial<Record<'dependencies' | 'optionalDependencies' | 'peerDependencies', Record<string, string>>>;

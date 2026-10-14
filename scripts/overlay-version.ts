@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Version overlay for release.yml's rehearsal/revision modes (plan aztec-5-stable, D2v3/D16;
- * `hotfix` mode renamed to `revision` in plan fee-payment-revisions-rename).
+ * Version overlay for release.yml's rehearsal/revision modes.
  *
  * Stamps OVERLAY_VERSION onto the publishable packages — `version` plus every
  * internal cross-package exact pin (any dep whose name is itself a workspace package) —

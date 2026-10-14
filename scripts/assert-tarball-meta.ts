@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Fail-closed tarball manifest assertion (plan aztec-5-stable D2v3).
+ * Fail-closed tarball manifest assertion.
  *
  * `npm publish <tarball>` publishes whatever version is INSIDE the tarball — the workflow
  * input is not consulted. This assertion is the invariant that makes a mis-configured

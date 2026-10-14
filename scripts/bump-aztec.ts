@@ -108,8 +108,9 @@ function fail(errors: string[]): never {
 
 if (process.argv[2] === '--regenerate-excludes') {
   const now = Date.now();
-  const pairs = lockfilePairs(readFileSync(join(ROOT, 'bun.lock'), 'utf8'));
-  const scopeErrors = lockfileScopeErrors(pairs, readAztecVersions(readJson(join(ROOT, 'package.json')).config));
+  const lockText = readFileSync(join(ROOT, 'bun.lock'), 'utf8');
+  const scopeErrors = lockfileScopeErrors(lockText, readAztecVersions(readJson(join(ROOT, 'package.json')).config));
+  const pairs = lockfilePairs(lockText);
   if (scopeErrors.length > 0) fail(scopeErrors);
   const rows = [...pairs].flatMap(([name, versions]) => versions.map((v) => publishRow(name, v)));
   writeExcludes(youngNames(rows, now), 'from bun.lock');

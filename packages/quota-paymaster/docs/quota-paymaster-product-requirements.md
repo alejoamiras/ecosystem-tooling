@@ -65,7 +65,7 @@ rather than restated: see the Test Coverage Matrix.
 | Nullifier parity TS ↔ Noir | integration |
 | Journal failure modes (symlink, torn line, lock steal, crash replay) | unit |
 | Operator refusals (class-id, fee-floor, max-loss, argv secrets) | unit + smoke |
-| Lineage: sources + dep lock + artifacts == chain-verified class id | every gate |
+| Lineage: sources + dep lock + artifacts == the reviewed class id for `config.aztecVersion` (chain-verified only for 5.0.1) | every gate |
 
 ## Per-Aztec-bump checklist
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Pre-publish tarball compatibility gate (plan D20/C1).
+ * Pre-publish tarball compatibility gate.
  *
  * For each package dir: `npm pack` the CURATED manifest, install the tarball into a
  * clean temp project WITH THE NPM CLIENT (not bun — bun masks postinstall breakage),
@@ -13,7 +13,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
-import { readAztecVersions } from './lib/aztec-scopes.ts';
+import { lockfileScopeErrors, readAztecVersions } from './lib/aztec-scopes.ts';
 import { type Manifest, optionalPeers, validateManifest } from './lib/manifest-policy.ts';
 
 type Check =
@@ -129,8 +129,8 @@ const CHECKS: Record<string, Check[]> = {
     { kind: 'absent-dir', spec: 'examples' },
     {
       // Declaration maps point at ../src paths the tarball does not ship —
-      // dead references at best, layout leakage at worst (post-impl audit
-      // finding #10). The build config disables them; this stops a regression.
+      // dead references at best, layout leakage at worst. The build config
+      // disables them; this stops a regression.
       kind: 'absent-match',
       spec: 'no source/declaration maps in the tarball',
       pattern: /\.(?:d\.ts|js)\.map$/,
@@ -155,6 +155,14 @@ if (process.argv.length <= 2) {
 }
 
 let failures = 0;
+
+const lockErrors = lockfileScopeErrors(readFileSync(join(import.meta.dir, '..', 'bun.lock'), 'utf8'), versions);
+if (lockErrors.length > 0) {
+  console.error(`  ✗ bun.lock violates the Aztec pin policy:\n    ${lockErrors.join('\n    ')}`);
+  failures++;
+} else {
+  console.log('  ✓ bun.lock: every Aztec-scoped resolution and declared spec matches its scope version');
+}
 
 for (const pkgDirArg of process.argv.slice(2)) {
   const pkgDir = resolve(pkgDirArg);

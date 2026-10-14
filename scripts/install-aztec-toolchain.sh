@@ -5,8 +5,8 @@
 # Upstream's per-version `install` is verified, then sourced for its step functions; its `main`
 # never runs, because it sources nvm unconditionally. The steps that would fetch floating
 # installers (versions manifest, node, noirup, foundryup) are replaced with verified files, and
-# curl/wget are stubbed out while upstream code runs. The one network path left is the unlocked
-# `npm install` inside install_aztec_packages.
+# curl/wget are stubbed on PATH while upstream code runs. The known unpinned path left is the
+# lockfile-less `npm install` inside install_aztec_packages.
 #
 # Usage: scripts/install-aztec-toolchain.sh <version> [AZTEC_HOME]
 # shellcheck disable=SC2154 # version_path and friends are assigned by the sourced upstream script
@@ -71,6 +71,9 @@ for tool in curl wget; do
 done
 
 export AZTEC_HOME="$aztec_home"
+# From here on, upstream code runs (sourcing included): a PATH-level curl/wget is a tripwire
+# against an unpinned fetch, not a sandbox; absolute paths or other clients would bypass it.
+PATH="$work/blocked-bin:$PATH"
 # shellcheck source=/dev/null
 source "$work/install.lib"
 
@@ -105,7 +108,6 @@ install_foundry() {
 }
 
 mkdir -p "$version_bin_path" "$version_internal_bin_path"
-PATH="$work/blocked-bin:$PATH"
 for step in "${steps[@]}"; do
   echo "==> $step"
   "$step"
