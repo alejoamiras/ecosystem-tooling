@@ -1,8 +1,9 @@
 name: Setup Aztec
 description: >
-  Install bun deps (frozen lockfile), foundry, and the pinned aztec CLI (version read from the
-  ROOT package.json config.aztecVersion — the single source of truth). Optionally start a local
-  network and run compile/codegen in a package directory.
+  Install bun deps (frozen lockfile) and the aztec toolchain (version read from the ROOT
+  package.json config.aztecVersion — the single source of truth) from the sha256 pins in
+  aztec-toolchain.lock.json. Optionally start a local network and run compile/codegen in a
+  package directory.
 
 inputs:
   start-local-network:
@@ -21,10 +22,12 @@ inputs:
     description: Package directory for compile/codegen
     required: false
     default: '.'
-  foundry-version:
-    description: Foundry toolchain version (pinned; matches the upstream installer's versions manifest, still 1.4.1 at 6.0.0-rc.1)
+  cache:
+    description: >-
+      Restore/save ~/.aztec from the Actions cache. Release-path jobs pass 'false': a cache entry
+      is not re-verified against the lock, so only a fresh install binds to the pinned digests.
     required: false
-    default: 'v1.4.1'
+    default: 'true'
 
 outputs:
   aztec-version:
@@ -67,30 +70,22 @@ runs:
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "AZTEC_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-    - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-      with:
-        version: ${{ inputs.foundry-version }}
-
-    - name: Add aztec bin dirs to PATH
+    - name: Add aztec bin dir to PATH
       shell: bash
-      run: |
-        echo "$HOME/.aztec/bin" >> "$GITHUB_PATH"
-        echo "$HOME/.aztec/current/bin" >> "$GITHUB_PATH"
+      run: echo "$HOME/.aztec/current/bin" >> "$GITHUB_PATH"
 
     - name: Cache aztec toolchain
       id: cache-aztec
+      if: inputs.cache == 'true'
       uses: actions/cache@v4
       with:
         path: ~/.aztec
-        key: aztec-${{ runner.os }}-${{ steps.version.outputs.version }}
+        key: aztec-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('aztec-toolchain.lock.json', 'scripts/install-aztec-toolchain.sh') }}
 
-    - name: Install aztec toolchain
+    - name: Install aztec toolchain (sha256-pinned inputs)
       if: steps.cache-aztec.outputs.cache-hit != 'true'
       shell: bash
-      run: |
-        curl -sSfL --proto '=https' --tlsv1.2 "https://install.aztec.network/${AZTEC_VERSION}/" -o /tmp/aztec-install.sh
-        NON_INTERACTIVE=1 VERSION="$AZTEC_VERSION" bash /tmp/aztec-install.sh
-        aztec-up install "$AZTEC_VERSION"
+      run: ./scripts/install-aztec-toolchain.sh "$AZTEC_VERSION"
 
     - name: Start local network
       if: inputs.start-local-network == 'true'

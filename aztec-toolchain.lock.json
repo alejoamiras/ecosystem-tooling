@@ -1,0 +1,24 @@
+{
+  "6.0.0-rc.3": {
+    "install": {
+      "url": "https://install.aztec-labs.com/6.0.0-rc.3/install",
+      "sha256": "f7f2349e500dc3c25c445f1b661aa63ec3e9724ba0cc818d98c38078b23055d6"
+    },
+    "versions": {
+      "url": "https://install.aztec-labs.com/6.0.0-rc.3/versions",
+      "sha256": "bd07b479c05d41cc4a18745bad2d057fed7da1c0217997597896ef47a4dad5f9"
+    },
+    "nargo": {
+      "linux-x64": {
+        "url": "https://github.com/noir-lang/noir/releases/download/v1.0.0-rc.3/noir-x86_64-unknown-linux-gnu.tar.gz",
+        "sha256": "5792dd962afce1eed834570f95d9f72cc4a09d45cd846d3b80b7a57392732973"
+      }
+    },
+    "foundry": {
+      "linux-x64": {
+        "url": "https://github.com/foundry-rs/foundry/releases/download/v1.4.1/foundry_v1.4.1_linux_amd64.tar.gz",
+        "sha256": "f1b044ee954402807c4dd5a5e7d29b210d24fd3633b7f199d184f034ff94d934"
+      }
+    }
+  }
+}

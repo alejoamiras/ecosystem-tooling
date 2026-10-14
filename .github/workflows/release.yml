@@ -305,6 +305,7 @@ jobs:
     with:
       package-dir: packages/private-fee-juice
       min-txe-tests: 11
+      toolchain-cache: false
 
   quota-paymaster-checks:
     name: Quota Paymaster
@@ -316,6 +317,7 @@ jobs:
       # Integration and warp suites each boot their own disposable network.
       shared-network: false
       run-warp-tests: true
+      toolchain-cache: false
 
   benchmark-build:
     name: Benchmark build
@@ -347,6 +349,8 @@ jobs:
 
       - uses: ./.github/actions/setup-aztec
         with:
+          # Fresh install from the lock: these artifacts are what gets published.
+          cache: 'false'
           start-local-network: 'false'
           run-compile: 'false'
           run-codegen: 'false'

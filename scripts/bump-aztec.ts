@@ -293,3 +293,6 @@ for (const e of edits) console.log(`  - ${e}`);
 console.log(
   '\nNext: scripts/verify-nargo-refs.sh --write && bun install && bun scripts/bump-aztec.ts --regenerate-excludes (prints the supply-chain report) && bun install --frozen-lockfile',
 );
+console.log(
+  `Then: bun scripts/lock-aztec-toolchain.ts ${target} (pins the CI toolchain; review the aztec-toolchain.lock.json diff)`,
+);

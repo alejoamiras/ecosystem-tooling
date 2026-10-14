@@ -199,3 +199,17 @@ test('a non-latest publish can neither move `latest` nor drag a prerelease tag b
   assert.match(releaseYml, /if \[ "\$latest" = "\$INPUT_VERSION" \]; then/, 'stateless latest != input check');
   assert.match(releaseYml, /if \[ "\$latest" != "\$before" \]; then/, 'per-run latest-unchanged check');
 });
+
+test('release-path jobs install the toolchain fresh, never from the Actions cache', () => {
+  // A cache entry is not re-verified against aztec-toolchain.lock.json, so a poisoned one would
+  // make rehearsal and release agree on the same wrong compiler.
+  const job = (name) => releaseYml.match(new RegExp(`^ {2}${name}:\\n((?: {4}.*\\n|\\n)*)`, 'm'))?.[1];
+  for (const name of ['private-fee-juice-checks', 'quota-paymaster-checks']) {
+    assert.match(job(name) ?? '', /^ {6}toolchain-cache: false$/m, `${name} must pass toolchain-cache: false`);
+  }
+  assert.match(
+    job('build') ?? '',
+    /uses: \.\/\.github\/actions\/setup-aztec\n {8}with:\n(?: {10}.*\n)*? {10}cache: 'false'\n/,
+    "the build job's setup-aztec must pass cache: 'false'",
+  );
+});
