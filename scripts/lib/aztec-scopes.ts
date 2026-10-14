@@ -184,20 +184,30 @@ export function lockfilePairs(lockText: string): Map<string, string[]> {
 
 /**
  * bun.lock against both config versions: every Aztec-scoped package must RESOLVE at its scope's
- * target, and every locked package's own Aztec-scoped dependency SPECS must ask for it too. The
- * second half is what catches a root `overrides` entry that forces a version the labs release
- * never declared, with config and pins hand-edited to match.
+ * target, every Aztec-scoped install slot must hold that same package (an `overrides` alias can
+ * put a fork there), and every locked package's own Aztec-scoped dependency SPECS must ask for the
+ * target too. The last check catches an override that forces a version the labs release never
+ * declared, with config and pins hand-edited to match.
  */
 export function lockfileScopeErrors(lockText: string, targets: AztecVersions): string[] {
   const lock = Bun.JSONC.parse(lockText) as { packages?: Record<string, unknown[]> };
   const errors: string[] = [];
-  for (const [ident, , meta] of Object.values(lock.packages ?? {}) as [string, unknown, LockMeta?][]) {
-    const at = ident.lastIndexOf('@');
+  for (const [key, entry] of Object.entries(lock.packages ?? {})) {
+    const ident = String(entry[0]);
+    // A scoped name holds '@' only at index 0; git/tarball versions may contain more.
+    const at = ident.indexOf('@', 1);
     const [name, version] = [ident.slice(0, at), ident.slice(at + 1)];
+    // Keys are install paths (`parent/child`); the slot is the last package name in it.
+    const slot = /((?:@[^/]+\/)?[^/]+)$/.exec(key)?.[1] ?? key;
+    if (pinnedVersion(slot, targets) !== undefined && slot !== name) {
+      errors.push(`bun.lock installs ${ident} in the ${slot} slot`);
+    }
     const target = pinnedVersion(name, targets);
     if (target !== undefined && version !== target) {
       errors.push(`bun.lock resolves ${ident}, expected ${name}@${target}`);
     }
+    // npm tuples are [ident, registry, meta, integrity]; folder/tarball/git ones carry meta at index 1.
+    const meta = entry.slice(1).find((x): x is LockMeta => typeof x === 'object' && x !== null);
     for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
       for (const [dep, spec] of Object.entries(meta?.[section] ?? {})) {
         const edge = closureEdge(ident, dep, spec, targets);

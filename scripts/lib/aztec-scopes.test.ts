@@ -122,6 +122,24 @@ describe('scope versions', () => {
     ]);
   });
 
+  test('lockfileScopeErrors: a fork in a scoped slot, and specs in non-registry tuples, are caught', () => {
+    const fork = lockOf(F, F).replace(
+      `["@aztec-foundation/bb.js@${F}", "", {}, "sha512-a"]`,
+      '["bb-fork@1.0.0", "", {}, "sha512-x"]',
+    );
+    expect(lockfileScopeErrors(fork, split)).toEqual([
+      'bun.lock installs bb-fork@1.0.0 in the @aztec-foundation/bb.js slot',
+    ]);
+    // A legitimate alias: an unscoped slot holding the pinned scoped package.
+    const alias = lockOf(F, F).replace('"@aztec-foundation/bb.js": [', '"bb": [');
+    expect(lockfileScopeErrors(alias, split)).toEqual([]);
+    const gitParent = lockOf(F, F).replace(
+      '"viem": ["@aztec/viem@2.38.3", "", {}, "sha512-c"]',
+      `"helper": ["helper@git+https://example.invalid/h.git#abc", { "dependencies": { "@aztec-foundation/bb.js": "${T}" } }, "tag"]`,
+    );
+    expect(lockfileScopeErrors(gitParent, split)).toEqual([expect.stringMatching(/^bun\.lock: helper@git\+https/)]);
+  });
+
   test('lockfileScopeErrors: an override that resolves a version labs never asked for still fails', () => {
     // Config, pins and the resolution all say rc.1; the labs package's own spec says rc.6.
     const forced = { aztecVersion: L, aztecFoundationVersion: T };
