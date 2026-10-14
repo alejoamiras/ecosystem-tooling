@@ -13,6 +13,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
+import { readAztecVersions } from './lib/aztec-scopes.ts';
 import { type Manifest, optionalPeers, validateManifest } from './lib/manifest-policy.ts';
 
 type Check =
@@ -137,8 +138,9 @@ const CHECKS: Record<string, Check[]> = {
   ],
 };
 
-const aztecVersion: string = JSON.parse(readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8')).config
-  .aztecVersion;
+const versions = readAztecVersions(
+  JSON.parse(readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8')).config,
+);
 
 const run = (cmd: string, args: string[], cwd: string) =>
   execFileSync(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'inherit'] })
@@ -184,7 +186,7 @@ for (const pkgDirArg of process.argv.slice(2)) {
   const source: Manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
   const packed: Manifest = JSON.parse(run('tar', ['-xzOf', tarball, 'package/package.json'], pkgDir));
   const violations = validateManifest(packed, {
-    aztecVersion,
+    ...versions,
     expectedPeers: Object.keys(source.peerDependencies ?? {}),
     expectedOptionalPeers: optionalPeers(source),
   });
@@ -192,7 +194,9 @@ for (const pkgDirArg of process.argv.slice(2)) {
     console.error(`  ✗ packed manifest violates the Aztec pin policy:\n    ${violations.join('\n    ')}`);
     failures++;
   } else {
-    console.log(`  ✓ packed manifest: Aztec pins == ${aztecVersion}, peer set matches source`);
+    console.log(
+      `  ✓ packed manifest: Aztec pins == ${versions.aztecVersion} / foundation ${versions.aztecFoundationVersion}, peer set matches source`,
+    );
   }
 
   const tmp = mkdtempSync(join(tmpdir(), `verify-${pkgName}-`));

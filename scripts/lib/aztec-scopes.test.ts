@@ -1,8 +1,25 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { AZTEC_NR_GIT, closureEdge, lockfilePairs, parseAlias, sweepNargoLine, youngNames } from './aztec-scopes.ts';
+import {
+  AZTEC_NR_GIT,
+  closureEdge,
+  foundationVersionOf,
+  lockfilePairs,
+  lockfileScopeErrors,
+  parseAlias,
+  pinnedVersion,
+  readAztecVersions,
+  sweepNargoLine,
+  youngNames,
+} from './aztec-scopes.ts';
 
 const T = '6.0.0-rc.1';
+const L = '6.0.0-rc.3';
+const F = '6.0.0-rc.6';
+const split = { aztecVersion: L, aztecFoundationVersion: F };
+const same = { aztecVersion: T, aztecFoundationVersion: T };
 
 describe('sweepNargoLine', () => {
   test('retags an aztec-nr dep and leaves noir-lang deps alone', () => {
@@ -28,24 +45,77 @@ describe('sweepNargoLine', () => {
 
 describe('closureEdge', () => {
   test('lockstep deps ride the target; aliases keep their own version', () => {
-    expect(closureEdge('p', '@aztec-labs/stdlib', T, T)).toEqual({ name: '@aztec-labs/stdlib', version: T });
-    expect(closureEdge('p', 'viem', 'npm:@aztec/viem@2.38.3', T)).toEqual({ name: '@aztec/viem', version: '2.38.3' });
-    expect(closureEdge('p', 'lodash', '4.17.21', T)).toBeUndefined();
+    expect(closureEdge('p', '@aztec-labs/stdlib', T, same)).toEqual({ name: '@aztec-labs/stdlib', version: T });
+    expect(closureEdge('p', 'viem', 'npm:@aztec/viem@2.38.3', same)).toEqual({
+      name: '@aztec/viem',
+      version: '2.38.3',
+    });
+    expect(closureEdge('p', 'lodash', '4.17.21', same)).toBeUndefined();
   });
 
   test('a foundation dep pinned off-target fails loudly', () => {
-    const r = closureEdge('@aztec-labs/aztec.js', '@aztec-foundation/l1-artifacts', '6.0.0-rc.2', T);
+    const r = closureEdge('@aztec-labs/aztec.js', '@aztec-foundation/l1-artifacts', '6.0.0-rc.2', same);
     expect(r).toEqual({ error: expect.stringMatching(/upstream versions diverged/) });
   });
 
   test('ranges and aliases must actually resolve to the target', () => {
     const diverged = { error: expect.stringMatching(/upstream versions diverged/) };
-    expect(closureEdge('p', '@aztec-labs/stdlib', `^${T}`, T)).toEqual({ name: '@aztec-labs/stdlib', version: T });
-    expect(closureEdge('p', '@aztec-labs/stdlib', '^5.0.1', T)).toEqual(diverged);
-    expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js@5.0.1', T)).toEqual(diverged);
-    expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js', T)).toEqual(diverged);
-    expect(closureEdge('p', 'viem', 'npm:@aztec/viem', T)).toEqual({ error: expect.stringMatching(/not an exact/) });
-    expect(closureEdge('p', 'bb', 'NPM:@aztec-foundation/bb.js@5.0.1', T)).toEqual(diverged);
+    expect(closureEdge('p', '@aztec-labs/stdlib', `^${T}`, same)).toEqual({ name: '@aztec-labs/stdlib', version: T });
+    expect(closureEdge('p', '@aztec-labs/stdlib', '^5.0.1', same)).toEqual(diverged);
+    expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js@5.0.1', same)).toEqual(diverged);
+    expect(closureEdge('p', 'bb', 'npm:@aztec-foundation/bb.js', same)).toEqual(diverged);
+    expect(closureEdge('p', 'viem', 'npm:@aztec/viem', same)).toEqual({ error: expect.stringMatching(/not an exact/) });
+    expect(closureEdge('p', 'bb', 'NPM:@aztec-foundation/bb.js@5.0.1', same)).toEqual(diverged);
+  });
+
+  test('split scopes: each edge rides its own scope target, and crossing them fails', () => {
+    const diverged = { error: expect.stringMatching(/upstream versions diverged/) };
+    expect(closureEdge('p', '@aztec-foundation/bb.js', F, split)).toEqual({
+      name: '@aztec-foundation/bb.js',
+      version: F,
+    });
+    expect(closureEdge('p', '@aztec-labs/stdlib', L, split)).toEqual({ name: '@aztec-labs/stdlib', version: L });
+    expect(closureEdge('p', '@aztec-foundation/bb.js', L, split)).toEqual(diverged);
+    expect(closureEdge('p', '@aztec-labs/stdlib', F, split)).toEqual(diverged);
+    expect(closureEdge('p', 'bb', `npm:@aztec-foundation/bb.js@${L}`, split)).toEqual(diverged);
+  });
+});
+
+describe('scope versions', () => {
+  test('pinnedVersion maps each scope to its own key', () => {
+    expect(pinnedVersion('@aztec-labs/stdlib', split)).toBe(L);
+    expect(pinnedVersion('@aztec-foundation/bb.js', split)).toBe(F);
+    expect(pinnedVersion('@aztec/viem', split)).toBeUndefined();
+    expect(pinnedVersion('@aztec-labsx/stdlib', split)).toBeUndefined();
+  });
+
+  test('readAztecVersions fails closed on a missing or non-exact key', () => {
+    expect(readAztecVersions(split)).toEqual(split);
+    expect(() => readAztecVersions({ aztecVersion: L })).toThrow(/aztecFoundationVersion/);
+    expect(() => readAztecVersions({ ...split, aztecFoundationVersion: `^${F}` })).toThrow(/aztecFoundationVersion/);
+    expect(() => readAztecVersions(undefined)).toThrow(/aztecVersion/);
+  });
+
+  test('foundationVersionOf reads exactly one exact foundation version', () => {
+    const deps = { '@aztec-foundation/bb.js': F, '@aztec-labs/foundation': L, lodash: '4.17.21' };
+    expect(foundationVersionOf('aztec', deps)).toBe(F);
+    const bad = { error: expect.stringMatching(/expected one exact @aztec-foundation/) };
+    expect(foundationVersionOf('aztec', { '@aztec-labs/foundation': L })).toEqual(bad);
+    expect(foundationVersionOf('aztec', { ...deps, '@aztec-foundation/l1-artifacts': '6.0.0-rc.5' })).toEqual(bad);
+    expect(foundationVersionOf('aztec', { '@aztec-foundation/bb.js': `^${F}` })).toEqual(bad);
+  });
+
+  test('lockfileScopeErrors flags any Aztec-scoped resolution off its scope target', () => {
+    const pairs = new Map([
+      ['@aztec-foundation/bb.js', [F]],
+      ['@aztec-labs/stdlib', [L]],
+      ['@aztec/viem', ['2.38.3']],
+    ]);
+    expect(lockfileScopeErrors(pairs, split)).toEqual([]);
+    pairs.set('@aztec-foundation/bb.js', [F, L]);
+    expect(lockfileScopeErrors(pairs, split)).toEqual([
+      `bun.lock resolves @aztec-foundation/bb.js@${L}, expected only ${F}`,
+    ]);
   });
 });
 
@@ -81,4 +151,12 @@ test('parseAlias + lockfilePairs read bun.lock-shaped entries across all scopes'
     ['@aztec-labs/stdlib', [T]],
     ['@aztec/viem', ['2.38.3']],
   ]);
+});
+
+test('the committed bun.lock resolves each Aztec scope only at its root config version', () => {
+  const root = join(import.meta.dir, '..', '..');
+  const config = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).config;
+  const pairs = lockfilePairs(readFileSync(join(root, 'bun.lock'), 'utf8'));
+  expect(pairs.size).toBeGreaterThan(0);
+  expect(lockfileScopeErrors(pairs, readAztecVersions(config))).toEqual([]);
 });

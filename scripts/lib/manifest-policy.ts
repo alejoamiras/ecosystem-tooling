@@ -1,11 +1,12 @@
 import {
   ALLOWED_LEGACY_ALIAS,
+  type AztecVersions,
   EXACT_SEMVER,
   isAliasSpec,
   isLegacyName,
-  isLockstepName,
   LEGACY_SCOPE,
   parseAlias,
+  pinnedVersion,
 } from './aztec-scopes.ts';
 
 export const DEP_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const;
@@ -20,8 +21,7 @@ export interface Manifest {
   peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 }
 
-export interface ManifestPolicy {
-  aztecVersion: string;
+export interface ManifestPolicy extends AztecVersions {
   /** Publish paths only: the peer names the source manifest declares. */
   expectedPeers?: readonly string[];
   /** Publish paths only: the peers the source manifest marks optional. */
@@ -43,7 +43,6 @@ const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
  * installs `@aztec-labs/x` exactly like a direct dep would.
  */
 export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] {
-  const { aztecVersion } = policy;
   const errors: string[] = [];
 
   for (const section of DEP_SECTIONS) {
@@ -53,8 +52,9 @@ export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] 
         errors.push(`${at}: legacy ${LEGACY_SCOPE}* name — use the @aztec-labs / @aztec-foundation successor`);
         continue;
       }
-      if (isLockstepName(name) && spec !== aztecVersion) {
-        errors.push(`${at} is ${spec}, expected exactly aztecVersion ${aztecVersion}`);
+      const pinned = pinnedVersion(name, policy);
+      if (pinned !== undefined && spec !== pinned) {
+        errors.push(`${at} is ${spec}, expected exactly ${pinned}`);
         continue;
       }
       if (!isAliasSpec(spec)) continue;
@@ -63,8 +63,9 @@ export function validateManifest(m: Manifest, policy: ManifestPolicy): string[] 
         errors.push(`${at}: unparseable npm: alias ${spec}`);
         continue;
       }
-      if (isLockstepName(alias.target) && alias.version !== aztecVersion) {
-        errors.push(`${at} aliases ${alias.target}@${alias.version}, expected exactly aztecVersion ${aztecVersion}`);
+      const aliasPinned = pinnedVersion(alias.target, policy);
+      if (aliasPinned !== undefined && alias.version !== aliasPinned) {
+        errors.push(`${at} aliases ${alias.target}@${alias.version}, expected exactly ${aliasPinned}`);
       } else if (isLegacyName(alias.target)) {
         const allowed = name === ALLOWED_LEGACY_ALIAS.name && alias.target === ALLOWED_LEGACY_ALIAS.target;
         if (!allowed) {

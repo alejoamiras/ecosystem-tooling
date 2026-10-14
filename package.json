@@ -47,6 +47,7 @@
     ]
   },
   "config": {
+    "aztecFoundationVersion": "6.0.0-rc.1",
     "aztecVersion": "6.0.0-rc.1"
   },
   "overrides": {

@@ -7,8 +7,18 @@
  * old-world package and would otherwise publish silently.
  */
 
-/** Scopes pinned exactly to `config.aztecVersion`. */
-export const LOCKSTEP_SCOPES = ['@aztec-labs/', '@aztec-foundation/'] as const;
+export const LABS_SCOPE = '@aztec-labs/';
+export const FOUNDATION_SCOPE = '@aztec-foundation/';
+
+/**
+ * The two exact versions every Aztec-scoped pin follows: `@aztec-labs/*` → `aztecVersion`,
+ * `@aztec-foundation/*` → `aztecFoundationVersion` (upstream versions the two scopes separately
+ * since 6.0.0-rc.3, which depends on foundation 6.0.0-rc.6).
+ */
+export interface AztecVersions {
+  aztecVersion: string;
+  aztecFoundationVersion: string;
+}
 export const LEGACY_SCOPE = '@aztec/';
 /** Upstream still ships its viem fork under the legacy scope; the only legacy name allowed. */
 export const ALLOWED_LEGACY_ALIAS = { name: 'viem', target: '@aztec/viem' } as const;
@@ -22,7 +32,40 @@ export const LEGACY_AZTEC_NR_GITS = [
 export const EXACT_SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
 export const MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const isLockstepName = (name: string): boolean => LOCKSTEP_SCOPES.some((s) => name.startsWith(s));
+/** The exact version `name` must be pinned to; undefined outside both Aztec scopes. */
+export function pinnedVersion(name: string, v: AztecVersions): string | undefined {
+  if (name.startsWith(LABS_SCOPE)) return v.aztecVersion;
+  if (name.startsWith(FOUNDATION_SCOPE)) return v.aztecFoundationVersion;
+  return undefined;
+}
+
+/** Both versions from the root `package.json` `config`; a missing or non-exact one is fatal. */
+export function readAztecVersions(config: unknown): AztecVersions {
+  const c = (config ?? {}) as Record<string, unknown>;
+  for (const key of ['aztecVersion', 'aztecFoundationVersion'] as const) {
+    const v = c[key];
+    if (typeof v !== 'string' || !EXACT_SEMVER.test(v))
+      throw new Error(`root config.${key} is not an exact version: ${v}`);
+  }
+  return { aztecVersion: c.aztecVersion as string, aztecFoundationVersion: c.aztecFoundationVersion as string };
+}
+
+/**
+ * The single `@aztec-foundation/*` version a labs package depends on. None, several, or a
+ * non-exact spec is an error: the foundation target must be read from upstream, never guessed.
+ */
+export function foundationVersionOf(parent: string, deps: Record<string, string>): string | { error: string } {
+  const specs = new Set(
+    Object.entries(deps)
+      .filter(([name]) => name.startsWith(FOUNDATION_SCOPE))
+      .map(([, spec]) => spec),
+  );
+  const [only] = specs;
+  if (specs.size !== 1 || !only || !EXACT_SEMVER.test(only)) {
+    return { error: `${parent}: expected one exact ${FOUNDATION_SCOPE}* version, found [${[...specs].join(', ')}]` };
+  }
+  return only;
+}
 export const isLegacyName = (name: string): boolean => name.startsWith(LEGACY_SCOPE);
 
 /**
@@ -62,24 +105,27 @@ export function sweepNargoLine(line: string, target: string): { line: string; er
 }
 
 /**
- * One edge of the registry closure walk. A lockstep dependency pinned to anything other than
- * the target means upstream's labs and foundation versions diverged; the tooling has no second
- * version source yet, so that must stop the bump rather than be papered over.
+ * One edge of the registry closure walk. An Aztec-scoped dependency pinned to anything other
+ * than its scope's target means upstream split a scope across versions; that must stop the bump
+ * rather than install two copies.
  */
 export function closureEdge(
   parent: string,
   dep: string,
   spec: string,
-  target: string,
+  targets: AztecVersions,
 ): { name: string; version: string } | { error: string } | undefined {
-  const diverged = (name: string, version: string) => ({
-    error: `${parent} depends on ${name}@${version}, which the lockstep ${target} does not satisfy — upstream versions diverged; extend the tooling before bumping`,
+  const diverged = (name: string, version: string, target: string) => ({
+    error: `${parent} depends on ${name}@${version}, which this bump's ${target} does not satisfy — upstream versions diverged within a scope`,
   });
   if (isAliasSpec(spec)) {
     const alias = parseAlias(spec);
     if (!alias) return { error: `${parent}: unparseable alias ${dep}@${spec}` };
-    if (isLockstepName(alias.target)) {
-      return alias.version === target ? { name: alias.target, version: target } : diverged(alias.target, alias.version);
+    const target = pinnedVersion(alias.target, targets);
+    if (target !== undefined) {
+      return alias.version === target
+        ? { name: alias.target, version: target }
+        : diverged(alias.target, alias.version, target);
     }
     if (alias.target === ALLOWED_LEGACY_ALIAS.target) {
       return EXACT_SEMVER.test(alias.version)
@@ -88,10 +134,11 @@ export function closureEdge(
     }
     return undefined;
   }
-  if (!isLockstepName(dep)) return undefined;
+  const target = pinnedVersion(dep, targets);
+  if (target === undefined) return undefined;
   // A range (`^5.0.1`, `*`) is only an edge to the target when bun would actually pick it.
   if (spec !== target && !(!EXACT_SEMVER.test(spec) && Bun.semver.satisfies(target, spec))) {
-    return diverged(dep, spec);
+    return diverged(dep, spec, target);
   }
   return { name: dep, version: target };
 }
@@ -133,4 +180,15 @@ export function lockfilePairs(lockText: string): Map<string, string[]> {
     pairs.set(name, list);
   }
   return new Map([...pairs.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/** Every bun.lock resolution of an Aztec-scoped name to a version other than its scope's target. */
+export function lockfileScopeErrors(pairs: Map<string, string[]>, targets: AztecVersions): string[] {
+  const errors: string[] = [];
+  for (const [name, versions] of pairs) {
+    const target = pinnedVersion(name, targets);
+    const off = target === undefined ? [] : versions.filter((v) => v !== target);
+    if (off.length > 0) errors.push(`bun.lock resolves ${name}@${off.join(', ')}, expected only ${target}`);
+  }
+  return errors;
 }
