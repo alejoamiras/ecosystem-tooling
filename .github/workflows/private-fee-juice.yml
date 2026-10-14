@@ -36,6 +36,8 @@ jobs:
               - '.github/workflows/_package-checks.yml'
               - '.github/workflows/_pr-benchmark.yml'
               - '.github/actions/**'
+              - 'aztec-toolchain.lock.json'
+              - 'scripts/install-aztec-toolchain.sh'
       - name: Override for manual dispatch
         if: github.event_name == 'workflow_dispatch'
         id: override

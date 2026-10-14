@@ -242,14 +242,15 @@ jobs:
 
           The Aztec Foundation now owns and publishes aztec-standards as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) (repo: [AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). `@alejoamiras/aztec-standards` is retired and will receive no further releases — migrate to the Foundation package.
 
-          ## ⚠️ Compatibility notes at 6.0.0-rc.1
+          ## ⚠️ Compatibility notes at 6.0.0-rc.3
 
-          - **Release candidate, opt-in.** Published under the `rc` dist-tag; `latest` stays on the Aztec 5 releases. Install the exact version above (or `@rc`). (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 6.0.0-rc.1, not your fix.)
-          - **Breaking: new npm scopes.** Aztec 6 moved `@aztec/*` to `@aztec-labs/*`, with `bb.js` and `l1-artifacts` under `@aztec-foundation/*` (`viem` stays `npm:@aztec/viem`). Every package's peers are exact `6.0.0-rc.1` pins on the new scopes — move your own imports with the install.
-          - **The canonical PrivateFPC address CHANGED at 6.0.0-rc.1** (recompiled bytecode): `0x0b3bc795b5c077b57920d590ecc163af18705554abf7164cb0f8c52850943c08`. The 5.0.1 address `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0` is STALE for Aztec 6 — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
-          - **quota-paymaster: new class id and a one-hour bootstrap.** Compiled against Aztec 6, QuotaFpc's class id is `0x22dd37644f0b2d9873ed029f2350d7a3e47d31a2c7b2d8bf107bb1f651504dc2` — a locally reviewed pin, not chain-verified; the Aztec 5 mainnet deployment is untouched. aztec-nr 6 enforces a 3600s minimum delay on the constructor's policy write, so a fresh deployment reads an all-zero policy and sponsors nothing for its first hour. `resolveFeeSource` takes `policyActive` and returns the `policy-inactive` reason; the operator CLI prints the activation time and refuses to measure before it.
-          - **quota-paymaster: breaking export rename.** `assertArtifactIsChainVerifiedClass` is now `assertArtifactIsLineageClass`, which accepts only the class reviewed for this package's Aztec version (`currentAztecVersion` in `known-deployments.json`), refuses a stale artifact from an earlier version, and reports whether that class is chain-verified.
-          - No other package-local API changes in `private-fee-juice` or `aztec-benchmark`.
+          - **Release candidate, opt-in.** Published under the `rc` dist-tag; `latest` stays on the Aztec 5 releases. Install the exact version above (or `@rc`). (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 6.0.0-rc.3, not your fix.)
+          - **Two Aztec versions in the peers.** `@aztec-labs/*` peers are exact `6.0.0-rc.3` pins. `@aztec-foundation/*` peers (`bb.js`, `l1-artifacts`) are exact `6.0.0-rc.6` pins, because upstream now versions that scope separately and its own rc.3 depends on foundation rc.6. Install both at exactly those versions. Coming from Aztec 5: Aztec 6 moved `@aztec/*` to `@aztec-labs/*` and `@aztec-foundation/*` (`viem` stays `npm:@aztec/viem`), so move your own imports with the install.
+          - **The canonical PrivateFPC address CHANGED at 6.0.0-rc.3** (recompiled bytecode): `0x2e189d0c28cb86234a17951a94131e19620cda595fa8f9c5c10c24268ceb6db4`. The 6.0.0-rc.1 address `0x0b3bc795b5c077b57920d590ecc163af18705554abf7164cb0f8c52850943c08` and the 5.0.1 address `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0` are STALE — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
+          - **quota-paymaster: new class id and a one-hour bootstrap.** Compiled against Aztec 6.0.0-rc.3, QuotaFpc's class id is `0x248f2f32203a066d7415d3eb5c68cf4dfc35f826a54e946f2cd182d74673597b` (6.0.0-rc.1: `0x22dd3764…4dc2`). It is a locally reviewed pin, not chain-verified; a deployment on the rc.1 class is not upgraded, and the Aztec 5 mainnet deployment is untouched. aztec-nr 6 enforces a 3600s minimum delay on the constructor's policy write, so a fresh deployment reads an all-zero policy and sponsors nothing for its first hour. `resolveFeeSource` takes `policyActive` and returns the `policy-inactive` reason; the operator CLI prints the activation time and refuses to measure before it.
+          - **quota-paymaster, since 6.0.0-rc.1: breaking export rename.** `assertArtifactIsChainVerifiedClass` is now `assertArtifactIsLineageClass`, which accepts only the class reviewed for this package's Aztec version (`currentAztecVersion` in `known-deployments.json`), refuses a stale artifact from an earlier version, and reports whether that class is chain-verified.
+          - No package-local API changes since 6.0.0-rc.1, and none in `private-fee-juice` or `aztec-benchmark` since Aztec 5 beyond the scope move.
+          - **Toolchain pinned by digest.** These artifacts were compiled by an Aztec toolchain installed only from sha256-pinned inputs (`aztec-toolchain.lock.json`), fresh in the release build. The toolchain's own npm install is not yet lockfile-pinned ([#29](https://github.com/alejoamiras/ecosystem-tooling/issues/29)).
 
           ## 📚 Docs & migration
 
@@ -305,6 +306,7 @@ jobs:
     with:
       package-dir: packages/private-fee-juice
       min-txe-tests: 11
+      toolchain-cache: false
 
   quota-paymaster-checks:
     name: Quota Paymaster
@@ -316,6 +318,7 @@ jobs:
       # Integration and warp suites each boot their own disposable network.
       shared-network: false
       run-warp-tests: true
+      toolchain-cache: false
 
   benchmark-build:
     name: Benchmark build
@@ -347,6 +350,8 @@ jobs:
 
       - uses: ./.github/actions/setup-aztec
         with:
+          # Fresh install from the lock: these artifacts are what gets published.
+          cache: 'false'
           start-local-network: 'false'
           run-compile: 'false'
           run-codegen: 'false'

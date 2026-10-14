@@ -1,6 +1,6 @@
 # Quota Paymaster — Product Requirements
 
-**Target Aztec Version**: 6.0.0-rc.1
+**Target Aztec Version**: 6.0.0-rc.3
 
 ## Problem Statement
 
@@ -65,7 +65,7 @@ rather than restated: see the Test Coverage Matrix.
 | Nullifier parity TS ↔ Noir | integration |
 | Journal failure modes (symlink, torn line, lock steal, crash replay) | unit |
 | Operator refusals (class-id, fee-floor, max-loss, argv secrets) | unit + smoke |
-| Lineage: sources + dep lock + artifacts == chain-verified class id | every gate |
+| Lineage: sources + dep lock + artifacts == the reviewed class id for `config.aztecVersion` (chain-verified only for 5.0.1) | every gate |
 
 ## Per-Aztec-bump checklist
 
@@ -76,7 +76,7 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
    the new class means a redeploy, which strands the old instance's balance), then record it
    under `compiled[<version>]` with `verifiedAgainstChain: false`.
 2. Re-verify teardown-gas billing semantics against the new `gas_settings.ts` (the fee
-   ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0-rc.1).
+   ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0-rc.3: `gas_settings.ts` is unchanged from rc.1).
 3. Recompute account class ids (`verifyAccountClassIds` refuses stale configs) — an
    `@aztec-labs/accounts` bump changes them and requires paymaster redeploys.
 
@@ -86,3 +86,4 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
 |---|---|---|
 | 5.0.1 | 2026-08-05 | Extraction from dark-forest-aztec (worktree-quota-fpc @ f1943d8); chain-verified lineage; §6 gaps closed |
 | 6.0.0-rc.1 | 2026-09-30 | Aztec 6 (`@aztec-labs/*` scopes); 1h bootstrap delay; per-version lineage anchors; `policy-inactive` fee-source reason |
+| 6.0.0-rc.3 | 2026-10-14 | Aztec 6.0.0-rc.3 (foundation peers at 6.0.0-rc.6); recompiled class id `0x248f2f32…597b`, no source change |

@@ -4,9 +4,11 @@
  *
  * Sweeps EVERY location the Aztec version lives, validating the whole result before writing
  * any of it:
- *   - root package.json  config.aztecVersion
- *   - packages/*'/package.json  version (lockstep) + every @aztec-labs/* and @aztec-foundation/*
- *     pin (direct or aliased) + internal cross-package pins (deps whose name is itself a
+ *   - root package.json  config.aztecVersion + config.aztecFoundationVersion. The foundation
+ *     version is read from @aztec-labs/aztec@<version>'s own @aztec-foundation/* deps, and the
+ *     closure walk below requires every other labs→foundation edge to agree with it.
+ *   - packages/*'/package.json  version (lockstep) + every @aztec-labs/* pin (→ version) and
+ *     @aztec-foundation/* pin (→ foundation version), direct or aliased + internal cross-package pins (deps whose name is itself a
  *     workspace package — detected by name set, not prefix). Legacy-scope names are an
  *     error (scripts/lib/manifest-policy.ts); the only legacy name left is the viem alias.
  *   - packages/*'/**'/Nargo.toml  `tag = "v<old>"` on aztec-nr lines (noir-lang deps untouched;
@@ -16,11 +18,12 @@
  * Min-age handling (bun's minimumReleaseAgeExcludes takes exact names, and transitives are
  * gated independently): only names whose resolved version is younger than 7 days are exempted.
  *   - pre-install: walk the registry closure at the TARGET and write its young names
- *   - post-install (--regenerate-excludes): recompute from the fresh bun.lock, then print the
- *     supply-chain report (publish date, age, publisher, attestation presence) for the PR
+ *   - post-install (--regenerate-excludes): fail if bun.lock resolves an Aztec-scoped name off its
+ *     scope's config version, recompute from the fresh bun.lock, then print the supply-chain
+ *     report (publish date, age, publisher, attestation presence) for the PR
  *
  * Usage:
- *   bun scripts/bump-aztec.ts 6.0.0-rc.1
+ *   bun scripts/bump-aztec.ts 6.0.0-rc.3 [--dry-run]   (--dry-run validates and writes nothing)
  *   bun scripts/bump-aztec.ts --regenerate-excludes
  */
 import { execFileSync } from 'node:child_process';
@@ -28,12 +31,16 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { join } from 'node:path';
 
 import {
+  type AztecVersions,
   closureEdge,
   EXACT_SEMVER,
-  isLockstepName,
+  foundationVersionOf,
   lockfilePairs,
+  lockfileScopeErrors,
   type PublishRow,
   parseAlias,
+  pinnedVersion,
+  readAztecVersions,
   sweepNargoLine,
   youngNames,
 } from './lib/aztec-scopes.ts';
@@ -101,9 +108,11 @@ function fail(errors: string[]): never {
 
 if (process.argv[2] === '--regenerate-excludes') {
   const now = Date.now();
-  const rows = [...lockfilePairs(readFileSync(join(ROOT, 'bun.lock'), 'utf8'))].flatMap(([name, versions]) =>
-    versions.map((v) => publishRow(name, v)),
-  );
+  const lockText = readFileSync(join(ROOT, 'bun.lock'), 'utf8');
+  const scopeErrors = lockfileScopeErrors(lockText, readAztecVersions(readJson(join(ROOT, 'package.json')).config));
+  const pairs = lockfilePairs(lockText);
+  if (scopeErrors.length > 0) fail(scopeErrors);
+  const rows = [...pairs].flatMap(([name, versions]) => versions.map((v) => publishRow(name, v)));
   writeExcludes(youngNames(rows, now), 'from bun.lock');
 
   console.log('\n=== supply-chain report (from bun.lock) ===\n');
@@ -128,10 +137,12 @@ if (process.argv[2] === '--regenerate-excludes') {
   process.exit(0);
 }
 
-const target = process.argv[2];
-if (!target || !EXACT_SEMVER.test(target)) {
+const args = process.argv.slice(2);
+const dryRun = args.includes('--dry-run');
+const [target, ...extra] = args.filter((a) => a !== '--dry-run');
+if (!target || extra.length > 0 || !EXACT_SEMVER.test(target)) {
   console.error(
-    'usage: bun scripts/bump-aztec.ts <version>   (e.g. 6.0.0-rc.1)\n       bun scripts/bump-aztec.ts --regenerate-excludes',
+    'usage: bun scripts/bump-aztec.ts <version> [--dry-run]   (e.g. 6.0.0-rc.3)\n       bun scripts/bump-aztec.ts --regenerate-excludes',
   );
   process.exit(1);
 }
@@ -140,6 +151,12 @@ if (!target || !EXACT_SEMVER.test(target)) {
 if (registryDoc(`@aztec-labs/aztec.js@${target}`).version !== target) {
   fail([`@aztec-labs/aztec.js@${target} is not on the npm registry`]);
 }
+const foundation = foundationVersionOf(
+  `@aztec-labs/aztec@${target}`,
+  registryDoc(`@aztec-labs/aztec@${target}`).dependencies ?? {},
+);
+if (typeof foundation !== 'string') fail([foundation.error]);
+const targets: AztecVersions = { aztecVersion: target, aztecFoundationVersion: foundation };
 
 const errors: string[] = [];
 const writes: Array<[path: string, content: string]> = [];
@@ -150,7 +167,8 @@ const edits: string[] = [];
   const p = join(ROOT, 'package.json');
   const pkg = readJson(p);
   edits.push(`root config.aztecVersion: ${pkg.config?.aztecVersion} -> ${target}`);
-  pkg.config = { ...pkg.config, aztecVersion: target };
+  edits.push(`root config.aztecFoundationVersion: ${pkg.config?.aztecFoundationVersion} -> ${foundation}`);
+  pkg.config = { ...pkg.config, aztecVersion: target, aztecFoundationVersion: foundation };
   writes.push([p, `${JSON.stringify(pkg, null, 2)}\n`]);
 }
 
@@ -166,16 +184,21 @@ for (const dir of PACKAGES) {
     if (!deps) continue;
     for (const [name, spec] of Object.entries(deps)) {
       const alias = parseAlias(spec);
-      if ((isLockstepName(name) && EXACT_SEMVER.test(spec)) || WORKSPACE_NAMES.has(name)) {
+      const pinned = pinnedVersion(name, targets);
+      const aliasPinned = alias && pinnedVersion(alias.target, targets);
+      if (WORKSPACE_NAMES.has(name)) {
         deps[name] = target;
         count++;
-      } else if (alias && isLockstepName(alias.target)) {
-        deps[name] = `npm:${alias.target}@${target}`;
+      } else if (pinned && EXACT_SEMVER.test(spec)) {
+        deps[name] = pinned;
+        count++;
+      } else if (alias && aliasPinned) {
+        deps[name] = `npm:${alias.target}@${aliasPinned}`;
         count++;
       }
     }
   }
-  errors.push(...validateManifest(pkg, { aztecVersion: target }).map((e) => `packages/${dir}: ${e}`));
+  errors.push(...validateManifest(pkg, targets).map((e) => `packages/${dir}: ${e}`));
   swept.push([dir, pkg]);
   writes.push([manifestPath(dir), `${JSON.stringify(pkg, null, 2)}\n`]);
   edits.push(`packages/${dir}: version ${old} -> ${target}, ${count} pins`);
@@ -247,14 +270,14 @@ for (const pkg of PACKAGES) {
 
 if (errors.length > 0) fail(errors);
 
-// 5. Min-age exclusions from the registry closure of the swept manifests. A lockstep dep off
-// the target means labs and foundation diverged — stop rather than guess a second version.
+// 5. Min-age exclusions from the registry closure of the swept manifests. An Aztec-scoped dep
+// off its scope's target means upstream split a scope — stop rather than install two copies.
 const closure = new Map<string, string>();
 const queue: Array<[name: string, version: string]> = [];
 for (const [dir, pkg] of swept) {
   for (const section of DEP_SECTIONS) {
     for (const [name, spec] of Object.entries(pkg[section] ?? {})) {
-      const edge = closureEdge(`packages/${dir}`, name, spec, target);
+      const edge = closureEdge(`packages/${dir}`, name, spec, targets);
       if (edge && 'error' in edge) errors.push(edge.error);
       else if (edge) queue.push([edge.name, edge.version]);
     }
@@ -273,7 +296,7 @@ while (queue.length > 0) {
   // Optional deps carry the per-platform native binaries, and bun gates each one by age.
   for (const section of ['peerDependencies', 'optionalDependencies', 'dependencies'] as const) {
     for (const [dep, spec] of Object.entries((doc[section] ?? {}) as Record<string, string>)) {
-      const edge = closureEdge(`${name}@${version}`, dep, spec, target);
+      const edge = closureEdge(`${name}@${version}`, dep, spec, targets);
       if (edge && 'error' in edge) errors.push(edge.error);
       else if (edge) queue.push([edge.name, edge.version]);
     }
@@ -285,11 +308,20 @@ const young = youngNames(
   Date.now(),
 );
 
+if (dryRun) {
+  console.log(`\n=== bump-aztec --dry-run: ${target} (foundation ${foundation}) validates; nothing written ===`);
+  for (const e of edits) console.log(`  - ${e}`);
+  console.log(`  - min-age exclusions (${closure.size}-package closure): ${young.length ? young.join(', ') : 'none'}`);
+  process.exit(0);
+}
 for (const [p, content] of writes) writeFileSync(p, content);
 writeExcludes(young, `registry closure of ${closure.size} packages (pre-install)`);
 
-console.log(`\n=== bump-aztec: swept to ${target} ===`);
+console.log(`\n=== bump-aztec: swept to ${target} (foundation ${foundation}) ===`);
 for (const e of edits) console.log(`  - ${e}`);
 console.log(
   '\nNext: scripts/verify-nargo-refs.sh --write && bun install && bun scripts/bump-aztec.ts --regenerate-excludes (prints the supply-chain report) && bun install --frozen-lockfile',
+);
+console.log(
+  `Then: bun scripts/lock-aztec-toolchain.ts ${target} (pins the CI toolchain; review the aztec-toolchain.lock.json diff)`,
 );

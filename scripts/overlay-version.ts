@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Version overlay for release.yml's rehearsal/revision modes (plan aztec-5-stable, D2v3/D16;
- * `hotfix` mode renamed to `revision` in plan fee-payment-revisions-rename).
+ * Version overlay for release.yml's rehearsal/revision modes.
  *
  * Stamps OVERLAY_VERSION onto the publishable packages — `version` plus every
  * internal cross-package exact pin (any dep whose name is itself a workspace package) —
@@ -12,7 +11,7 @@
  *
  * Must run AFTER `bun install --frozen-lockfile` (the overlay diverges manifests from
  * bun.lock by design) and BEFORE build/pack. The workflow's post-pack assertion verifies
- * every tarball's embedded manifest: name, version == input, Aztec pins == aztecVersion,
+ * every tarball's embedded manifest: name, version == input, Aztec pins == their scope's version,
  * internal pins == input — the fail-closed backstop that makes a mis-dispatched run die
  * instead of publishing the committed (real) version under a rehearsal tag.
  *
@@ -21,6 +20,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { readAztecVersions } from './lib/aztec-scopes.ts';
 import { DEP_SECTIONS, validateManifest } from './lib/manifest-policy.ts';
 
 const ROOT = join(import.meta.dir, '..');
@@ -30,7 +30,8 @@ if (!overlay || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(overlay)) {
   process.exit(1);
 }
 
-const aztecVersion: string = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).config.aztecVersion;
+const versions = readAztecVersions(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).config);
+const { aztecVersion } = versions;
 if (overlay === aztecVersion) {
   console.error(`overlay-version: ${overlay} equals config.aztecVersion — release mode needs no overlay`);
   process.exit(1);
@@ -48,7 +49,7 @@ const workspaceNames = new Set<string>(
 for (const dir of pkgDirs) {
   const p = join(ROOT, 'packages', dir, 'package.json');
   const pkg = JSON.parse(readFileSync(p, 'utf8'));
-  const violations = validateManifest(pkg, { aztecVersion });
+  const violations = validateManifest(pkg, versions);
   if (violations.length > 0) {
     console.error(`overlay-version: REFUSING — packages/${dir}:\n  ${violations.join('\n  ')}`);
     process.exit(1);
@@ -68,4 +69,6 @@ for (const dir of pkgDirs) {
   console.log(`overlaid packages/${dir}: ${before} -> ${overlay} (${pins} internal pins)`);
 }
 
-console.log(`overlay-version: done — Aztec pins untouched (still ${aztecVersion})`);
+console.log(
+  `overlay-version: done — Aztec pins untouched (still ${aztecVersion}, foundation ${versions.aztecFoundationVersion})`,
+);

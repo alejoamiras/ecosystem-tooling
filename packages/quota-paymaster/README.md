@@ -9,8 +9,8 @@ users transact without ever bridging. The contract is app-agnostic: all app-spec
 | | |
 |---|---|
 | Contract | `QuotaFpc` (Noir); one class id per Aztec version, recorded in `known-deployments.json` |
-| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id (`0x22dd3764…4dc2`) is a locally reviewed pin, **not** chain-verified |
-| Versioning | Lockstep with Aztec: package `6.0.0-rc.1` targets Aztec `6.0.0-rc.1`, published under the `rc` dist-tag |
+| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id at 6.0.0-rc.3 (`0x248f2f32…597b`) is a locally reviewed pin, **not** chain-verified |
+| Versioning | Lockstep with Aztec: package `6.0.0-rc.3` targets Aztec `6.0.0-rc.3` (foundation packages `6.0.0-rc.6`), published under the `rc` dist-tag |
 | Bootstrap | A fresh deployment is inert for its first hour (aztec-nr's 3600s minimum delay): the policy reads all zeros and sponsors nothing |
 | SDK | Browser-safe root export; Node-only `./operator` export |
 

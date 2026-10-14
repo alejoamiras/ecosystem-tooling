@@ -261,4 +261,4 @@ benchmark:
 The reusable workflows reference this repo's local `setup-aztec` action, so they are not directly callable cross-repo. External projects have two options:
 
 1. **Use the CLI directly** (recommended): install `@alejoamiras/aztec-benchmark` as a devDependency, add a `[benchmark]` table to your `Nargo.toml`, and run `aztec-benchmark --suffix _base` in a job that has an Aztec local network running. The comparison helper is importable as `require('@alejoamiras/aztec-benchmark/action/comparison.cjs')` — see `_pr-benchmark.yml` in this repo as a reference implementation for baselines, comparison and PR comments.
-2. **Vendor the workflows**: copy `_pr-benchmark.yml`, `_update-baseline.yml` and `.github/actions/setup-aztec/` into your repo and adjust `package-dir`.
+2. **Vendor the workflows**: copy `_pr-benchmark.yml`, `_update-baseline.yml`, `.github/actions/setup-aztec/`, `scripts/install-aztec-toolchain.sh` and `aztec-toolchain.lock.json` into your repo and adjust `package-dir`.

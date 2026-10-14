@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test';
 
 import { DEP_SECTIONS, type Manifest, optionalPeers, validateManifest } from './manifest-policy.ts';
 
-const V = '6.0.0-rc.1';
+const V = '6.0.0-rc.3';
+// Upstream versions the foundation scope separately (labs rc.3 depends on foundation rc.6).
+const F = '6.0.0-rc.6';
+const versions = { aztecVersion: V, aztecFoundationVersion: F };
 
 // Shaped like quota-paymaster's published manifest: labs + foundation peers, an optional peer
 // in each world, and the viem alias in devDependencies.
@@ -13,18 +16,17 @@ const good = (): Manifest => ({
   peerDependencies: {
     '@aztec-labs/aztec.js': V,
     '@aztec-labs/wallets': V,
-    '@aztec-foundation/l1-artifacts': V,
+    '@aztec-foundation/l1-artifacts': F,
     tsx: '^4.19.0',
   },
   peerDependenciesMeta: { '@aztec-labs/wallets': { optional: true }, tsx: { optional: true } },
 });
 const publishPolicy = {
-  aztecVersion: V,
+  ...versions,
   expectedPeers: Object.keys(good().peerDependencies ?? {}),
   expectedOptionalPeers: optionalPeers(good()),
 };
-const errs = (m: Manifest, onPublishPath = false) =>
-  validateManifest(m, onPublishPath ? publishPolicy : { aztecVersion: V });
+const errs = (m: Manifest, onPublishPath = false) => validateManifest(m, onPublishPath ? publishPolicy : versions);
 
 test('a compliant manifest passes, including the publish-path checks', () => {
   expect(errs(good(), true)).toEqual([]);
@@ -37,8 +39,21 @@ describe('names and pins', () => {
     }
   });
 
-  test('a wrong lockstep pin is rejected', () => {
+  test('a wrong pin is rejected', () => {
     expect(errs({ peerDependencies: { '@aztec-foundation/bb.js': '5.0.1' } })[0]).toMatch(/expected exactly/);
+  });
+
+  test("each scope is held to its own version, never the other scope's", () => {
+    expect(errs({ peerDependencies: { '@aztec-foundation/bb.js': V } })).toEqual([
+      `peerDependencies.@aztec-foundation/bb.js is ${V}, expected exactly ${F}`,
+    ]);
+    expect(errs({ dependencies: { '@aztec-labs/stdlib': F } })).toEqual([
+      `dependencies.@aztec-labs/stdlib is ${F}, expected exactly ${V}`,
+    ]);
+    expect(errs({ dependencies: { bb: `npm:@aztec-foundation/bb.js@${V}` } })[0]).toMatch(
+      new RegExp(`aliases @aztec-foundation/bb.js@${V}, expected exactly ${F}`),
+    );
+    expect(errs({ dependencies: { bb: `npm:@aztec-foundation/bb.js@${F}`, '@aztec-labs/stdlib': V } })).toEqual([]);
   });
 });
 
@@ -87,8 +102,8 @@ describe('peer metadata and publish-path peer sets', () => {
   });
 
   test('a peer set with no @aztec-labs/* entry', () => {
-    const m: Manifest = { peerDependencies: { '@aztec-foundation/bb.js': V } };
-    const r = validateManifest(m, { aztecVersion: V, expectedPeers: ['@aztec-foundation/bb.js'] });
+    const m: Manifest = { peerDependencies: { '@aztec-foundation/bb.js': F } };
+    const r = validateManifest(m, { ...versions, expectedPeers: ['@aztec-foundation/bb.js'] });
     expect(r).toEqual([expect.stringMatching(/no @aztec-labs\/\* peer/)]);
   });
 });
