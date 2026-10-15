@@ -5,8 +5,10 @@
 # Upstream's per-version `install` is verified, then sourced for its step functions; its `main`
 # never runs, because it sources nvm unconditionally. The steps that would fetch floating
 # installers (versions manifest, node, noirup, foundryup) are replaced with verified files, and
-# curl/wget are stubbed on PATH while upstream code runs. The known unpinned path left is the
-# lockfile-less `npm install` inside install_aztec_packages.
+# curl/wget are stubbed on PATH while upstream code runs. Upstream's unlocked `npm install` is
+# replaced by `npm ci` against the committed, sha256-pinned aztec-toolchain/<version> lock with
+# install scripts off (bcrypto alone is compiled from its locked sources), so the npm tree is the
+# locked closure minus other platforms' packages.
 #
 # Usage: scripts/install-aztec-toolchain.sh <version> [AZTEC_HOME]
 # shellcheck disable=SC2154 # version_path and friends are assigned by the sourced upstream script
@@ -16,6 +18,7 @@ version="${1:?usage: install-aztec-toolchain.sh <version> [AZTEC_HOME]}"
 aztec_home="${2:-${AZTEC_HOME:-$HOME/.aztec}}"
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 lock="${AZTEC_TOOLCHAIN_LOCK:-$root/aztec-toolchain.lock.json}"
+lock_dir="$(cd -- "$(dirname -- "$lock")" && pwd)"
 
 fail() {
   echo "install-aztec-toolchain: $*" >&2
@@ -30,14 +33,21 @@ esac
 
 # shellcheck disable=SC2016 # JS template literals, not shell expansions
 entries="$(node -e '
-const [lockPath, version, platform] = process.argv.slice(1);
-const e = JSON.parse(require("node:fs").readFileSync(lockPath, "utf8"))[version];
+const fs = require("node:fs");
+const [lockPath, lockDir, version, platform] = process.argv.slice(1);
+const e = JSON.parse(fs.readFileSync(lockPath, "utf8"))[version];
 if (!e) throw new Error(`no ${version} entry in ${lockPath}`);
 const pins = { install: e.install, versions: e.versions, "nargo.tar.gz": e.nargo?.[platform], "foundry.tar.gz": e.foundry?.[platform] };
 for (const [name, p] of Object.entries(pins)) {
   if (!/^https:\/\/\S+$/.test(p?.url) || !/^[0-9a-f]{64}$/.test(p?.sha256)) throw new Error(`malformed ${name} pin for ${version} ${platform}`);
   console.log(`${name}\t${p.url}\t${p.sha256}`);
-}' "$lock" "$version" "$platform")"
+}
+const dir = `aztec-toolchain/${version}`;
+if (e.npmLock?.path !== `${dir}/package-lock.json` || !/^[0-9a-f]{64}$/.test(e.npmLock?.sha256)) throw new Error(`malformed npmLock pin for ${version}`);
+// npm ci checks the lock against package.json, so package.json must be exactly the pinned pair.
+const manifest = JSON.stringify(JSON.parse(fs.readFileSync(`${lockDir}/${dir}/package.json`, "utf8")));
+if (manifest !== JSON.stringify({ dependencies: { "@aztec-labs/aztec": version, "@aztec-labs/cli-wallet": version } })) throw new Error(`${dir}/package.json is not the pinned toolchain manifest`);
+console.log(`package-lock.json\t${e.npmLock.path}\t${e.npmLock.sha256}`);' "$lock" "$lock_dir" "$version" "$platform")"
 
 mkdir -p "$aztec_home"
 aztec_home="$(cd -- "$aztec_home" && pwd)"
@@ -45,11 +55,15 @@ work="$(mktemp -d "$aztec_home/.install-XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 # Nothing below the checksum check runs on bytes that failed it.
-while IFS=$'\t' read -r name url sha; do
-  curl -sSfL --proto '=https' --proto-redir '=https' --tlsv1.2 -o "$work/$name" "$url"
+while IFS=$'\t' read -r name src sha; do
+  case "$src" in
+    https://*) curl -sSfL --proto '=https' --proto-redir '=https' --tlsv1.2 -o "$work/$name" "$src" ;;
+    *) cp -- "$lock_dir/$src" "$work/$name" ;;
+  esac
   printf '%s  %s\n' "$sha" "$name" >>"$work/SHA256SUMS"
 done <<<"$entries"
 (cd "$work" && sha256sum -c --strict SHA256SUMS)
+cp -- "$lock_dir/aztec-toolchain/$version/package.json" "$work/package.json"
 
 grep -Fxq "VERSION=$version" "$work/install" || fail "pinned install script does not set VERSION=$version"
 
@@ -105,6 +119,28 @@ install_foundry() {
     rm -f "$version_internal_bin_path/$bin"
     cp -p "$work/foundry/$bin" "$version_internal_bin_path/$bin"
   done
+}
+
+# npm prefers a shrinkwrap over the lock verified above, and an existing tree is merged into.
+install_aztec_packages() {
+  local f
+  for f in node_modules package-lock.json npm-shrinkwrap.json; do
+    [ ! -e "$version_path/$f" ] || fail "$version_path/$f already exists; install into a fresh AZTEC_HOME"
+  done
+  cp -- "$work/package.json" "$work/package-lock.json" "$version_path/"
+  echo "npm ci --prefix $version_path from aztec-toolchain/$version/package-lock.json (install scripts off)"
+  # The generator resolved with these options; repeating them keeps runner npm config out.
+  npm ci --prefix "$version_path" --registry=https://registry.npmjs.org --no-audit --no-fund --ignore-scripts
+  # bcrypto is the one package with no prebuilt binary, so run its install script (`node-gyp
+  # rebuild`) on the locked sources. node-gyp downloads node headers from nodejs.org unless
+  # --nodedir names local ones: pass the running node's own, and refuse when they are absent.
+  local node_prefix gyp
+  node_prefix="$(dirname "$(dirname "$(node -p process.execPath)")")"
+  [ -f "$node_prefix/include/node/node.h" ] || fail "no node headers under $node_prefix/include/node"
+  gyp="$(dirname "$(dirname "$(readlink -f "$(command -v npm)")")")/node_modules/node-gyp/bin/node-gyp.js"
+  [ -f "$gyp" ] || fail "npm's bundled node-gyp not found at $gyp"
+  echo "node-gyp rebuild in node_modules/bcrypto (its install script), --nodedir=$node_prefix"
+  (cd "$version_path/node_modules/bcrypto" && node "$gyp" rebuild --nodedir="$node_prefix")
 }
 
 mkdir -p "$version_bin_path" "$version_internal_bin_path"

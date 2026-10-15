@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { parseVersions, selectAsset } from './lock-aztec-toolchain.ts';
+import { lockPackages } from './lib/npm-lock.ts';
+import { type LockEntry, npmLockPath, parseVersions, selectAsset, toolchainManifest } from './lock-aztec-toolchain.ts';
 
 describe('parseVersions', () => {
   test('reads the upstream manifest', () => {
@@ -44,6 +48,23 @@ describe('selectAsset', () => {
     );
     for (const digest of [undefined, hex, `sha512:${hex}`, `sha256:${hex.toUpperCase()}`]) {
       expect(() => selectAsset([{ ...good, digest }], repo, tag, name)).toThrow(/no sha256 digest/);
+    }
+  });
+});
+
+describe('committed aztec-toolchain.lock.json', () => {
+  const root = join(import.meta.dir, '..');
+  const lock: Record<string, LockEntry> = JSON.parse(readFileSync(join(root, 'aztec-toolchain.lock.json'), 'utf8'));
+
+  test('each version pins its npm lock, and aztec-toolchain/ holds exactly those versions', () => {
+    expect(readdirSync(join(root, 'aztec-toolchain')).sort()).toEqual(Object.keys(lock).sort());
+    for (const [version, entry] of Object.entries(lock)) {
+      expect(entry.npmLock.path).toBe(npmLockPath(version));
+      const lockText = readFileSync(join(root, entry.npmLock.path));
+      expect(createHash('sha256').update(lockText).digest('hex')).toBe(entry.npmLock.sha256);
+      const manifest = JSON.parse(readFileSync(join(root, 'aztec-toolchain', version, 'package.json'), 'utf8'));
+      expect(manifest).toEqual(toolchainManifest(version));
+      expect(lockPackages(lockText.toString()).length).toBeGreaterThan(0);
     }
   });
 });

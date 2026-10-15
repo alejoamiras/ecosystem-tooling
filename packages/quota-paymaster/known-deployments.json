@@ -1,5 +1,5 @@
 {
-  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. mainnet.classId is the only class id ever checked against a live chain (Aztec 5.0.1). compiled[<aztecVersion>] entries are class ids this repo compiled and reviewed for later Aztec versions: local pins, not proof of any deployment. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion. currentAztecVersion is the Aztec version this package build targets (swept by bump-aztec.ts, asserted equal to config.aztecVersion by verify:lineage): the deploy guard accepts only its anchor.",
+  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. mainnet.classId is the only class id ever checked against a live chain (Aztec 5.0.1). compiled[<aztecVersion>] entries are class ids this repo compiled and reviewed for later Aztec versions: local pins, not proof of any public deployment; localNodeVerification, where present, records that a disposable local node derived that class (current and original) from the shipped artifact. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion. currentAztecVersion is the Aztec version this package build targets (swept by bump-aztec.ts, asserted equal to config.aztecVersion by verify:lineage): the deploy guard accepts only its anchor.",
   "currentAztecVersion": "6.0.0-rc.3",
   "mainnet": {
     "name": "Dark Forest quota paymaster (reference deployment — NOT this package's to operate)",
@@ -23,7 +23,12 @@
     "6.0.0-rc.3": {
       "classId": "0x248f2f32203a066d7415d3eb5c68cf4dfc35f826a54e946f2cd182d74673597b",
       "verifiedAgainstChain": false,
-      "toolchain": "aztec CLI 6.0.0-rc.3 (aztec compile; nargo 1.0.0-rc.3; installed from aztec-toolchain.lock.json); reproduced by two independent compiles"
+      "toolchain": "aztec CLI 6.0.0-rc.3 (aztec compile; nargo 1.0.0-rc.3; installed from aztec-toolchain.lock.json); reproduced by two independent compiles",
+      "localNodeVerification": {
+        "method": "deploy on aztec start --local-network; node_getContract current+original",
+        "test": "src/ts/test/integration/class-id-chain.test.ts",
+        "date": "2026-10-15"
+      }
     }
   },
   "provenance": {

@@ -9,7 +9,7 @@ users transact without ever bridging. The contract is app-agnostic: all app-spec
 | | |
 |---|---|
 | Contract | `QuotaFpc` (Noir); one class id per Aztec version, recorded in `known-deployments.json` |
-| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id at 6.0.0-rc.3 (`0x248f2f32…597b`) is a locally reviewed pin, **not** chain-verified |
+| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id at 6.0.0-rc.3 (`0x248f2f32…597b`) is a locally reviewed pin that CI reads back from a local Aztec node (current and original class id); it is **not** verified against a public chain |
 | Versioning | Lockstep with Aztec: package `6.0.0-rc.3` targets Aztec `6.0.0-rc.3` (foundation packages `6.0.0-rc.6`), published under the `rc` dist-tag |
 | Bootstrap | A fresh deployment is inert for its first hour (aztec-nr's 3600s minimum delay): the policy reads all zeros and sponsors nothing |
 | SDK | Browser-safe root export; Node-only `./operator` export |
@@ -207,7 +207,10 @@ artifacts to the class id anchored for the root `config.aztecVersion` — a sour
 recompile, a stale artifact, or any deviation beyond the enumerated ones fails it. Only the
 5.0.1 anchor is chain-verified; a later version's anchor is a pin committed alongside the
 source, so the check is a review-gated tripwire, not proof against a coordinated edit of
-both. Its success line says which kind of anchor it matched.
+both. Its success line says which kind of anchor it matched, and names the local-node check only for
+an anchor that records one (`localNodeVerification`: CI's `class-id-chain` test deploys the artifact on a
+local network and reads both class ids back). `scripts/chain-verify.ts <address> [nodeUrl]` performs the
+same read-only comparison against any node.
 
 ## Provenance & license
 

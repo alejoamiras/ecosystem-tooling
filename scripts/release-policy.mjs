@@ -17,8 +17,13 @@
 //   | rehearsal | 0.0.0-canary.g<sha>  | false      | canary      |
 //   | revision  | <aztec>-revision.N   | false      | revision    |
 //   | revision  | <aztec>-revision.N   | true       | latest      |
+//   | revision  | <rc aztec>.revision.M| false      | rc          |
 //   | non-revision (release/rehearsal) with set-latest=true  ->  REJECT
-//   | revision on a prerelease aztecVersion (6.0.0-rc.1-revision.N)  ->  REJECT
+//   | revision of an rc with set-latest=true, or on a non-rc prerelease aztecVersion  ->  REJECT
+//
+// An rc revision uses the dot form (6.0.0-rc.3.revision.1): it sorts above its base and
+// below the next rc, so it satisfies ^6.0.0-rc.3 and moves `rc` forward. The stable form
+// (5.0.1-revision.1) sorts BELOW its base, which is why stable revisions need exact pins.
 
 import { pathToFileURL } from 'node:url';
 
@@ -43,13 +48,9 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
   if (typeof aztecVersion !== 'string' || !SEMVER_RE.test(aztecVersion)) {
     return { error: `invalid aztecVersion: ${aztecVersion}` };
   }
-  // Checked before the version shape so the rule is explicit rather than an accident of
-  // SEMVER_RE (whose prerelease class has no '-', so `<rc>-revision.N` never parses anyway).
-  // Ship the next rc instead: a revision sorts below its base and `@rc` would never reach it.
-  if (mode === 'revision' && aztecVersion.includes('-')) {
-    return {
-      error: `revision mode: aztecVersion ${aztecVersion} is a prerelease — revisions of an rc are not supported`,
-    };
+  const rcBase = RC_RE.test(aztecVersion);
+  if (mode === 'revision' && aztecVersion.includes('-') && !rcBase) {
+    return { error: `revision mode: aztecVersion ${aztecVersion} is a prerelease that is not X.Y.Z-rc.N` };
   }
   if (typeof version !== 'string' || !SEMVER_RE.test(version)) {
     return { error: `invalid semver input: ${version}` };
@@ -76,11 +77,16 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
       }
       break;
     case 'revision': {
-      const revisionRe = new RegExp(`^${escapeRe(aztecVersion)}-revision\\.[1-9][0-9]*$`);
+      const sep = rcBase ? '.' : '-';
+      const revisionRe = new RegExp(`^${escapeRe(aztecVersion)}${escapeRe(sep)}revision\\.[1-9][0-9]*$`);
       if (!revisionRe.test(version)) {
         return {
-          error: `revision mode: version must be exactly ${aztecVersion}-revision.<N> with N>=1 (got ${version})`,
+          error: `revision mode: version must be exactly ${aztecVersion}${sep}revision.<N> with N>=1 (got ${version})`,
         };
+      }
+      // An rc base must never move `latest`.
+      if (rcBase && setLatest) {
+        return { error: `revision mode: set-latest is refused for a revision of rc ${aztecVersion}` };
       }
       break;
     }
@@ -98,7 +104,8 @@ export function computeReleasePolicy({ mode, version, aztecVersion, setLatest })
   } else if (!hasPre) {
     tag = 'latest';
   } else {
-    // first dot-delimited segment of the prerelease (revision.1 -> revision, canary.gABC -> canary)
+    // first dot-delimited segment of the prerelease (revision.1 -> revision, canary.gABC -> canary,
+    // rc.3.revision.1 -> rc)
     tag = version.slice(version.indexOf('-') + 1).split('.')[0];
   }
   if (!NPM_TAG_RE.test(tag)) {

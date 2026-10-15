@@ -80,7 +80,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: ~/.aztec
-        key: aztec-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('aztec-toolchain.lock.json', 'scripts/install-aztec-toolchain.sh') }}
+        key: aztec-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('aztec-toolchain.lock.json', 'aztec-toolchain/**', 'scripts/install-aztec-toolchain.sh') }}
 
     - name: Install aztec toolchain (sha256-pinned inputs)
       if: steps.cache-aztec.outputs.cache-hit != 'true'
