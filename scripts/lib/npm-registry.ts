@@ -16,7 +16,15 @@ export interface RegistryDoc {
 
 // `npm view --json` carries the package's whole `time` map, which outgrows the 1 MiB default.
 const MAX_BUFFER = 64 * 1024 * 1024;
-const args = (spec: string) => ['view', spec, '--json', `--registry=${PUBLIC_REGISTRY}`];
+/**
+ * npm picks a spec's `@scope:registry`, or for an unscoped spec the default `scope`'s, over
+ * `--registry`, so both are overridden too.
+ */
+export function viewArgs(spec: string): string[] {
+  const scope = spec.startsWith('@') ? spec.slice(0, spec.indexOf('/')) : undefined;
+  const scoped = scope ? [`--${scope}:registry=${PUBLIC_REGISTRY}`] : [];
+  return ['view', spec, '--json', `--registry=${PUBLIC_REGISTRY}`, '--scope=', ...scoped];
+}
 
 function parse(spec: string, out: string): RegistryDoc {
   const doc = out.trim() ? JSON.parse(out) : undefined;
@@ -39,7 +47,7 @@ export function registryDoc(spec: string): RegistryDoc {
   if (cached) return cached;
   let out: string;
   try {
-    out = execFileSync('npm', args(spec), { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: MAX_BUFFER }).toString();
+    out = execFileSync('npm', viewArgs(spec), { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: MAX_BUFFER }).toString();
   } catch (e) {
     throw failure(spec, e);
   }
@@ -58,7 +66,7 @@ export async function registryDocs(specs: readonly string[], concurrency = 16): 
       if (docs.has(spec)) continue;
       let out: string;
       try {
-        out = (await execFileAsync('npm', args(spec), { maxBuffer: MAX_BUFFER })).stdout;
+        out = (await execFileAsync('npm', viewArgs(spec), { maxBuffer: MAX_BUFFER })).stdout;
       } catch (e) {
         throw failure(spec, e);
       }
