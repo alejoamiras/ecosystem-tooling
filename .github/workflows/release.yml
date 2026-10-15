@@ -18,6 +18,8 @@ name: Release
 #               dist-tag derives from the prerelease segment (`revision`); pass set-latest=true
 #               to publish the revision under `latest` instead (a revision-only escape hatch —
 #               publish-time `--tag latest`, OIDC-authorized; a second tag would need manual OTP).
+#               On an rc aztecVersion the shape is <rc>.revision.M (6.0.0-rc.3.revision.1): it
+#               publishes under `rc` (forward-only check applies) and set-latest is refused.
 #
 # Fail-closed backstop in ALL modes: every packed tarball's embedded manifest is asserted
 # (name, version == input, Aztec pins per scripts/lib/manifest-policy.ts, internal pins == input) —
@@ -32,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions (X.Y.Z, or X.Y.Z-rc.N which publishes under `rc`); rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1)
+        description: Version to publish (no v prefix). release mode — must equal config.aztecVersion + all package versions (X.Y.Z, or X.Y.Z-rc.N which publishes under `rc`); rehearsal — 0.0.0-canary.g<short-sha>; revision — <aztecVersion>-revision.N (e.g. 5.0.1-revision.1), or <rc>.revision.M on an rc aztecVersion (e.g. 6.0.0-rc.3.revision.1, publishes under `rc`)
         required: true
         type: string
       mode:
@@ -50,7 +52,7 @@ on:
         required: false
         type: string
       set-latest:
-        description: revision mode ONLY — publish the revision under the `latest` dist-tag (publish-time --tag latest). Rejected in release/rehearsal. Default false → the revision goes to the `revision` tag.
+        description: revision mode ONLY — publish the revision under the `latest` dist-tag (publish-time --tag latest). Rejected in release/rehearsal and for a revision of an rc. Default false → the revision goes to the `revision` tag (`rc` for a revision of an rc).
         required: false
         type: boolean
         default: false
@@ -244,7 +246,7 @@ jobs:
 
           ## ⚠️ Compatibility notes at 6.0.0-rc.3
 
-          - **Release candidate, opt-in.** Published under the `rc` dist-tag; `latest` stays on the Aztec 5 releases. Install the exact version above (or `@rc`). (`revision` mode / `-revision.N` dispatches: hand-edit this section before releasing — it describes 6.0.0-rc.3, not your fix.)
+          - **Release candidate, opt-in.** Published under the `rc` dist-tag; `latest` stays on the Aztec 5 releases. Install the exact version above (or `@rc`). (`revision` mode dispatches: hand-edit this section before releasing — it describes 6.0.0-rc.3, not your fix.)
           - **Two Aztec versions in the peers.** `@aztec-labs/*` peers are exact `6.0.0-rc.3` pins. `@aztec-foundation/*` peers (`bb.js`, `l1-artifacts`) are exact `6.0.0-rc.6` pins, because upstream now versions that scope separately and its own rc.3 depends on foundation rc.6. Install both at exactly those versions. Coming from Aztec 5: Aztec 6 moved `@aztec/*` to `@aztec-labs/*` and `@aztec-foundation/*` (`viem` stays `npm:@aztec/viem`), so move your own imports with the install.
           - **The canonical PrivateFPC address CHANGED at 6.0.0-rc.3** (recompiled bytecode): `0x2e189d0c28cb86234a17951a94131e19620cda595fa8f9c5c10c24268ceb6db4`. The 6.0.0-rc.1 address `0x0b3bc795b5c077b57920d590ecc163af18705554abf7164cb0f8c52850943c08` and the 5.0.1 address `0x1a6d21ce5fd80137df0e99632a4ca17e58a42dc8f6c08191a96ca8ae907a1bc0` are STALE — funds bridged to a stale-version address are unrecoverable. Always read the address from the `canonical-deployment.json` of the version you install.
           - **quota-paymaster: new class id and a one-hour bootstrap.** Compiled against Aztec 6.0.0-rc.3, QuotaFpc's class id is `0x248f2f32203a066d7415d3eb5c68cf4dfc35f826a54e946f2cd182d74673597b` (6.0.0-rc.1: `0x22dd3764…4dc2`). It is a locally reviewed pin, not chain-verified; a deployment on the rc.1 class is not upgraded, and the Aztec 5 mainnet deployment is untouched. aztec-nr 6 enforces a 3600s minimum delay on the constructor's policy write, so a fresh deployment reads an all-zero policy and sponsors nothing for its first hour. `resolveFeeSource` takes `policyActive` and returns the `policy-inactive` reason; the operator CLI prints the activation time and refuses to measure before it.

@@ -126,13 +126,49 @@ test('reject: an rc release that is not the lockstep aztecVersion', () => {
   );
 });
 
-test('reject: a revision while aztecVersion is an rc, whatever the version spelling', () => {
-  for (const version of ['6.0.0-rc.1-revision.1', '6.0.0-revision.1']) {
+const RC = '6.0.0-rc.3';
+
+test('matrix: a revision of the lockstep rc -> rc tag, prerelease flag', () => {
+  for (const version of ['6.0.0-rc.3.revision.1', '6.0.0-rc.3.revision.12']) {
+    assert.deepEqual(ok({ mode: 'revision', version, aztecVersion: RC, setLatest: false }), {
+      tag: 'rc',
+      prereleaseFlag: '--prerelease',
+    });
+  }
+});
+
+test('reject: rc revisions off the lockstep base, with M<1, or in the stable spelling', () => {
+  for (const version of [
+    '6.0.0-rc.2.revision.1',
+    '6.0.0-rc.3.revision.0',
+    '6.0.0-rc.3.revision.01',
+    '6.0.0-rc.3-revision.1',
+    '6.0.0-revision.1',
+  ]) {
     assert.match(
-      err({ mode: 'revision', version, aztecVersion: '6.0.0-rc.1', setLatest: false }),
-      /revisions of an rc are not supported/,
+      err({ mode: 'revision', version, aztecVersion: RC, setLatest: false }),
+      /revision mode|invalid semver/,
+      version,
     );
   }
+});
+
+test('reject: an rc revision can never take latest, nor ship in release mode', () => {
+  assert.match(
+    err({ mode: 'revision', version: '6.0.0-rc.3.revision.1', aztecVersion: RC, setLatest: true }),
+    /set-latest is refused/,
+  );
+  assert.match(
+    err({ mode: 'release', version: '6.0.0-rc.3.revision.1', aztecVersion: RC, setLatest: false }),
+    /release mode/,
+  );
+});
+
+test('reject: a revision on a prerelease aztecVersion that is not an rc', () => {
+  assert.match(
+    err({ mode: 'revision', version: '6.0.0-beta.1.revision.1', aztecVersion: '6.0.0-beta.1', setLatest: false }),
+    /not X\.Y\.Z-rc\.N/,
+  );
 });
 
 test('compareSemver: full precedence, including rc ordering across majors', () => {
@@ -143,6 +179,12 @@ test('compareSemver: full precedence, including rc ordering across majors', () =
     ['6.0.0', '6.0.0-rc.9', 1],
     ['6.0.0-rc.1', '6.0.0-rc.1', 0],
     ['5.0.1-revision.2', '5.0.1-revision.10', -1],
+    // The rc-revision chain the forward-only `rc` check walks: base < revisions < next rc < stable.
+    ['6.0.0-rc.3', '6.0.0-rc.3.revision.1', -1],
+    ['6.0.0-rc.3.revision.1', '6.0.0-rc.3.revision.2', -1],
+    ['6.0.0-rc.3.revision.2', '6.0.0-rc.3.revision.10', -1],
+    ['6.0.0-rc.3.revision.10', '6.0.0-rc.4', -1],
+    ['6.0.0-rc.4', '6.0.0', -1],
   ];
   for (const [a, b, want] of cases) assert.equal(compareSemver(a, b), want, `${a} vs ${b}`);
   assert.throws(() => compareSemver('6.0.0-rc.1', ''), /not a comparable semver/);
