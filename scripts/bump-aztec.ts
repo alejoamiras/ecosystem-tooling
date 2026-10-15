@@ -26,7 +26,6 @@
  *   bun scripts/bump-aztec.ts 6.0.0-rc.3 [--dry-run]   (--dry-run validates and writes nothing)
  *   bun scripts/bump-aztec.ts --regenerate-excludes
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -45,6 +44,7 @@ import {
   youngNames,
 } from './lib/aztec-scopes.ts';
 import { DEP_SECTIONS, type Manifest, validateManifest } from './lib/manifest-policy.ts';
+import { registryDoc } from './lib/npm-registry.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const PACKAGES = readdirSync(join(ROOT, 'packages')).filter((d) => statSync(join(ROOT, 'packages', d)).isDirectory());
@@ -53,36 +53,6 @@ const readJson = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
 // Workspace package NAMES. Internal cross-package pins are bumped by membership in this set —
 // NOT a name prefix — so a package rename can't silently drop a pin from the sweep.
 const WORKSPACE_NAMES = new Set<string>(PACKAGES.map((d) => readJson(manifestPath(d)).name));
-
-interface RegistryDoc {
-  version?: string;
-  time?: Record<string, string>;
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-  peerDependencies?: Record<string, string>;
-  dist?: { attestations?: { url?: string } | null };
-  _npmUser?: string;
-}
-
-const docs = new Map<string, RegistryDoc>();
-/** The registry's view of one exact version. Every failure throws: no caller may read "unfetchable" as "absent". */
-function registryDoc(spec: string): RegistryDoc {
-  const cached = docs.get(spec);
-  if (cached) return cached;
-  let out: string;
-  try {
-    out = execFileSync('npm', ['view', spec, '--json'], { stdio: ['ignore', 'pipe', 'pipe'] })
-      .toString()
-      .trim();
-  } catch (e) {
-    const stderr = (e as { stderr?: Buffer }).stderr?.toString().trim().split('\n')[0];
-    throw new Error(`npm view ${spec} failed: ${stderr || e}`);
-  }
-  const doc = out ? JSON.parse(out) : undefined;
-  if (!doc || Array.isArray(doc)) throw new Error(`npm view ${spec}: expected exactly one published version`);
-  docs.set(spec, doc);
-  return doc;
-}
 
 const publishRow = (name: string, version: string): PublishRow => ({
   name,
@@ -323,5 +293,5 @@ console.log(
   '\nNext: scripts/verify-nargo-refs.sh --write && bun install && bun scripts/bump-aztec.ts --regenerate-excludes (prints the supply-chain report) && bun install --frozen-lockfile',
 );
 console.log(
-  `Then: bun scripts/lock-aztec-toolchain.ts ${target} (pins the CI toolchain; review the aztec-toolchain.lock.json diff)`,
+  `Then: bun scripts/lock-aztec-toolchain.ts ${target} (pins the CI toolchain and locks its npm tree; review the aztec-toolchain.lock.json + aztec-toolchain/${target}/ diff and its report)`,
 );

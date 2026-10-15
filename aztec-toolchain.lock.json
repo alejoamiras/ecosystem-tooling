@@ -19,6 +19,10 @@
         "url": "https://github.com/foundry-rs/foundry/releases/download/v1.4.1/foundry_v1.4.1_linux_amd64.tar.gz",
         "sha256": "f1b044ee954402807c4dd5a5e7d29b210d24fd3633b7f199d184f034ff94d934"
       }
+    },
+    "npmLock": {
+      "path": "aztec-toolchain/6.0.0-rc.3/package-lock.json",
+      "sha256": "87942c4e8d27a21e0374e9e2ec6e679de43f3119dc10eaea0cd729c4d91927c0"
     }
   }
 }
