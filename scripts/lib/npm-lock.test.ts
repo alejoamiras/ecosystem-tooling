@@ -86,13 +86,24 @@ describe('lockTargets', () => {
   const withAztec = (version: string, dependencies: Record<string, string>) =>
     lock({ 'node_modules/@aztec-labs/aztec': { ...entry('@aztec-labs/aztec', version), dependencies } });
 
-  test('reads the foundation version from @aztec-labs/aztec itself', () => {
-    expect(
-      lockTargets(withAztec('6.0.0-rc.3', { '@aztec-foundation/bb.js': '6.0.0-rc.6', x: '^1' }), '6.0.0-rc.3'),
-    ).toEqual({ aztecVersion: '6.0.0-rc.3', aztecFoundationVersion: '6.0.0-rc.6' });
-    expect(() => lockTargets(withAztec('6.0.0-rc.4', {}), '6.0.0-rc.3')).toThrow(/not 6.0.0-rc.3/);
-    expect(() =>
-      lockTargets(withAztec('6.0.0-rc.3', { '@aztec-foundation/bb.js': '^6.0.0-rc.6' }), '6.0.0-rc.3'),
-    ).toThrow(/one exact/);
+  const deps = { '@aztec-foundation/bb.js': '6.0.0-rc.6', x: '^1' };
+
+  test('takes the foundation version @aztec-labs/aztec pins on the public registry', () => {
+    expect(lockTargets(withAztec('6.0.0-rc.3', deps), '6.0.0-rc.3', deps)).toEqual({
+      aztecVersion: '6.0.0-rc.3',
+      aztecFoundationVersion: '6.0.0-rc.6',
+    });
+    expect(() => lockTargets(withAztec('6.0.0-rc.4', deps), '6.0.0-rc.3', deps)).toThrow(/not 6.0.0-rc.3/);
+    expect(() => lockTargets(withAztec('6.0.0-rc.3', deps), '6.0.0-rc.3', { '@aztec-foundation/bb.js': '^6' })).toThrow(
+      /one exact/,
+    );
+  });
+
+  test('refuses a lock whose metadata names another foundation version than the registry', () => {
+    // A mirror could otherwise choose which young foundation version the age check excuses.
+    const altered = withAztec('6.0.0-rc.3', { '@aztec-foundation/bb.js': '6.0.0-rc.99' });
+    expect(() => lockTargets(altered, '6.0.0-rc.3', deps)).toThrow(
+      /pins foundation "6.0.0-rc.99", the registry 6.0.0-rc.6/,
+    );
   });
 });

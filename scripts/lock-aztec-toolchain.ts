@@ -149,7 +149,8 @@ async function lockNpmTree(version: string): Promise<LockEntry['npmLock']> {
       version: v,
       publishedAt: docs.get(`${name}@${v}`)?.time?.[v],
     }));
-    const { youngAztec, tooYoung } = ageCheck(rows, Date.now(), lockTargets(lockText, version));
+    const publicDeps = docs.get(`@aztec-labs/aztec@${version}`)?.dependencies ?? {};
+    const { youngAztec, tooYoung } = ageCheck(rows, Date.now(), lockTargets(lockText, version, publicDeps));
     if (tooYoung.length > 0) {
       throw new Error(`npm lock: younger than 7 days and not a lockstep Aztec version: ${tooYoung.join(', ')}`);
     }

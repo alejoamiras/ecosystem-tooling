@@ -47,16 +47,22 @@ export function lockPackages(lockText: string): LockedPackage[] {
 
 /**
  * The lockstep versions this toolchain lock may excuse from the min-age: `version` for the labs
- * scope, and for the foundation scope whatever `@aztec-labs/aztec@<version>` itself pins in the lock.
+ * scope, and for the foundation scope the one `@aztec-labs/aztec@<version>` pins according to the
+ * public registry (`publicDeps`). The lock must agree: the resolver's metadata may come from a mirror.
  */
-export function lockTargets(lockText: string, version: string): AztecVersions {
+export function lockTargets(lockText: string, version: string, publicDeps: Record<string, string>): AztecVersions {
   const aztec = (
     JSON.parse(lockText) as { packages?: Record<string, { version?: string; dependencies?: Record<string, string> }> }
   ).packages?.['node_modules/@aztec-labs/aztec'];
   if (aztec?.version !== version)
     throw new Error(`package-lock: @aztec-labs/aztec is ${aztec?.version}, not ${version}`);
-  const foundation = foundationVersionOf(`@aztec-labs/aztec@${version}`, aztec.dependencies ?? {});
-  if (typeof foundation !== 'string') throw new Error(`package-lock: ${foundation.error}`);
+  const parent = `@aztec-labs/aztec@${version}`;
+  const foundation = foundationVersionOf(parent, publicDeps);
+  if (typeof foundation !== 'string') throw new Error(`registry: ${foundation.error}`);
+  const locked = foundationVersionOf(parent, aztec.dependencies ?? {});
+  if (locked !== foundation) {
+    throw new Error(`package-lock: ${parent} pins foundation ${JSON.stringify(locked)}, the registry ${foundation}`);
+  }
   return { aztecVersion: version, aztecFoundationVersion: foundation };
 }
 
