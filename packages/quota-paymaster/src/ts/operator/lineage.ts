@@ -11,7 +11,17 @@ export interface KnownDeployments {
   /** The Aztec version this package build targets; its anchor is the only one a deploy accepts. */
   currentAztecVersion: string;
   mainnet: { aztecVersion: string; classId: string; verifiedAgainstChain: boolean };
-  compiled?: Record<string, { classId: string; verifiedAgainstChain: boolean }>;
+  compiled?: Record<
+    string,
+    { classId: string; verifiedAgainstChain: boolean; localNodeVerification?: LocalNodeVerification }
+  >;
+}
+
+/** A disposable local node derived this class from the shipped artifact. Never a public-chain claim. */
+export interface LocalNodeVerification {
+  method: string;
+  test: string;
+  date: string;
 }
 
 export interface LineageAnchor {

@@ -106,9 +106,15 @@ if (failures.length > 0) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
+// selectAnchor drops the evidence block, so read it from the entry itself: an anchor
+// without one must never inherit the local-node claim.
+const localNode = known.compiled?.[aztecVersion]?.localNodeVerification;
 console.log(
   anchor.chainVerified
     ? `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}, chain-verified)`
-    : `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}) matches the locally pinned ` +
+    : localNode
+      ? `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}) matches the locally pinned ` +
+        `compiled entry, verified against a local Aztec ${aztecVersion} node in CI (${localNode.test}; not a public chain).`
+      : `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}) matches the locally pinned ` +
         'compiled entry. NOT chain-verified: this proves source/artifact consistency with a reviewed pin, not a deployment.',
 );
