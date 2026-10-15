@@ -34,7 +34,7 @@ The contract is vendored from the mainnet-proven Dark Forest deployment (Aztec 5
 id `0x115cfdfd…62fc`, chain-verified). From Aztec 6 it carries one reviewed behavioral edit:
 aztec-nr's 3600s minimum delay makes the bootstrap delay 1h, so a fresh deployment is inert
 for its first hour. `known-deployments.json` enumerates every deviation and pins each Aztec
-version's compiled class id (only 5.0.1's is chain-verified). Its behavioral requirements are pinned by tests
+version's compiled class id (only 5.0.1's is chain-verified; 6.0.0-rc.3's is also read back from a local node in CI). Its behavioral requirements are pinned by tests
 rather than restated: see the Test Coverage Matrix.
 
 ## Requirements (SDK / operator)
@@ -66,6 +66,7 @@ rather than restated: see the Test Coverage Matrix.
 | Journal failure modes (symlink, torn line, lock steal, crash replay) | unit |
 | Operator refusals (class-id, fee-floor, max-loss, argv secrets) | unit + smoke |
 | Lineage: sources + dep lock + artifacts == the reviewed class id for `config.aztecVersion` (chain-verified only for 5.0.1) | every gate |
+| A local node derives the pinned class id (current and original) from the shipped artifact | integration |
 
 ## Per-Aztec-bump checklist
 
@@ -74,7 +75,8 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
 1. `verify:lineage` MUST fail: no anchor exists for the new `config.aztecVersion`. Recompile,
    review the new class id and its consequences (live instances are not upgraded; moving to
    the new class means a redeploy, which strands the old instance's balance), then record it
-   under `compiled[<version>]` with `verifiedAgainstChain: false`.
+   under `compiled[<version>]` with `verifiedAgainstChain: false`. Once the PR's `class-id-chain` integration test
+   passes on the new version, add its `localNodeVerification` block.
 2. Re-verify teardown-gas billing semantics against the new `gas_settings.ts` (the fee
    ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0-rc.3: `gas_settings.ts` is unchanged from rc.1).
 3. Recompute account class ids (`verifyAccountClassIds` refuses stale configs) — an
