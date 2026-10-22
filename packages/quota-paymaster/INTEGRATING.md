@@ -10,18 +10,16 @@ agent: read the "Traps" section before writing code, not after.
 
 ## Prerequisites
 
-1. **Aztec `6.0.0-rc.3`.** Versions are LOCKSTEP — `@aztec-labs/*` are exact `6.0.0-rc.3` peer
-   dependencies and `@aztec-foundation/*` exact `6.0.0-rc.6` ones (upstream versions that scope
-   separately; rc.3 itself depends on foundation rc.6). A different Aztec version will not resolve, by design. This is a
-   release candidate, published under the `rc` dist-tag: install it as `@rc`, since `latest` still
-   targets Aztec 5.
+1. **Aztec `6.0.0`.** Versions are LOCKSTEP — `@aztec-labs/*` and `@aztec-foundation/*` are exact
+   `6.0.0` peer dependencies (upstream versions the two scopes separately; at 6.0.0 they agree).
+   A different Aztec version will not resolve, by design.
 2. **A 7-day npm min-age gate will reject a fresh release.** If your repo sets
    `minimumReleaseAge` in `bunfig.toml` (a good supply-chain default), a version
    published this week is refused. Wait out the window or add a scoped exception.
    This is expected behaviour, not a broken install.
 
 ```bash
-bun add @alejoamiras/quota-paymaster@rc
+bun add @alejoamiras/quota-paymaster@6.0.0
 ```
 
 ## The mental model, in four sentences

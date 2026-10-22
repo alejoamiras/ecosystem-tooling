@@ -1,6 +1,6 @@
 {
   "name": "@alejoamiras/private-fee-juice",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "Private Fee Payment Contract (FPC) for Aztec — Noir contract + TypeScript SDK",
   "repository": {
     "type": "git",
@@ -55,33 +55,33 @@
     "verify:package": "bun run verify:dist-canonical && bun run verify:pack"
   },
   "devDependencies": {
-    "@alejoamiras/aztec-benchmark": "6.0.0-rc.3",
-    "@aztec-foundation/bb.js": "6.0.0-rc.6",
-    "@aztec-foundation/l1-artifacts": "6.0.0-rc.6",
-    "@aztec-labs/accounts": "6.0.0-rc.3",
-    "@aztec-labs/aztec.js": "6.0.0-rc.3",
-    "@aztec-labs/constants": "6.0.0-rc.3",
-    "@aztec-labs/entrypoints": "6.0.0-rc.3",
-    "@aztec-labs/ethereum": "6.0.0-rc.3",
-    "@aztec-labs/foundation": "6.0.0-rc.3",
-    "@aztec-labs/noir-contracts.js": "6.0.0-rc.3",
-    "@aztec-labs/protocol-contracts": "6.0.0-rc.3",
-    "@aztec-labs/pxe": "6.0.0-rc.3",
-    "@aztec-labs/stdlib": "6.0.0-rc.3",
-    "@aztec-labs/wallets": "6.0.0-rc.3",
+    "@alejoamiras/aztec-benchmark": "6.0.0",
+    "@aztec-foundation/bb.js": "6.0.0",
+    "@aztec-foundation/l1-artifacts": "6.0.0",
+    "@aztec-labs/accounts": "6.0.0",
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/constants": "6.0.0",
+    "@aztec-labs/entrypoints": "6.0.0",
+    "@aztec-labs/ethereum": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
+    "@aztec-labs/noir-contracts.js": "6.0.0",
+    "@aztec-labs/protocol-contracts": "6.0.0",
+    "@aztec-labs/pxe": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0",
+    "@aztec-labs/wallets": "6.0.0",
     "@noble/hashes": "1.8.0",
     "@types/node": "25.6.0",
     "dotenv": "17.4.2",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "viem": "npm:@aztec/viem@2.38.3",
+    "viem": "2.57.1",
     "vitest": "4.1.4",
     "zod": "^4.4.0"
   },
   "peerDependencies": {
-    "@aztec-labs/aztec.js": "6.0.0-rc.3",
-    "@aztec-labs/protocol-contracts": "6.0.0-rc.3",
-    "@aztec-labs/stdlib": "6.0.0-rc.3"
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/protocol-contracts": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0"
   },
   "engines": {
     "node": ">=22.0.0"

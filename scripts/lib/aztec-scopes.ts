@@ -20,7 +20,7 @@ export interface AztecVersions {
   aztecFoundationVersion: string;
 }
 export const LEGACY_SCOPE = '@aztec/';
-/** Upstream still ships its viem fork under the legacy scope; the only legacy name allowed. */
+/** The only legacy name allowed: Aztec 5 through 6.0.0-rc.3 aliased viem to this fork. */
 export const ALLOWED_LEGACY_ALIAS = { name: 'viem', target: '@aztec/viem' } as const;
 
 export const AZTEC_NR_GIT = 'https://github.com/aztec-labs-eng/aztec-nr';

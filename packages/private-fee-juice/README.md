@@ -72,7 +72,7 @@ PrivateFPC is a **fully private** contract — it has no public functions and no
 
 ### Compute the address
 
-**Canonical parameters** live in [`canonical-deployment.json`](canonical-deployment.json) — the fixed project salt and the expected address for the exact Aztec version this package targets. It is machine-asserted in CI (`src/ts/test/canonical.test.ts`), so the file cannot silently drift from the compiled artifact. Current canonical (Aztec 6.0.0-rc.3): salt `0x…01`, address `0x2e189d0c28cb86234a17951a94131e19620cda595fa8f9c5c10c24268ceb6db4`. The 6.0.0-rc.1 address (`0x0b3bc795…3c08`) and the Aztec 5.0.1 address (`0x1a6d21ce…a1bc0`) are stale.
+**Canonical parameters** live in [`canonical-deployment.json`](canonical-deployment.json) — the fixed project salt and the expected address for the exact Aztec version this package targets. It is machine-asserted in CI (`src/ts/test/canonical.test.ts`), so the file cannot silently drift from the compiled artifact. Current canonical (Aztec 6.0.0): salt `0x…01`, address `0x0516ebb4f9c7988eb3cf6dd9459a47556f7a92db06b17cfa47ffb37fd35c6915`. The 6.0.0-rc.3 (`0x2e189d0c…6db4`), 6.0.0-rc.1 (`0x0b3bc795…3c08`) and Aztec 5.0.1 (`0x1a6d21ce…a1bc0`) addresses are stale.
 
 To recompute yourself (or for a NON-canonical salt of your own):
 

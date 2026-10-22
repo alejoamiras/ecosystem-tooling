@@ -1,7 +1,8 @@
 {
-  "https://github.com/AztecProtocol/aztec-packages@v6.0.0-rc.6": "0df91ba1799012435c62c6108a0926b357fef88c",
-  "https://github.com/aztec-labs-eng/aztec-nr@v6.0.0-rc.3": "694af4de4b196733819811c896867d5a9572a1b5",
+  "https://github.com/AztecProtocol/aztec-packages@v6.0.0": "0219f11d8133970df3974fe5ae65e006bf8c193a",
+  "https://github.com/aztec-labs-eng/aztec-nr@v6.0.0": "0472012201fdff1429d184f8d25cecf13ca94326",
   "https://github.com/noir-lang/keccak256@v0.1.3": "f64ab3af714aa1a1e2699243037e0f11fe5bf706",
   "https://github.com/noir-lang/poseidon@v0.3.0": "0880c371e88e583d39515fd3f877538657ac41eb",
+  "https://github.com/noir-lang/poseidon@v0.4.0": "e105cdd5c79c222860d53c5dfdb8fa8012b291c0",
   "https://github.com/noir-lang/sha256@v0.3.0": "9442e5b6856f98b2ec029882d7e90199ecff91ba"
 }

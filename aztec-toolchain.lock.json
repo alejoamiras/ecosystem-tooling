@@ -1,12 +1,12 @@
 {
-  "6.0.0-rc.3": {
+  "6.0.0": {
     "install": {
-      "url": "https://install.aztec-labs.com/6.0.0-rc.3/install",
-      "sha256": "f7f2349e500dc3c25c445f1b661aa63ec3e9724ba0cc818d98c38078b23055d6"
+      "url": "https://install.aztec-labs.com/6.0.0/install",
+      "sha256": "f7a00e039647cb4101a0011da10070ae0a559f7a032adfdc65513a380ab603b1"
     },
     "versions": {
-      "url": "https://install.aztec-labs.com/6.0.0-rc.3/versions",
-      "sha256": "bd07b479c05d41cc4a18745bad2d057fed7da1c0217997597896ef47a4dad5f9"
+      "url": "https://install.aztec-labs.com/6.0.0/versions",
+      "sha256": "21993dc771fd85439ca76f2ef9808125737d9a213069af0ba68225c149e78e2f"
     },
     "nargo": {
       "linux-x64": {
@@ -16,13 +16,13 @@
     },
     "foundry": {
       "linux-x64": {
-        "url": "https://github.com/foundry-rs/foundry/releases/download/v1.4.1/foundry_v1.4.1_linux_amd64.tar.gz",
-        "sha256": "f1b044ee954402807c4dd5a5e7d29b210d24fd3633b7f199d184f034ff94d934"
+        "url": "https://github.com/foundry-rs/foundry/releases/download/v1.8.5/foundry_v1.8.5_linux_amd64.tar.gz",
+        "sha256": "6c66ffcc55fa4249197721baa3098bc208014ea1d8aa04b2ed50ac6bccffb226"
       }
     },
     "npmLock": {
-      "path": "aztec-toolchain/6.0.0-rc.3/package-lock.json",
-      "sha256": "87942c4e8d27a21e0374e9e2ec6e679de43f3119dc10eaea0cd729c4d91927c0"
+      "path": "aztec-toolchain/6.0.0/package-lock.json",
+      "sha256": "7d9fe54d7c4f87690f5f1e3d37557cc509b87c7db2f98d3240ebe03e277dfdcd"
     }
   }
 }
