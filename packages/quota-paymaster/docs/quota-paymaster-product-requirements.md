@@ -34,7 +34,7 @@ The contract is vendored from the mainnet-proven Dark Forest deployment (Aztec 5
 id `0x115cfdfd…62fc`, chain-verified). From Aztec 6 it carries one reviewed behavioral edit:
 aztec-nr's 3600s minimum delay makes the bootstrap delay 1h, so a fresh deployment is inert
 for its first hour. `known-deployments.json` enumerates every deviation and pins each Aztec
-version's compiled class id (only 5.0.1's is chain-verified; 6.0.0-rc.3's is also read back from a local node in CI). Its behavioral requirements are pinned by tests
+version's compiled class id (only 5.0.1's is chain-verified; 6.0.0-rc.3's and 6.0.0's are also read back from a local node in CI). Its behavioral requirements are pinned by tests
 rather than restated: see the Test Coverage Matrix.
 
 ## Requirements (SDK / operator)
@@ -89,3 +89,4 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
 | 5.0.1 | 2026-08-05 | Extraction from dark-forest-aztec (worktree-quota-fpc @ f1943d8); chain-verified lineage; §6 gaps closed |
 | 6.0.0-rc.1 | 2026-09-30 | Aztec 6 (`@aztec-labs/*` scopes); 1h bootstrap delay; per-version lineage anchors; `policy-inactive` fee-source reason |
 | 6.0.0-rc.3 | 2026-10-14 | Aztec 6.0.0-rc.3 (foundation peers at 6.0.0-rc.6); recompiled class id `0x248f2f32…597b`, no source change |
+| 6.0.0 | 2026-10-22 | Aztec 6.0.0 stable (both scopes at 6.0.0); recompiled class id `0x238e36a7…1ab8`, no source change (aztec-nr moved its standard addresses and `PublicImmutable`'s private read path) |

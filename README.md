@@ -4,7 +4,7 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 
 > **aztec-standards has moved**: the Aztec Foundation now owns and publishes it as [`@aztec-foundation/aztec-standards`](https://www.npmjs.com/package/@aztec-foundation/aztec-standards) ([AztecProtocol/aztec-standards](https://github.com/AztecProtocol/aztec-standards)). The `@alejoamiras/aztec-standards` package is deprecated on npm (all versions) — migrate to the Foundation package.
 
-**Current lockstep target: `6.0.0-rc.3`** (package versions track the Aztec version they target; `@aztec-foundation/*` peers follow upstream's own pairing, `6.0.0-rc.6`; the rc ships under the `rc` dist-tag while `latest` stays on the Aztec `5.0.1` releases) — releases are published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline; check the [npm badges below](#packages) for what is live.
+**Current lockstep target: `6.0.0`** (package versions track the Aztec version they target; the `@aztec-labs/*` and `@aztec-foundation/*` peers are both `6.0.0`; published under `latest`, which moved from the Aztec `5.0.1` releases) — releases are published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements) via a tokenless OIDC pipeline; check the [npm badges below](#packages) for what is live.
 
 ## Packages
 
@@ -12,7 +12,7 @@ Aztec ecosystem packages — a bun monorepo continuing the fee-payment contracts
 |---|---|---|
 | [`@alejoamiras/private-fee-juice`](https://www.npmjs.com/package/@alejoamiras/private-fee-juice) | [![npm](https://img.shields.io/npm/v/@alejoamiras/private-fee-juice.svg)](https://www.npmjs.com/package/@alejoamiras/private-fee-juice) | Private Fee Payment Contract (FPC) + TypeScript SDK |
 | [`@alejoamiras/aztec-benchmark`](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | [![npm](https://img.shields.io/npm/v/@alejoamiras/aztec-benchmark.svg)](https://www.npmjs.com/package/@alejoamiras/aztec-benchmark) | Benchmark CLI + CI machinery for Aztec contracts (gates, DA/L2 gas, proving) |
-| [`@alejoamiras/quota-paymaster`](https://www.npmjs.com/package/@alejoamiras/quota-paymaster) | [![npm](https://img.shields.io/npm/v/@alejoamiras/quota-paymaster.svg)](https://www.npmjs.com/package/@alejoamiras/quota-paymaster) | Quota paymaster (QuotaFpc): allowlist-scoped, per-day-quota fee sponsorship — contract + SDK + operator library (unreleased: first publish pending the npm bootstrap) |
+| [`@alejoamiras/quota-paymaster`](https://www.npmjs.com/package/@alejoamiras/quota-paymaster) | [![npm](https://img.shields.io/npm/v/@alejoamiras/quota-paymaster.svg)](https://www.npmjs.com/package/@alejoamiras/quota-paymaster) | Quota paymaster (QuotaFpc): allowlist-scoped, per-day-quota fee sponsorship — contract + SDK + operator library |
 
 Package versions track the Aztec version they support — e.g. install `@alejoamiras/private-fee-juice@5.0.1` when targeting Aztec `5.0.1`. Pre-releases live under the `rc` dist-tag; emergency fixes to a lockstep version ship as `<version>-revision.N` under `revision`, and fixes to an rc as `<rc>.revision.M` under `rc` (so `@rc` receives them).
 

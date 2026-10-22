@@ -29,6 +29,16 @@
         "test": "src/ts/test/integration/class-id-chain.test.ts",
         "date": "2026-10-15"
       }
+    },
+    "6.0.0": {
+      "classId": "0x238e36a7c2a43108dcc99053d6309a4ab06a6309f76f13423f29ca79c3881ab8",
+      "verifiedAgainstChain": false,
+      "toolchain": "aztec CLI 6.0.0 (aztec compile; nargo 1.0.0-rc.3; installed from aztec-toolchain.lock.json); reproduced by two independent compiles",
+      "localNodeVerification": {
+        "method": "deploy on aztec start --local-network; node_getContract current+original",
+        "test": "src/ts/test/integration/class-id-chain.test.ts",
+        "date": "2026-10-22"
+      }
     }
   },
   "provenance": {
