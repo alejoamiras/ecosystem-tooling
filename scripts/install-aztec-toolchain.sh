@@ -5,10 +5,11 @@
 # Upstream's per-version `install` is verified, then sourced for its step functions; its `main`
 # never runs, because it sources nvm unconditionally. The steps that would fetch floating
 # installers (versions manifest, node, noirup, foundryup) are replaced with verified files, and
-# curl/wget are stubbed on PATH while upstream code runs. Upstream's unlocked `npm install` is
-# replaced by `npm ci` against the committed, sha256-pinned aztec-toolchain/<version> lock with
-# install scripts off (bcrypto alone is compiled from its locked sources), so the npm tree is the
-# locked closure minus other platforms' packages.
+# curl/wget are stubbed on PATH while upstream code runs. Upstream's npm step (at 6.0.0, `npm ci`
+# from a lock tarball it downloads without a digest check) is replaced by `npm ci` against the
+# committed, sha256-pinned aztec-toolchain/<version> lock with install scripts off (bcrypto alone
+# is compiled from its locked sources), so the npm tree is the locked closure minus other
+# platforms' packages.
 #
 # Usage: scripts/install-aztec-toolchain.sh <version> [AZTEC_HOME]
 # shellcheck disable=SC2154 # version_path and friends are assigned by the sourced upstream script
