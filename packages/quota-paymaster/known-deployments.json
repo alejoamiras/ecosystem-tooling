@@ -1,6 +1,6 @@
 {
   "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. mainnet.classId is the only class id ever checked against a live chain (Aztec 5.0.1). compiled[<aztecVersion>] entries are class ids this repo compiled and reviewed for later Aztec versions: local pins, not proof of any public deployment; localNodeVerification, where present, records that a disposable local node derived that class (current and original) from the shipped artifact. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion. currentAztecVersion is the Aztec version this package build targets (swept by bump-aztec.ts, asserted equal to config.aztecVersion by verify:lineage): the deploy guard accepts only its anchor.",
-  "currentAztecVersion": "6.0.0-rc.3",
+  "currentAztecVersion": "6.0.0",
   "mainnet": {
     "name": "Dark Forest quota paymaster (reference deployment — NOT this package's to operate)",
     "address": "0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4",
@@ -44,8 +44,8 @@
     "vendoredSha256": {
       "src/nr/quota_fpc/src/main.nr": "670045ede1e7a1d96ffec72cc81cde5a271580097810af6f738d1757c3afcf32",
       "src/nr/fpc_test_target/src/main.nr": "c4cbf5fe6d6e8417a24321936ed3de19bee7d5a2c8e2b490cf027f178cedf52b",
-      "src/nr/quota_fpc/Nargo.toml": "8a6fcbd1a38698c7d0d0a6c39166a78a957bf19869d8ee870b33689de00bab69",
-      "src/nr/fpc_test_target/Nargo.toml": "09d0fd0a473153951031552c10389d70be0103fe1f671785c684a434ca7e0a0f"
+      "src/nr/quota_fpc/Nargo.toml": "c0b000a2fe02ba212e7e8e0d8160491e044013eeee068ad02a8ce893df5e4905",
+      "src/nr/fpc_test_target/Nargo.toml": "21d9ad19a6c742c613e2aab45e42973040f86af145c82da1509bd0ec024c848d"
     },
     "allowedDeviations": [
       "src/nr/quota_fpc/src/main.nr: exactly one added `pub mod test;` registration line (proven class-id-neutral by the Phase-1 spike; re-proven by every verify:lineage run)",

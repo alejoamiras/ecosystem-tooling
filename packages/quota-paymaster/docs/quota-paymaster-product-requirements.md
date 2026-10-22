@@ -1,6 +1,6 @@
 # Quota Paymaster — Product Requirements
 
-**Target Aztec Version**: 6.0.0-rc.3
+**Target Aztec Version**: 6.0.0
 
 ## Problem Statement
 
@@ -78,7 +78,7 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
    under `compiled[<version>]` with `verifiedAgainstChain: false`. Once the PR's `class-id-chain` integration test
    passes on the new version, add its `localNodeVerification` block.
 2. Re-verify teardown-gas billing semantics against the new `gas_settings.ts` (the fee
-   ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0-rc.3: `gas_settings.ts` is unchanged from rc.1).
+   ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0: `gas_settings.ts` is unchanged from rc.1).
 3. Recompute account class ids (`verifyAccountClassIds` refuses stale configs) — an
    `@aztec-labs/accounts` bump changes them and requires paymaster redeploys.
 

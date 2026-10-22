@@ -47,8 +47,8 @@
     ]
   },
   "config": {
-    "aztecFoundationVersion": "6.0.0-rc.6",
-    "aztecVersion": "6.0.0-rc.3"
+    "aztecFoundationVersion": "6.0.0",
+    "aztecVersion": "6.0.0"
   },
   "overrides": {
     "@noble/hashes": "1.8.0"
