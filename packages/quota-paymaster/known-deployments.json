@@ -1,5 +1,5 @@
 {
-  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. mainnet.classId is the only class id ever checked against a live chain (Aztec 5.0.1). compiled[<aztecVersion>] entries are class ids this repo compiled and reviewed for later Aztec versions: local pins, not proof of any public deployment; localNodeVerification, where present, records that a disposable local node derived that class (current and original) from the shipped artifact. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion. currentAztecVersion is the Aztec version this package build targets (swept by bump-aztec.ts, asserted equal to config.aztecVersion by verify:lineage): the deploy guard accepts only its anchor.",
+  "$comment": "Known QuotaFpc deployments + the provenance record consumed by scripts/verify-lineage.ts. Two class ids have been read back from a public chain: mainnet.classId (Aztec 5.0.1, on mainnet) and the compiled 6.0.0 entry's (on the public testnet; its verification block). Every other compiled[<aztecVersion>] entry is a class id this repo compiled and reviewed for a later Aztec version: a local pin, not proof of any public deployment; localNodeVerification, where present, records that a disposable local node derived that class (current and original) from the shipped artifact. verify:lineage asserts the compiled artifact matches the anchor for the root config.aztecVersion. currentAztecVersion is the Aztec version this package build targets (swept by bump-aztec.ts, asserted equal to config.aztecVersion by verify:lineage): the deploy guard accepts only its anchor.",
   "currentAztecVersion": "6.0.0",
   "mainnet": {
     "name": "Dark Forest quota paymaster (reference deployment — NOT this package's to operate)",
@@ -32,7 +32,14 @@
     },
     "6.0.0": {
       "classId": "0x238e36a7c2a43108dcc99053d6309a4ab06a6309f76f13423f29ca79c3881ab8",
-      "verifiedAgainstChain": false,
+      "verifiedAgainstChain": true,
+      "verification": {
+        "method": "read-only node_getContract via https://aztec-testnet.drpc.org (scripts/chain-verify.ts); currentContractClassId AND originalContractClassId both matched the locally compiled artifact",
+        "network": "Aztec public testnet (node 6.0.0; L1 Sepolia 11155111, rollup 0x1f435a7f2da358caf887a470faeee7d5d5f4efba, rollup version 679261766)",
+        "address": "0x22ad66bfa62302ce07338b74a713bacb0b2669c49a1ca219b7acab243df78fa6",
+        "date": "2026-10-23",
+        "warning": "Verification-only instance, deployed with the published 6.0.0 CLI: its admin and only allowed target are unowned placeholder addresses and maxFeeWei is 1, so it can never sponsor a transaction. Never fund it: fee juice cannot be withdrawn."
+      },
       "toolchain": "aztec CLI 6.0.0 (aztec compile; nargo 1.0.0-rc.3; installed from aztec-toolchain.lock.json); reproduced by two independent compiles",
       "localNodeVerification": {
         "method": "deploy on aztec start --local-network; node_getContract current+original",

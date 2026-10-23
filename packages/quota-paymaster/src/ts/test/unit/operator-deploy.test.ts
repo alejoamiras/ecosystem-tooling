@@ -46,13 +46,14 @@ describe('verifyAccountClassIds', () => {
 });
 
 describe('deploy lineage guard', () => {
-  test('the compiled artifact is the reviewed class for this Aztec version, and says it is only pinned', async () => {
+  test('the compiled artifact is the reviewed class for this Aztec version, and says it is chain-verified', async () => {
     // Same anchor verify:lineage enforces; deployQuotaFpc re-asserts it so an
-    // operator cannot deploy a locally drifted artifact.
+    // operator cannot deploy a locally drifted artifact. An Aztec bump flips this
+    // to false until the new class is read back from a public chain.
     const { aztecVersion } = rootPackage.config;
     await expect(assertArtifactIsLineageClass()).resolves.toEqual({
       ...selectAnchor(knownDeployments, aztecVersion),
-      chainVerified: false,
+      chainVerified: true,
     });
   });
 });

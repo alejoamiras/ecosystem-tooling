@@ -8,8 +8,9 @@
 //      changed;
 //  (b) the repo lock file pins the aztec-nr dependency quota_fpc's Nargo.toml names;
 //  (c) the compiled target artifact AND the codegen'd consumer artifact both have the class
-//      id anchored for the root config.aztecVersion. Only the 5.0.1 anchor was ever checked
-//      against a chain; later anchors are local pins, and the output says which.
+//      id anchored for the root config.aztecVersion. The 5.0.1 anchor was checked against
+//      mainnet and the 6.0.0 anchor against the public testnet; other anchors are local
+//      pins, and the output says which.
 // An edit to a PINNED file without recompile fails (a); a stale artifact fails (c).
 // Deliberately unpinned: the TXE test modules (src/test/*.nr). They do not compile
 // into the release artifact — the class-id checks in (c) prove that — and pinning
@@ -106,12 +107,15 @@ if (failures.length > 0) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-// selectAnchor drops the evidence block, so read it from the entry itself: an anchor
-// without one must never inherit the local-node claim.
-const localNode = known.compiled?.[aztecVersion]?.localNodeVerification;
+// selectAnchor drops the evidence blocks, so read them from the entry itself: an anchor
+// without one must never inherit its claim.
+const entry = known.compiled?.[aztecVersion];
+const chainRead = entry?.verification;
+const localNode = entry?.localNodeVerification;
 console.log(
   anchor.chainVerified
-    ? `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}, chain-verified)`
+    ? `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}, chain-verified` +
+        (chainRead ? ` on ${chainRead.network} at ${chainRead.address}, ${chainRead.date})` : ')')
     : localNode
       ? `verify:lineage OK — class id ${expectedClassId} (Aztec ${aztecVersion}) matches the locally pinned ` +
         `compiled entry, verified against a local Aztec ${aztecVersion} node in CI (${localNode.test}; not a public chain).`

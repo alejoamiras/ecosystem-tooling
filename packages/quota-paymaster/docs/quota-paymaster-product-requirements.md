@@ -34,7 +34,7 @@ The contract is vendored from the mainnet-proven Dark Forest deployment (Aztec 5
 id `0x115cfdfd…62fc`, chain-verified). From Aztec 6 it carries one reviewed behavioral edit:
 aztec-nr's 3600s minimum delay makes the bootstrap delay 1h, so a fresh deployment is inert
 for its first hour. `known-deployments.json` enumerates every deviation and pins each Aztec
-version's compiled class id (only 5.0.1's is chain-verified; 6.0.0-rc.3's and 6.0.0's are also read back from a local node in CI). Its behavioral requirements are pinned by tests
+version's compiled class id (5.0.1's is chain-verified on mainnet and 6.0.0's on the public testnet; 6.0.0-rc.3's and 6.0.0's are also read back from a local node in CI). Its behavioral requirements are pinned by tests
 rather than restated: see the Test Coverage Matrix.
 
 ## Requirements (SDK / operator)
@@ -65,7 +65,7 @@ rather than restated: see the Test Coverage Matrix.
 | Nullifier parity TS ↔ Noir | integration |
 | Journal failure modes (symlink, torn line, lock steal, crash replay) | unit |
 | Operator refusals (class-id, fee-floor, max-loss, argv secrets) | unit + smoke |
-| Lineage: sources + dep lock + artifacts == the reviewed class id for `config.aztecVersion` (chain-verified only for 5.0.1) | every gate |
+| Lineage: sources + dep lock + artifacts == the reviewed class id for `config.aztecVersion` (chain-verified for 5.0.1 on mainnet and 6.0.0 on the public testnet) | every gate |
 | A local node derives the pinned class id (current and original) from the shipped artifact | integration |
 
 ## Per-Aztec-bump checklist
@@ -76,7 +76,9 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
    review the new class id and its consequences (live instances are not upgraded; moving to
    the new class means a redeploy, which strands the old instance's balance), then record it
    under `compiled[<version>]` with `verifiedAgainstChain: false`. Once the PR's `class-id-chain` integration test
-   passes on the new version, add its `localNodeVerification` block.
+   passes on the new version, add its `localNodeVerification` block. Only a read-only
+   `scripts/chain-verify.ts` read of a public-chain deployment sets `verifiedAgainstChain: true`,
+   recorded beside it as a `verification` block (method, network, address, date).
 2. Re-verify teardown-gas billing semantics against the new `gas_settings.ts` (the fee
    ceiling mirrors `getFeeLimit()`, which does NOT add teardown — still true at 6.0.0: `gas_settings.ts` is unchanged from rc.1).
 3. Recompute account class ids (`verifyAccountClassIds` refuses stale configs) — an
@@ -89,4 +91,4 @@ On every lockstep bump (`bun scripts/bump-aztec.ts`):
 | 5.0.1 | 2026-08-05 | Extraction from dark-forest-aztec (worktree-quota-fpc @ f1943d8); chain-verified lineage; §6 gaps closed |
 | 6.0.0-rc.1 | 2026-09-30 | Aztec 6 (`@aztec-labs/*` scopes); 1h bootstrap delay; per-version lineage anchors; `policy-inactive` fee-source reason |
 | 6.0.0-rc.3 | 2026-10-14 | Aztec 6.0.0-rc.3 (foundation peers at 6.0.0-rc.6); recompiled class id `0x248f2f32…597b`, no source change |
-| 6.0.0 | 2026-10-22 | Aztec 6.0.0 stable (both scopes at 6.0.0); recompiled class id `0x238e36a7…1ab8`, no source change (aztec-nr moved its standard addresses and `PublicImmutable`'s private read path) |
+| 6.0.0 | 2026-10-22 | Aztec 6.0.0 stable (both scopes at 6.0.0); recompiled class id `0x238e36a7…1ab8`, no source change (aztec-nr moved its standard addresses and `PublicImmutable`'s private read path); chain-verified on the public testnet 2026-10-23 |

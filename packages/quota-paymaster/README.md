@@ -9,7 +9,7 @@ users transact without ever bridging. The contract is app-agnostic: all app-spec
 | | |
 |---|---|
 | Contract | `QuotaFpc` (Noir); one class id per Aztec version, recorded in `known-deployments.json` |
-| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id at 6.0.0 (`0x238e36a7…1ab8`) is a locally reviewed pin that CI reads back from a local Aztec node (current and original class id); it is **not** verified against a public chain |
+| Lineage | Vendored from the live Aztec 5.0.1 mainnet deployment, whose class id (`0x115cfdfd…62fc`) is verified against the chain. The Aztec 6 source differs from it only by enumerated, reviewed edits (the 1h bootstrap delay, and a `pub` note struct aztec-nr 6 requires); its compiled class id at 6.0.0 (`0x238e36a7…1ab8`) is verified against the public Aztec testnet (current and original class id of a verification-only instance, read back on 2026-10-23), and CI also reads it back from a local Aztec node |
 | Versioning | Lockstep with Aztec: package `6.0.0` targets Aztec `6.0.0` (`@aztec-labs/*` and `@aztec-foundation/*` both `6.0.0`), published under `latest` |
 | Bootstrap | A fresh deployment is inert for its first hour (aztec-nr's 3600s minimum delay): the policy reads all zeros and sponsors nothing |
 | SDK | Browser-safe root export; Node-only `./operator` export |
@@ -69,6 +69,10 @@ This contract is the **transaction entrypoint** instead:
 `known-deployments.json` records the live instance this contract was extracted from —
 including the chain verification of the class id. **Funding that instance is an
 irreversible donation to Dark Forest.** Deploy your own.
+
+Its 6.0.0 entry also records the public-testnet instance that verified the 6.0.0 class id.
+That instance is verification-only: its admin and only allowed target are unowned placeholder
+addresses and its fee cap is 1 wei, so it can never sponsor a transaction. Never fund it.
 
 ## Usage
 
@@ -204,13 +208,16 @@ bun run verify:lineage # source hash + dep lock + artifact class id vs this Azte
 
 `verify:lineage` binds the vendored sources, the locked Nargo dependency, and both compiled
 artifacts to the class id anchored for the root `config.aztecVersion` — a source edit without
-recompile, a stale artifact, or any deviation beyond the enumerated ones fails it. Only the
-5.0.1 anchor is chain-verified; a later version's anchor is a pin committed alongside the
-source, so the check is a review-gated tripwire, not proof against a coordinated edit of
-both. Its success line says which kind of anchor it matched, and names the local-node check only for
-an anchor that records one (`localNodeVerification`: CI's `class-id-chain` test deploys the artifact on a
-local network and reads both class ids back). `scripts/chain-verify.ts <address> [nodeUrl]` performs the
-same read-only comparison against any node.
+recompile, a stale artifact, or any deviation beyond the enumerated ones fails it. The 5.0.1
+anchor is verified on mainnet and the 6.0.0 anchor on the public testnet, each at a deployment
+`known-deployments.json` records; any other anchor is only a pin. Every anchor is committed
+alongside the source, so the check itself is a review-gated tripwire, not proof against a
+coordinated edit of both. Its success line says which kind of anchor it matched and names the
+evidence a `compiled` entry records: its public-chain read (`verification`: network, address,
+date) when it has one, else its local-node check (`localNodeVerification`: CI's `class-id-chain`
+test deploys the artifact on a local network and reads both class ids back).
+`scripts/chain-verify.ts <address> [nodeUrl]` performs the same read-only comparison against any
+node, so anyone can re-check a recorded deployment.
 
 ## Provenance & license
 
