@@ -160,7 +160,9 @@ export function schnorrAccountFromEnv(options: SchnorrAccountFromEnvOptions = {}
     try {
       node = createAztecNodeClient(nodeUrl);
       await waitForNode(node);
-      wallet = await EmbeddedWallet.create(node, { dataDirectory: walletDir });
+      // create() ignores a top-level `dataDirectory`; `pxe.dataDirectory` locates both of
+      // its stores, which otherwise land in ./aztec-wallet-data in the working directory.
+      wallet = await EmbeddedWallet.create(node, { pxe: { dataDirectory: walletDir } });
     } catch (error) {
       await cleanupOnFailure();
       throw error;
