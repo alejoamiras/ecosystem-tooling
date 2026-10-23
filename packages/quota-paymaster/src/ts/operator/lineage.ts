@@ -45,6 +45,17 @@ export interface LineageAnchor {
   chainVerified: boolean;
 }
 
+const CHAIN_READ_FIELDS = ['method', 'network', 'address', 'date'] as const;
+
+/** The JSON is parsed untyped, so a record counts only with every evidence field a non-empty string. */
+const isChainRead = (v: unknown): v is ChainVerification =>
+  typeof v === 'object' &&
+  v !== null &&
+  CHAIN_READ_FIELDS.every((k) => {
+    const field = (v as Record<string, unknown>)[k];
+    return typeof field === 'string' && field.trim() !== '';
+  });
+
 const anchors = (known: KnownDeployments): LineageAnchor[] => [
   {
     aztecVersion: known.mainnet.aztecVersion,
@@ -54,8 +65,8 @@ const anchors = (known: KnownDeployments): LineageAnchor[] => [
   ...Object.entries(known.compiled ?? {}).map(([aztecVersion, c]) => ({
     aztecVersion,
     classId: c.classId,
-    // A claim without the record that backs it counts as unverified.
-    chainVerified: c.verifiedAgainstChain === true && c.verification !== undefined,
+    // A claim without a complete record backing it counts as unverified.
+    chainVerified: c.verifiedAgainstChain === true && isChainRead(c.verification),
   })),
 ];
 

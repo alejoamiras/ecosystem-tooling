@@ -8,8 +8,9 @@
 //      changed;
 //  (b) the repo lock file pins the aztec-nr dependency quota_fpc's Nargo.toml names;
 //  (c) the compiled target artifact AND the codegen'd consumer artifact both have the class
-//      id anchored for the root config.aztecVersion. Only the 5.0.1 anchor was ever checked
-//      against a chain; later anchors are local pins, and the output says which.
+//      id anchored for the root config.aztecVersion. The 5.0.1 anchor was checked against
+//      mainnet and the 6.0.0 anchor against the public testnet; other anchors are local
+//      pins, and the output says which.
 // An edit to a PINNED file without recompile fails (a); a stale artifact fails (c).
 // Deliberately unpinned: the TXE test modules (src/test/*.nr). They do not compile
 // into the release artifact — the class-id checks in (c) prove that — and pinning

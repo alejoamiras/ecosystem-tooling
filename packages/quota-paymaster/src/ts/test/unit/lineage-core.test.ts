@@ -3,7 +3,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import known from '../../../../known-deployments.json' with { type: 'json' };
 import { reconstructUpstream, type SanctionedEdit } from '../../../../scripts/lineage-core.js';
-import { assertCurrentLineageClass, type KnownDeployments, selectAnchor } from '../../operator/lineage.js';
+import {
+  assertCurrentLineageClass,
+  type ChainVerification,
+  type KnownDeployments,
+  selectAnchor,
+} from '../../operator/lineage.js';
 
 const vendored = readFileSync(new URL('../../../nr/quota_fpc/src/main.nr', import.meta.url), 'utf8');
 const edits = known.provenance.sanctionedEdits as SanctionedEdit[];
@@ -42,13 +47,17 @@ describe('lineage anchors', () => {
     expect(() => selectAnchor(known, '9.9.9')).toThrow(/no lineage anchor for Aztec 9\.9\.9/);
   });
 
-  test('6.0.0 is chain-verified by its recorded read; a claim without that record is not', () => {
+  test('6.0.0 is chain-verified by its recorded read; a claim without a complete record is not', () => {
     expect(selectAnchor(known, '6.0.0')).toMatchObject({ chainVerified: true });
-    const unbacked: KnownDeployments = {
-      ...known,
-      compiled: { '9.0.0': { classId: `0x${'9'.repeat(64)}`, verifiedAgainstChain: true } },
-    };
-    expect(selectAnchor(unbacked, '9.0.0')).toMatchObject({ chainVerified: false });
+    const read = known.compiled['6.0.0'].verification;
+    const incomplete = [undefined, null, {}, { ...read, address: '' }] as unknown as (ChainVerification | undefined)[];
+    for (const verification of incomplete) {
+      const claimed: KnownDeployments = {
+        ...known,
+        compiled: { '9.0.0': { classId: `0x${'9'.repeat(64)}`, verifiedAgainstChain: true, verification } },
+      };
+      expect(selectAnchor(claimed, '9.0.0')).toMatchObject({ chainVerified: false });
+    }
   });
 
   test("the deploy guard accepts only the current version's class, never a stale reviewed one", () => {
