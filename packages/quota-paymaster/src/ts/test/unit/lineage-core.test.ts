@@ -42,6 +42,15 @@ describe('lineage anchors', () => {
     expect(() => selectAnchor(known, '9.9.9')).toThrow(/no lineage anchor for Aztec 9\.9\.9/);
   });
 
+  test('6.0.0 is chain-verified by its recorded read; a claim without that record is not', () => {
+    expect(selectAnchor(known, '6.0.0')).toMatchObject({ chainVerified: true });
+    const unbacked: KnownDeployments = {
+      ...known,
+      compiled: { '9.0.0': { classId: `0x${'9'.repeat(64)}`, verifiedAgainstChain: true } },
+    };
+    expect(selectAnchor(unbacked, '9.0.0')).toMatchObject({ chainVerified: false });
+  });
+
   test("the deploy guard accepts only the current version's class, never a stale reviewed one", () => {
     const current: KnownDeployments = {
       ...known,

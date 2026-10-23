@@ -1,10 +1,11 @@
 /**
  * Which QuotaFpc class ids this package vouches for, and how strongly.
  *
- * `mainnet` is the one class id ever checked against a live chain. `compiled` entries are
- * class ids this repo compiled and reviewed for later Aztec versions — a local pin, never
- * proof that anything is deployed, and no defence against an edit that changes source and
- * pin together. Callers must surface that difference, never flatten it to "verified".
+ * `mainnet`, and any `compiled` entry carrying a `verification` record, was read back from a
+ * public chain. Every other `compiled` entry is a class id this repo compiled and reviewed for
+ * a later Aztec version — a local pin, never proof that anything is deployed, and no defence
+ * against an edit that changes source and pin together. Callers must surface that difference,
+ * never flatten it to "verified".
  */
 
 export interface KnownDeployments {
@@ -13,8 +14,22 @@ export interface KnownDeployments {
   mainnet: { aztecVersion: string; classId: string; verifiedAgainstChain: boolean };
   compiled?: Record<
     string,
-    { classId: string; verifiedAgainstChain: boolean; localNodeVerification?: LocalNodeVerification }
+    {
+      classId: string;
+      verifiedAgainstChain: boolean;
+      verification?: ChainVerification;
+      localNodeVerification?: LocalNodeVerification;
+    }
   >;
+}
+
+/** A read-only read-back (scripts/chain-verify.ts) of a public-chain deployment of this class. */
+export interface ChainVerification {
+  method: string;
+  network: string;
+  address: string;
+  date: string;
+  warning?: string;
 }
 
 /** A disposable local node derived this class from the shipped artifact. Never a public-chain claim. */
@@ -39,7 +54,8 @@ const anchors = (known: KnownDeployments): LineageAnchor[] => [
   ...Object.entries(known.compiled ?? {}).map(([aztecVersion, c]) => ({
     aztecVersion,
     classId: c.classId,
-    chainVerified: c.verifiedAgainstChain === true,
+    // A claim without the record that backs it counts as unverified.
+    chainVerified: c.verifiedAgainstChain === true && c.verification !== undefined,
   })),
 ];
 
