@@ -6,14 +6,14 @@ All workflows follow the house conventions: per-package PR gates with an interna
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `lint.yml` | PR, dispatch | biome + sort-package-json + advisory `bun audit` |
+| `lint.yml` | PR, push `main`, dispatch | biome + sort-package-json + advisory `bun audit` |
 | `actionlint.yml` | PR, dispatch | Workflow linting (checksum-verified binary, no third-party action) |
-| `aztec-benchmark.yml` | PR (path-gated), dispatch | Build (tsc+ncc) + CLI smoke; `Aztec Benchmark Status` |
-| `private-fee-juice.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark`; `Private Fee Juice Status` |
-| `quota-paymaster.yml` | PR (path-gated), dispatch | `_package-checks` (TXE floor 20 + integration + `run-warp-tests` — the time-travel suite on its self-provisioned disposable network); `Quota Paymaster Status` |
+| `aztec-benchmark.yml` | PR and push `main` (path-gated), dispatch (always runs) | Build (tsc+ncc) + CLI smoke; `Aztec Benchmark Status` |
+| `private-fee-juice.yml` | PR and push `main` (path-gated), dispatch (always runs) | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark`; `Private Fee Juice Status` |
+| `quota-paymaster.yml` | PR and push `main` (path-gated), dispatch (always runs) | `_package-checks` (TXE floor 20 + integration + `run-warp-tests` — the time-travel suite on its self-provisioned disposable network); `Quota Paymaster Status` |
 | `_package-checks.yml` | reusable | `noir-tests` (TXE via `aztec test`, PTY-wrapped, **count floor via `scripts/check-txe-counts.sh`** — exit codes alone let silently-skipped suites pass) + `js-tests` (full-surface `bun run typecheck`, then vitest vs `aztec start --local-network`, PTY-wrapped) |
 | `_pr-benchmark.yml` | reusable | Split-permission benchmark: read-only job runs PR code + uploads report artifact; separate `pull-requests: write` job posts the comment WITHOUT executing PR code. Non-vacuous assertions (results non-empty; baseline present ⇒ ≥1 comparison pair). PR benches run `--skip-proving`. |
-| `_update-baseline.yml` | reusable | Full-proving baselines, artifacts namespaced `benchmark-baseline-<pkg>-<branch>` |
+| `_update-baseline.yml` | reusable | Baselines, fully proved unless the caller passes `skip-proving` (`update-baselines.yml` does, to match the PR benches), artifacts namespaced `benchmark-baseline-<pkg>-<branch>` |
 | `update-baselines.yml` | push main, monthly cron, dispatch | Baselines for the private-fee-juice (FPC) contract package |
 | `release.yml` | dispatch (main only; `version` + `mode` + optional SHA-binding inputs) | See release runbook below. Rehearsals run through THIS workflow (`mode: rehearsal`) — the bootstrap-era `canary.yml` (revoked-token based, could not attest provenance) was retired at 5.0.0 |
 
@@ -43,6 +43,12 @@ The package jobs themselves cannot be required by name: a filtered job reports `
 - A job that another non-status job needs stays unconditional. A job skipped by its own `if` silently skips its dependents, and status would accept both skips.
 
 Retry a red run with `gh run rerun <id> --failed`, which re-runs the status job too. Never dispatch a package workflow on a PR branch to retry it. A dispatch skips private-fee-juice's `benchmark` by event, and its newer, green status check run replaces the red one on the same commit.
+
+### Path filters
+
+A status job counts a job skipped by its filter as a pass, so a filter that misses a file its jobs read lets a change to that file merge untested. Each package workflow's `relevant` filter therefore lists every file its jobs read, markdown included, unless another required check runs the same step on that file. Two such cases exist: quota-paymaster's `js-tests` builds aztec-benchmark, as Aztec Benchmark's `build` does, and every frozen install reads all workspace manifests, as `lint.yml` does.
+
+dorny/paths-filter ORs a filter's rules under its default `predicate-quantifier: some`, so a `!` rule matches every file it does not exclude, and `every` with several positive rules matches nothing. Use neither. Leave package markdown out with `packages/<pkg>/**/!(*.md)`, and list a markdown file a job reads on its own line (private-fee-juice's README, read by `canonical.test.ts`). `scripts/status-gate.test.ts` checks the shape: no `!` rule, no quantifier, the package's own rule. It cannot check that the list is complete; review that when a job starts reading a new file.
 
 ## Release runbook
 
