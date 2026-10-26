@@ -25,6 +25,7 @@ jobs:
           filters: |
             relevant:
               - 'packages/quota-paymaster/**/!(*.md)'
+              # aztec-benchmark is left out: js-tests only builds it, as Aztec Benchmark's required build does.
               # verify-tarball asserts it ships.
               - 'packages/quota-paymaster/INTEGRATING.md'
               - 'biome.json'

@@ -54,7 +54,7 @@ describe.each(Object.entries(STATUS_JOBS))('%s', (file, name) => {
 
   test('its paths filter narrows, and covers its own package', () => {
     // dorny ORs a filter's rules under its default quantifier, so a `!` rule matches every other
-    // file; under `every`, several positive rules match none. Package markdown is left out by the
+    // file; under `every`, several disjoint positive rules match none. Package markdown is left out by the
     // extglob instead.
     const filter = others.changes?.steps?.find((step) => step.uses?.startsWith('dorny/paths-filter@'));
     expect(filter?.with?.['predicate-quantifier']).toBeUndefined();
