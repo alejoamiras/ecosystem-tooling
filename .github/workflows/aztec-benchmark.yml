@@ -53,3 +53,18 @@ jobs:
         run: bun run --cwd packages/aztec-benchmark build
       - name: CLI smoke
         run: bun run --cwd packages/aztec-benchmark start --help
+
+  status:
+    name: Aztec Benchmark Status
+    # A skipped check passes a required check, so this job never skips: always()
+    # runs it after failures and cancels. scripts/status-gate.test.ts keeps needs complete.
+    if: always()
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fail when a needed job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::a needed job failed or was cancelled"
+          exit 1
