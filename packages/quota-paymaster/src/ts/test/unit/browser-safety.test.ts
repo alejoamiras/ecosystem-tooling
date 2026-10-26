@@ -1,16 +1,18 @@
 /**
  * Browser-safety probes for the published root export.
  *
- * 1. Static: no `node:` (or bare node-builtin) imports anywhere under src/ts
+ * 1. Static: no import of a node built-in, in any form, anywhere under src/ts
  *    outside operator/, test/ and cli/.
  * 2. Behavioral: `bun build --target browser` bundles the root entrypoint
  *    without error. Bun stubs node built-ins, so this cannot stand in for 1.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
 const srcRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -30,6 +32,15 @@ function tsFilesUnder(root: string, skip: string[], dir = root): string[] {
   return out;
 }
 
+// TypeScript's scanner reads static, side-effect and literal dynamic imports, and require() (its third
+// argument), and skips comments and strings. builtinModules names most built-ins without the node: prefix.
+function nodeImportsOf(source: string): string[] {
+  return ts
+    .preProcessFile(source, true, true)
+    .importedFiles.map(({ fileName }) => fileName)
+    .filter((spec) => spec.startsWith('node:') || builtinModules.includes(spec));
+}
+
 describe('browser safety', () => {
   test('no node-only imports in the browser-facing SDK sources', () => {
     const files = tsFilesUnder(srcRoot, NODE_ONLY);
@@ -38,11 +49,25 @@ describe('browser safety', () => {
     );
     expect(entryModules.length).toBeGreaterThan(5);
     for (const module of entryModules) expect(files).toContain(join(srcRoot, module));
-    for (const file of files) {
-      const source = readFileSync(file, 'utf8');
-      const nodeImport = source.match(/from\s+['"](node:[^'"]+|fs|path|os|crypto|child_process)['"]/);
-      expect(nodeImport, `${file} imports ${nodeImport?.[1]}`).toBeNull();
-    }
+    for (const file of files) expect(nodeImportsOf(readFileSync(file, 'utf8')), file).toEqual([]);
+  });
+
+  test('the import check sees every import form, and only imports', () => {
+    const unsafe = [
+      "import { createInterface } from 'readline';",
+      "import 'node:fs';",
+      "const util = await import('util');",
+      "const os = require('os');",
+    ].join('\n');
+    expect(nodeImportsOf(unsafe)).toEqual(['readline', 'node:fs', 'util', 'os']);
+    const safe = [
+      "import { Fr } from '@aztec-labs/foundation/curves/bn254';",
+      "export * from './allowance.js';",
+      "const { siloNullifier } = await import('@aztec-labs/stdlib/hash');",
+      "// import { readFile } from 'node:fs';",
+      'const hint = "from \'fs\'";',
+    ].join('\n');
+    expect(nodeImportsOf(safe)).toEqual([]);
   });
 
   test('the scan does not depend on the checkout path', () => {
