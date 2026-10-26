@@ -15,9 +15,10 @@ const STATUS_JOBS: Record<string, string> = {
 // Required by name, so each name must belong to exactly one job in the repository.
 const REQUIRED = [...Object.values(STATUS_JOBS), 'Biome + manifests + tooling tests', 'Lint workflows'];
 const FAIL_WHEN = "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')";
+const FAIL_RUN = 'echo "::error::a needed job failed or was cancelled"\nexit 1';
 
 type Step = { if?: string; run?: string; 'continue-on-error'?: unknown };
-type Job = { name?: string; if?: string; needs?: string | string[]; steps?: Step[] };
+type Job = { name?: string; if?: string; needs?: string | string[]; steps?: Step[]; 'continue-on-error'?: unknown };
 
 const jobsOf = (file: string) =>
   (Bun.YAML.parse(readFileSync(join(WORKFLOWS, file), 'utf8')) as { jobs: Record<string, Job> }).jobs;
@@ -30,20 +31,22 @@ describe.each(Object.entries(STATUS_JOBS))('%s', (file, name) => {
     expect(status?.name).toBe(name);
     expect(status?.if).toBe('always()');
     expect(needsOf(status).sort()).toEqual(Object.keys(others).sort());
+    // continue-on-error lets a job fail without failing its run; status must see every failure.
+    const tolerant = Object.entries(jobsOf(file)).filter(([, job]) => job['continue-on-error'] !== undefined);
+    expect(tolerant.map(([key]) => key)).toEqual([]);
   });
 
   test('its one step fails when a needed job failed or was cancelled, and only then', () => {
     expect(status?.steps).toHaveLength(1);
     const step = status?.steps?.[0];
     expect(step?.if).toBe(FAIL_WHEN);
-    expect(step?.run?.trim().endsWith('exit 1')).toBe(true);
+    expect(step?.run?.trim()).toBe(FAIL_RUN);
     expect(step?.['continue-on-error']).toBeUndefined();
   });
 
   test('every job another job needs is unconditional', () => {
-    // A job skipped by its own condition skips its dependents too, and status accepts both skips;
-    // only failures and cancels propagate, and those it rejects. The status job's own needs are
-    // exactly the conditional jobs, so its edges are exempt.
+    // A job skipped by its own condition skips its dependents too, and status accepts both skips.
+    // Edges into status are exempt: it runs under always() and reads every result itself.
     for (const dependency of Object.values(others).flatMap(needsOf)) {
       expect({ dependency, if: others[dependency]?.if }).toEqual({ dependency, if: undefined });
     }
@@ -52,7 +55,7 @@ describe.each(Object.entries(STATUS_JOBS))('%s', (file, name) => {
 
 test('each required check names exactly one job across all workflows', () => {
   const names = readdirSync(WORKFLOWS)
-    .filter((file) => file.endsWith('.yml'))
+    .filter((file) => /\.ya?ml$/.test(file))
     .flatMap((file) => Object.values(jobsOf(file)).map((job) => job.name));
   for (const required of REQUIRED) {
     expect({ required, jobs: names.filter((n) => n === required).length }).toEqual({ required, jobs: 1 });
