@@ -1,8 +1,8 @@
 /**
  * Browser-safety probes for the published root export.
  *
- * 1. Static: no import of a node built-in, in any form, anywhere under src/ts
- *    outside operator/, test/ and cli/.
+ * 1. Static: no import, require() or type import of a node built-in anywhere
+ *    under src/ts outside operator/, test/ and cli/.
  * 2. Behavioral: `bun build --target browser` bundles the root entrypoint
  *    without error. Bun stubs node built-ins, so this cannot stand in for 1.
  */
@@ -32,13 +32,30 @@ function tsFilesUnder(root: string, skip: string[], dir = root): string[] {
   return out;
 }
 
-// TypeScript's scanner reads static, side-effect and literal dynamic imports, and require() (its third
-// argument), and skips comments and strings. builtinModules names most built-ins without the node: prefix.
+const literal = (node: ts.Node | undefined) => (node && ts.isStringLiteralLike(node) ? [node.text] : []);
+
+// Type imports count, since shipped declarations can keep them.
+function specifierOf(node: ts.Node): ts.Node | undefined {
+  if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return node.moduleSpecifier;
+  if (ts.isExternalModuleReference(node)) return node.expression;
+  if (ts.isImportTypeNode(node)) return ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined;
+  if (!ts.isCallExpression(node)) return undefined;
+  const callee = node.expression;
+  const loads = callee.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(callee) && callee.text === 'require');
+  return loads ? node.arguments[0] : undefined;
+}
+
+// The AST, not ts.preProcessFile: that scanner misses `export * as` and a require() inside a template, and reads
+// regex text as an import.
 function nodeImportsOf(source: string): string[] {
-  return ts
-    .preProcessFile(source, true, true)
-    .importedFiles.map(({ fileName }) => fileName)
-    .filter((spec) => spec.startsWith('node:') || builtinModules.includes(spec));
+  const specs: string[] = [];
+  const visit = (node: ts.Node): void => {
+    specs.push(...literal(specifierOf(node)));
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.createSourceFile('source.ts', source, ts.ScriptTarget.Latest));
+  // builtinModules names most built-ins without the node: prefix that each also accepts.
+  return specs.filter((spec) => spec.startsWith('node:') || builtinModules.includes(spec));
 }
 
 describe('browser safety', () => {
@@ -56,16 +73,28 @@ describe('browser safety', () => {
     const unsafe = [
       "import { createInterface } from 'readline';",
       "import 'node:fs';",
+      "export * as streams from 'node:stream';",
       "const util = await import('util');",
       "const os = require('os');",
+      "import path = require('path');",
+      "type Threads = typeof import('worker_threads');",
     ].join('\n');
-    expect(nodeImportsOf(unsafe)).toEqual(['readline', 'node:fs', 'util', 'os']);
+    expect(nodeImportsOf(unsafe)).toEqual([
+      'readline',
+      'node:fs',
+      'node:stream',
+      'util',
+      'os',
+      'path',
+      'worker_threads',
+    ]);
     const safe = [
       "import { Fr } from '@aztec-labs/foundation/curves/bn254';",
       "export * from './allowance.js';",
       "const { siloNullifier } = await import('@aztec-labs/stdlib/hash');",
       "// import { readFile } from 'node:fs';",
       'const hint = "from \'fs\'";',
+      "const pattern = /require('fs')/;",
     ].join('\n');
     expect(nodeImportsOf(safe)).toEqual([]);
   });
