@@ -54,7 +54,7 @@ function nodeImportsOf(source: string): string[] {
     ts.forEachChild(node, visit);
   };
   visit(ts.createSourceFile('source.ts', source, ts.ScriptTarget.Latest));
-  // builtinModules names most built-ins without the node: prefix that each also accepts.
+  // builtinModules lists most built-ins bare; every built-in also loads as node:<name>.
   return specs.filter((spec) => spec.startsWith('node:') || builtinModules.includes(spec));
 }
 
@@ -95,6 +95,7 @@ describe('browser safety', () => {
       "// import { readFile } from 'node:fs';",
       'const hint = "from \'fs\'";',
       "const pattern = /require('fs')/;",
+      "console.log('os');",
     ].join('\n');
     expect(nodeImportsOf(safe)).toEqual([]);
   });
