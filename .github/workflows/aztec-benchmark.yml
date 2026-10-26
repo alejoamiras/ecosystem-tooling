@@ -24,8 +24,7 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/aztec-benchmark/**'
-              - '!packages/aztec-benchmark/**/*.md'
+              - 'packages/aztec-benchmark/**/!(*.md)'
               - 'biome.json'
               - 'package.json'
               - 'bun.lock'

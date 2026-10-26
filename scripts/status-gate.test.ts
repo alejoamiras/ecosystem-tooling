@@ -17,7 +17,7 @@ const REQUIRED = [...Object.values(STATUS_JOBS), 'Biome + manifests + tooling te
 const FAIL_WHEN = "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')";
 const FAIL_RUN = 'echo "::error::a needed job failed or was cancelled"\nexit 1';
 
-type Step = { if?: string; run?: string; 'continue-on-error'?: unknown };
+type Step = { if?: string; run?: string; uses?: string; with?: Record<string, unknown>; 'continue-on-error'?: unknown };
 type Job = { name?: string; if?: string; needs?: string | string[]; steps?: Step[]; 'continue-on-error'?: unknown };
 
 const jobsOf = (file: string) =>
@@ -50,6 +50,18 @@ describe.each(Object.entries(STATUS_JOBS))('%s', (file, name) => {
     for (const dependency of Object.values(others).flatMap(needsOf)) {
       expect({ dependency, if: others[dependency]?.if }).toEqual({ dependency, if: undefined });
     }
+  });
+
+  test('its paths filter narrows, and covers its own package', () => {
+    // dorny ORs a filter's rules under its default quantifier, so a `!` rule matches every other
+    // file; under `every`, several positive rules match none. Package markdown is left out by the
+    // extglob instead.
+    const filter = others.changes?.steps?.find((step) => step.uses?.startsWith('dorny/paths-filter@'));
+    expect(filter?.with?.['predicate-quantifier']).toBeUndefined();
+    const filters = Bun.YAML.parse(String(filter?.with?.filters)) as Record<string, string[]>;
+    const rules = Object.values(filters).flat();
+    expect(rules.filter((rule) => rule.startsWith('!'))).toEqual([]);
+    expect(filters.relevant).toContain(`packages/${file.replace(/\.yml$/, '')}/**/!(*.md)`);
   });
 });
 

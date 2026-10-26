@@ -24,10 +24,11 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/private-fee-juice/**'
-              - '!packages/private-fee-juice/**/*.md'
-              - 'packages/aztec-benchmark/cli/**'
-              - 'packages/aztec-benchmark/package.json'
+              - 'packages/private-fee-juice/**/!(*.md)'
+              # canonical.test.ts asserts its "Current canonical" line.
+              - 'packages/private-fee-juice/README.md'
+              # The benchmark job runs its bin and comparison; typecheck reads its build.
+              - 'packages/aztec-benchmark/**/!(*.md)'
               - 'biome.json'
               - 'package.json'
               - 'bun.lock'
@@ -39,6 +40,7 @@ jobs:
               - 'aztec-toolchain.lock.json'
               - 'aztec-toolchain/**'
               - 'scripts/install-aztec-toolchain.sh'
+              - 'scripts/check-txe-counts.sh'
       - name: Override for manual dispatch
         if: github.event_name == 'workflow_dispatch'
         id: override
