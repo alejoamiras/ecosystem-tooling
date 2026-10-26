@@ -24,18 +24,24 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/quota-paymaster/**'
-              - '!packages/quota-paymaster/**/*.md'
+              - 'packages/quota-paymaster/**/!(*.md)'
+              # aztec-benchmark is left out: js-tests only builds it, as Aztec Benchmark's required build does.
+              # verify-tarball asserts it ships.
+              - 'packages/quota-paymaster/INTEGRATING.md'
               - 'biome.json'
               - 'package.json'
               - 'bun.lock'
               - 'bunfig.toml'
+              - 'nargo-deps.lock.json'
               - '.github/workflows/quota-paymaster.yml'
               - '.github/workflows/_package-checks.yml'
               - '.github/actions/**'
               - 'aztec-toolchain.lock.json'
               - 'aztec-toolchain/**'
               - 'scripts/install-aztec-toolchain.sh'
+              - 'scripts/check-txe-counts.sh'
+              - 'scripts/verify-tarball.ts'
+              - 'scripts/lib/**'
       - name: Override for manual dispatch
         if: github.event_name == 'workflow_dispatch'
         id: override
