@@ -4,7 +4,7 @@
  * 1. Static: no `node:` (or bare node-builtin) imports anywhere under src/ts
  *    outside operator/, test/ and cli/.
  * 2. Behavioral: `bun build --target browser` bundles the root entrypoint
- *    without error.
+ *    without error. Bun stubs node built-ins, so this cannot stand in for 1.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 const srcRoot = fileURLToPath(new URL('../..', import.meta.url));
-// Top-level directories of the scanned root, matched by name: neither the checkout path nor a
+// operator/ and cli/ read files, spawn readline and load the config module; test/ never ships.
+// Matched by name as top-level directories of the scanned root, so neither the checkout path nor a
 // sibling such as client/ can trigger a skip.
 const NODE_ONLY = ['operator', 'test', 'cli'];
 
@@ -31,15 +32,12 @@ function tsFilesUnder(root: string, skip: string[], dir = root): string[] {
 
 describe('browser safety', () => {
   test('no node-only imports in the browser-facing SDK sources', () => {
-    // cli/ is node-only for the same reason operator/ is: it reads files,
-    // spawns readline, and loads the operator's config module.
     const files = tsFilesUnder(srcRoot, NODE_ONLY);
-    const scanned = files.map((file) => relative(srcRoot, file));
     const entryModules = [...readFileSync(join(srcRoot, 'index.ts'), 'utf8').matchAll(/from '\.\/([^']+)\.js'/g)].map(
       ([, module]) => `${module}.ts`,
     );
     expect(entryModules.length).toBeGreaterThan(5);
-    for (const module of entryModules) expect(scanned).toContain(module);
+    for (const module of entryModules) expect(files).toContain(join(srcRoot, module));
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
       const nodeImport = source.match(/from\s+['"](node:[^'"]+|fs|path|os|crypto|child_process)['"]/);
@@ -62,6 +60,7 @@ describe('browser safety', () => {
       expect(scan(link)).toContain('index.ts');
       expect(scan(link)).toEqual(scan(srcRoot));
     } finally {
+      // Unlinks the link without following it into the sources.
       rmSync(tmp, { recursive: true, force: true });
     }
   });
