@@ -8,13 +8,14 @@
  *
  * Known limit: computed specifiers and loader aliases go unseen (import(x), 'node:' + x, `node:${x}`, load = require).
  * Known limit: a local binding named require is still read as a load, a conservative false positive.
+ * Known limit: reflective or obfuscated access beyond literal property and element names is out of scope.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
@@ -57,9 +58,11 @@ function nameOf(node: ts.Node): string {
   const bare = unwrap(node);
   if (bare.kind === ts.SyntaxKind.ImportKeyword) return 'import';
   if (ts.isIdentifier(bare)) return bare.text;
-  if (!ts.isPropertyAccessExpression(bare)) return '';
+  if (!ts.isPropertyAccessExpression(bare) && !ts.isElementAccessExpression(bare)) return '';
+  // A string-literal element access names its property as a dot does.
+  const key = ts.isPropertyAccessExpression(bare) ? bare.name.text : literal(bare.argumentExpression)[0];
   const object = nameOf(bare.expression);
-  return object && `${object}.${bare.name.text}`;
+  return object && key !== undefined ? `${object}.${key}` : '';
 }
 
 // Callees that load their first argument as a module.
@@ -98,11 +101,15 @@ const nodeImportsOf = (source: string) =>
 
 const isLocal = (spec: string) => spec.startsWith('./') || spec.startsWith('../');
 
-// NodeNext names a .ts source by its emitted .js; any other local target is a file the scan does not read.
+// NodeNext names a .ts source by its emitted .js; any other local target is a file the scan does not read. An
+// absolute path or file: URL is refused, not resolved.
 const unscannedImportsOf = (file: string, source: string, scanned: string[]) =>
-  specifiersOf(source)
-    .filter(isLocal)
-    .filter((spec) => !scanned.includes(resolve(dirname(file), spec.replace(/\.js$/, '.ts'))));
+  specifiersOf(source).filter(
+    (spec) =>
+      isAbsolute(spec) ||
+      spec.startsWith('file:') ||
+      (isLocal(spec) && !scanned.includes(resolve(dirname(file), spec.replace(/\.js$/, '.ts')))),
+  );
 
 describe('browser safety', () => {
   test('no node-only imports in the browser-facing SDK sources', () => {
@@ -136,6 +143,8 @@ describe('browser safety', () => {
       ["process.getBuiltinModule('crypto');", 'crypto'],
       ["globalThis.process?.getBuiltinModule?.('v8');", 'v8'],
       ["module.require('node:vm');", 'node:vm'],
+      ["process['getBuiltinModule']('dgram');", 'dgram'],
+      ["module['require']('node:repl');", 'node:repl'],
     ];
     expect(nodeImportsOf(unsafe.map(([line]) => line).join('\n'))).toEqual(unsafe.map(([, spec]) => spec));
     const safe = [
@@ -159,6 +168,8 @@ describe('browser safety', () => {
       "const fixtures = await import('./test/fixtures.js');",
       "import { legacy } from './legacy.js';",
       "import './worker.mjs';",
+      `import { humanizeDuration } from ${JSON.stringify(join(srcRoot, 'duration.js'))};`,
+      `export * from ${JSON.stringify(pathToFileURL(join(srcRoot, 'errors.js')).href)};`,
     ];
     expect(unscannedImportsOf(importer, unsafe.join('\n'), files)).toEqual([
       './operator/action-plan.js',
@@ -166,6 +177,8 @@ describe('browser safety', () => {
       './test/fixtures.js',
       './legacy.js',
       './worker.mjs',
+      join(srcRoot, 'duration.js'),
+      pathToFileURL(join(srcRoot, 'errors.js')).href,
     ]);
     const safe = [
       "export * from './errors.js';",
