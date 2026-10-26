@@ -2,25 +2,28 @@
  * Browser-safety probes for the published root export.
  *
  * 1. Static: no `node:` (or bare node-builtin) imports anywhere under src/ts
- *    outside operator/ and test/.
+ *    outside operator/, test/ and cli/.
  * 2. Behavioral: `bun build --target browser` bundles the root entrypoint
- *    without error. (The operator entrypoint is expected to FAIL this — that
- *    probe lands with the operator module in Phase 4.)
+ *    without error.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
-const srcRoot = new URL('../..', import.meta.url).pathname;
+const srcRoot = fileURLToPath(new URL('../..', import.meta.url));
+// Top-level directories of the scanned root, matched by name: neither the checkout path nor a
+// sibling such as client/ can trigger a skip.
+const NODE_ONLY = ['operator', 'test', 'cli'];
 
-function tsFilesUnder(dir: string, skip: string[]): string[] {
+function tsFilesUnder(root: string, skip: string[], dir = root): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (skip.some((s) => full.includes(s))) continue;
-    if (statSync(full).isDirectory()) out.push(...tsFilesUnder(full, skip));
+    if (skip.includes(relative(root, full))) continue;
+    if (statSync(full).isDirectory()) out.push(...tsFilesUnder(root, skip, full));
     else if (entry.endsWith('.ts')) out.push(full);
   }
   return out;
@@ -28,14 +31,38 @@ function tsFilesUnder(dir: string, skip: string[]): string[] {
 
 describe('browser safety', () => {
   test('no node-only imports in the browser-facing SDK sources', () => {
-    // /cli is node-only for the same reason /operator is: it reads files,
+    // cli/ is node-only for the same reason operator/ is: it reads files,
     // spawns readline, and loads the operator's config module.
-    const files = tsFilesUnder(srcRoot, ['/operator', '/test', '/cli']);
-    expect(files.length).toBeGreaterThan(5);
+    const files = tsFilesUnder(srcRoot, NODE_ONLY);
+    const scanned = files.map((file) => relative(srcRoot, file));
+    const entryModules = [...readFileSync(join(srcRoot, 'index.ts'), 'utf8').matchAll(/from '\.\/([^']+)\.js'/g)].map(
+      ([, module]) => `${module}.ts`,
+    );
+    expect(entryModules.length).toBeGreaterThan(5);
+    for (const module of entryModules) expect(scanned).toContain(module);
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
       const nodeImport = source.match(/from\s+['"](node:[^'"]+|fs|path|os|crypto|child_process)['"]/);
       expect(nodeImport, `${file} imports ${nodeImport?.[1]}`).toBeNull();
+    }
+  });
+
+  test('the scan does not depend on the checkout path', () => {
+    // The link's path ends in operator/test/cli, so matching the absolute path, by substring or by
+    // segment, would skip every file.
+    const tmp = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), 'quota-browser-safety-'));
+    try {
+      mkdirSync(join(tmp, 'operator', 'test'), { recursive: true });
+      const link = join(tmp, 'operator', 'test', 'cli');
+      symlinkSync(srcRoot, link);
+      const scan = (root: string) =>
+        tsFilesUnder(root, NODE_ONLY)
+          .map((file) => relative(root, file))
+          .sort();
+      expect(scan(link)).toContain('index.ts');
+      expect(scan(link)).toEqual(scan(srcRoot));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
     }
   });
 
