@@ -8,9 +8,9 @@ All workflows follow the house conventions: per-package PR gates with an interna
 |---|---|---|
 | `lint.yml` | PR, dispatch | biome + sort-package-json + advisory `bun audit` |
 | `actionlint.yml` | PR, dispatch | Workflow linting (checksum-verified binary, no third-party action) |
-| `aztec-benchmark.yml` | PR (path-gated), dispatch | Build (tsc+ncc) + CLI smoke |
-| `private-fee-juice.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark` |
-| `quota-paymaster.yml` | PR (path-gated), dispatch | `_package-checks` (TXE floor 20 + integration + `run-warp-tests` — the time-travel suite on its self-provisioned disposable network) |
+| `aztec-benchmark.yml` | PR (path-gated), dispatch | Build (tsc+ncc) + CLI smoke; `Aztec Benchmark Status` |
+| `private-fee-juice.yml` | PR (path-gated), dispatch | `_package-checks` (TXE + integration, floor 11) + `_pr-benchmark`; `Private Fee Juice Status` |
+| `quota-paymaster.yml` | PR (path-gated), dispatch | `_package-checks` (TXE floor 20 + integration + `run-warp-tests` — the time-travel suite on its self-provisioned disposable network); `Quota Paymaster Status` |
 | `_package-checks.yml` | reusable | `noir-tests` (TXE via `aztec test`, PTY-wrapped, **count floor via `scripts/check-txe-counts.sh`** — exit codes alone let silently-skipped suites pass) + `js-tests` (full-surface `bun run typecheck`, then vitest vs `aztec start --local-network`, PTY-wrapped) |
 | `_pr-benchmark.yml` | reusable | Split-permission benchmark: read-only job runs PR code + uploads report artifact; separate `pull-requests: write` job posts the comment WITHOUT executing PR code. Non-vacuous assertions (results non-empty; baseline present ⇒ ≥1 comparison pair). PR benches run `--skip-proving`. |
 | `_update-baseline.yml` | reusable | Full-proving baselines, artifacts namespaced `benchmark-baseline-<pkg>-<branch>` |
@@ -22,6 +22,27 @@ All workflows follow the house conventions: per-package PR gates with an interna
 Nargo git dependencies are tag-pinned in manifests but **commit-locked** in `nargo-deps.lock.json`: `scripts/verify-nargo-refs.sh` (run in release validation; `--write` to regenerate on bumps) fails bidirectionally on moved refs OR unlocked deps. The release build re-runs it just before compiling, but `aztec compile` then resolves the tags itself, so a tag moved inside that window could still reach the build; quota-paymaster's `verify:lineage` class-id pin and the rehearsal payload byte-compare narrow it, and compiling from the locked commits would close it.
 
 Measured on `ubuntu-latest` (2026-07-01 spike): toolchain install + compile + codegen + network-ready ≈ **241 s**. (A historical data point: the since-departed standards TXE suite — 329 tests — ran ≈ 541 s.)
+
+## Required checks
+
+`main`'s ruleset requires a pull request and these five checks, with no required review and no force-push or deletion. The ruleset is a repository setting, not part of this tree; it is applied once the status jobs are on `main`.
+
+| Check | Workflow |
+|---|---|
+| `Private Fee Juice Status` | `private-fee-juice.yml` |
+| `Quota Paymaster Status` | `quota-paymaster.yml` |
+| `Aztec Benchmark Status` | `aztec-benchmark.yml` |
+| `Biome + manifests + tooling tests` | `lint.yml` |
+| `Lint workflows` | `actionlint.yml` |
+
+The package jobs themselves cannot be required by name: a filtered job reports `skipped`, and `Checks / Noir TXE tests` and `Checks / JS integration tests` each come from two workflows. Each package workflow therefore ends in a `status` job that needs every other job in its file and fails when any of them failed or was cancelled. A job skipped by its own condition (the paths filter, or an event it does not run on) passes. The job runs under `if: always()`, because a required check that reads `skipped` passes, and `!cancelled()` would skip it on a cancel.
+
+`scripts/status-gate.test.ts` (in `test:scripts`) holds two rules for whoever edits these workflows:
+
+- A new job joins its workflow's status `needs`.
+- A job that another non-status job needs stays unconditional. A job skipped by its own `if` silently skips its dependents, and status would accept both skips.
+
+Retry a red run with `gh run rerun <id> --failed`, which re-runs the status job too. Never dispatch a package workflow on a PR branch to retry it. A dispatch skips private-fee-juice's `benchmark` by event, and its newer, green status check run replaces the red one on the same commit.
 
 ## Release runbook
 
